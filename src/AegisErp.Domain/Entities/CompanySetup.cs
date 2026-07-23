@@ -86,6 +86,13 @@ public class CompanySetup
     public bool AuditTrailEnabled { get; set; } = true;
     public bool ApprovalWorkflowEnabled { get; set; }
 
+    public string? UpdatedBy { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+
+    /// <summary>Optimistic-concurrency token. Regenerated on every update; the save fails if the
+    /// value the editor started from no longer matches what's in the database.</summary>
+    public Guid RowVersion { get; set; } = Guid.NewGuid();
+
     public List<CompanyBankAccount> BankAccounts { get; set; } = new();
 }
 

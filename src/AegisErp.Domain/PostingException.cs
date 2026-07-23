@@ -4,4 +4,5 @@ namespace AegisErp.Domain;
 public class PostingException : Exception
 {
     public PostingException(string message) : base(message) { }
+    public PostingException(string message, Exception innerException) : base(message, innerException) { }
 }

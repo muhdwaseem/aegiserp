@@ -69,6 +69,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(a => a.Category).HasMaxLength(60);
             e.Property(a => a.Currency).HasMaxLength(3).IsRequired();
             e.Property(a => a.Description).HasMaxLength(300);
+            e.Property(a => a.UpdatedBy).HasMaxLength(80);
+            e.Property(a => a.RowVersion).IsConcurrencyToken();
             e.Ignore(a => a.NormalBalance);
             e.HasOne(a => a.Parent).WithMany().HasForeignKey(a => a.ParentId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -380,6 +382,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(c => c.DefaultVatRate).HasPrecision(5, 2);
             e.Property(c => c.InputVatAccountCode).HasMaxLength(20);
             e.Property(c => c.OutputVatAccountCode).HasMaxLength(20);
+            e.Property(c => c.UpdatedBy).HasMaxLength(80);
+            e.Property(c => c.RowVersion).IsConcurrencyToken();
             e.HasMany(c => c.BankAccounts).WithOne(a => a.CompanySetup)
                 .HasForeignKey(a => a.CompanySetupId).OnDelete(DeleteBehavior.Cascade);
         });

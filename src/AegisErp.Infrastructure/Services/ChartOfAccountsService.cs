@@ -124,9 +124,14 @@ public class ChartOfAccountsService
         return account;
     }
 
-    /// <summary>Updates the editable fields of an account. Code, type and posting-type are fixed once created.</summary>
+    /// <summary>
+    /// Updates the editable fields of an account. Code, type and posting-type are fixed once created.
+    /// <paramref name="expectedRowVersion"/> must be the value the editor read the account with —
+    /// if another user has saved a change since, this throws a recoverable <see cref="PostingException"/>
+    /// instead of silently overwriting their edit.
+    /// </summary>
     public async Task<Account> UpdateAsync(int id, string name, string? category, string currency,
-        int? parentId, string? description, bool isActive)
+        int? parentId, string? description, bool isActive, Guid expectedRowVersion, string updatedBy)
     {
         name = name.Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new PostingException("Account name is required.");
@@ -142,7 +147,12 @@ public class ChartOfAccountsService
         acc.ParentId = parentId;
         acc.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         acc.IsActive = isActive;
-        await db.SaveChangesAsync();
+        acc.UpdatedBy = updatedBy;
+        acc.UpdatedAtUtc = DateTime.UtcNow;
+        acc.RowVersion = Guid.NewGuid();
+        // Check against the version the editor actually saw, not whatever's now freshly loaded above.
+        db.Entry(acc).Property(a => a.RowVersion).OriginalValue = expectedRowVersion;
+        await JournalPoster.SaveChangesTranslatedAsync(db);
         return acc;
     }
 

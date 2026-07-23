@@ -64,7 +64,12 @@ public class CompanyService
             "No company is selected. Pick a company before opening company setup.");
     }
 
-    public async Task SaveAsync(CompanySetup model)
+    /// <summary>
+    /// Saves the company's setup. <paramref name="model"/> must carry the RowVersion it was
+    /// loaded with (from <see cref="GetAsync"/>) — if another user has saved a change since, this
+    /// throws a recoverable <see cref="PostingException"/> instead of silently overwriting it.
+    /// </summary>
+    public async Task SaveAsync(CompanySetup model, string updatedBy)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var existing = await db.CompanySetups.Include(c => c.BankAccounts)
@@ -76,6 +81,8 @@ public class CompanyService
             await db.SaveChangesAsync();
             return;
         }
+
+        var expectedRowVersion = model.RowVersion;
 
         // Copy scalar fields; then rebuild the bank-account list.
         db.Entry(existing).CurrentValues.SetValues(model);
@@ -91,7 +98,15 @@ public class CompanyService
             IsPrimary = b.IsPrimary,
         }).ToList();
 
-        await db.SaveChangesAsync();
+        existing.UpdatedBy = updatedBy;
+        existing.UpdatedAtUtc = DateTime.UtcNow;
+        existing.RowVersion = Guid.NewGuid();
+        // Check against the version the editor actually loaded, not existing's freshly-read value
+        // (SetValues above only touches CurrentValues; OriginalValues still holds the DB's current
+        // row, which would defeat the check unless overridden here).
+        db.Entry(existing).Property(c => c.RowVersion).OriginalValue = expectedRowVersion;
+
+        await JournalPoster.SaveChangesTranslatedAsync(db);
     }
 
 }

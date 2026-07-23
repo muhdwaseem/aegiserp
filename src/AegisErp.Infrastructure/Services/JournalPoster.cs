@@ -106,8 +106,9 @@ internal static class JournalPoster
 
     /// <summary>
     /// Saves and commits, translating a unique-constraint violation (e.g. two users posting at the
-    /// same instant and computing the same document number) into a recoverable <see cref="PostingException"/>
-    /// instead of letting a raw DbUpdateException crash the Blazor circuit.
+    /// same instant and computing the same document number) or a transient lock/busy error into a
+    /// recoverable <see cref="PostingException"/> instead of letting a raw DbUpdateException crash
+    /// the Blazor circuit.
     /// NOTE: this makes the losing writer fail cleanly; it does not by itself prevent the race. On
     /// PostgreSQL, allocate document numbers under a row lock / advisory lock or a Serializable
     /// transaction with retry (see README production-hardening notes).
@@ -119,18 +120,62 @@ internal static class JournalPoster
             await db.SaveChangesAsync();
             await tx.CommitAsync();
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        catch (DbUpdateException ex)
         {
-            throw new PostingException(
-                "This document conflicts with one just posted by another user (duplicate number). Please try again.");
+            throw Translate(ex);
         }
     }
 
-    private static bool IsUniqueViolation(DbUpdateException ex)
+    /// <summary>
+    /// Saves a non-transactional (single-statement) change set, translating the same recoverable
+    /// error classes as <see cref="SaveAndCommitAsync"/>. For services (estimates, delivery notes)
+    /// that don't open their own <see cref="IDbContextTransaction"/>.
+    /// </summary>
+    public static async Task SaveChangesTranslatedAsync(AegisDbContext db)
     {
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            throw Translate(ex);
+        }
+    }
+
+    private static PostingException Translate(DbUpdateException ex)
+    {
+        // DbUpdateConcurrencyException (a DbUpdateException subtype) means a concurrency-token
+        // check found the row already changed since it was loaded — e.g. two users editing the
+        // same Account or CompanySetup. Check this before the message-sniffing below since its
+        // message doesn't mention "UNIQUE"/"locked"/etc.
+        if (ex is DbUpdateConcurrencyException)
+        {
+            return new PostingException(
+                "This record was changed by another user since you opened it. Please reload and try again.", ex);
+        }
+
         var msg = ex.InnerException?.Message ?? ex.Message;
         // SQLite: "UNIQUE constraint failed"; PostgreSQL: "duplicate key value violates unique constraint".
-        return msg.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
-               || msg.Contains("duplicate", StringComparison.OrdinalIgnoreCase);
+        if (msg.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("duplicate", StringComparison.OrdinalIgnoreCase))
+        {
+            return new PostingException(
+                "This document conflicts with one just posted by another user (duplicate number). Please try again.",
+                ex);
+        }
+
+        // SQLite: "database is locked" / "SQLITE_BUSY"; PostgreSQL: "could not serialize access" /
+        // "deadlock detected" under stricter isolation levels.
+        if (msg.Contains("locked", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("busy", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("serialize", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("deadlock", StringComparison.OrdinalIgnoreCase))
+        {
+            return new PostingException(
+                "The database was busy with another user's request. Please try again.", ex);
+        }
+
+        return new PostingException("This document could not be saved. Please try again.", ex);
     }
 }

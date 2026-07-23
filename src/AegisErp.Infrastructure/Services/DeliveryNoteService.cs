@@ -71,7 +71,7 @@ public class DeliveryNoteService
         }
 
         db.DeliveryNotes.Add(note);
-        await db.SaveChangesAsync();
+        await JournalPoster.SaveChangesTranslatedAsync(db);
         return note;
     }
 

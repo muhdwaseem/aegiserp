@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace AegisErp.Infrastructure;
@@ -25,7 +26,11 @@ public static class DatabaseProvider
                 break;
             case Sqlite:
             default:
-                options.UseSqlite(connectionString);
+                // DefaultTimeout is SQLite's busy-timeout (seconds a second writer waits for the
+                // file lock before failing) — without it, Microsoft.Data.Sqlite defaults to 0 and
+                // any writer overlap throws "database is locked" instead of just waiting briefly.
+                var csb = new SqliteConnectionStringBuilder(connectionString) { DefaultTimeout = 5 };
+                options.UseSqlite(csb.ToString());
                 break;
         }
     }

@@ -267,13 +267,16 @@ else
     private static readonly string[] RequiredDocs =
         { "Trade License Copy", "Memorandum of Association (MOA)", "VAT Certificate", "Emirates ID", "Passport Copy", "Other Supporting Documents" };
 
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private bool _isNew;
     private bool _saving;
+    private string _userName = "System Admin";
 
     protected override async Task OnInitializedAsync()
     {
         _isNew = Navigation.Uri.EndsWith("/new", StringComparison.OrdinalIgnoreCase);
         await Session.EnsureInitialisedAsync();
+        if (AuthState is not null) _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
 
         if (_isNew && !Session.IsFirmAdmin)
         {
@@ -340,7 +343,7 @@ else
                 return;
             }
 
-            await Company.SaveAsync(_c!);
+            await Company.SaveAsync(_c!, _userName);
             Snackbar.Add("Company setup saved.", Severity.Success);
         }
         catch (PostingException ex)

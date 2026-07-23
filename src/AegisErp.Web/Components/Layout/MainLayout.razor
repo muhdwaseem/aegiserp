@@ -104,7 +104,27 @@
             @* Keyed by company: switching disposes and rebuilds the page so it reloads its data
                under the new company scope, without a full page reload. *@
             <div @key="@(Session.Active?.CompanyId ?? 0)">
-                @Body
+                @* Catches anything an action handler doesn't (only PostingException is caught
+                   per-page today) so an unexpected error — a lock/busy DB error, a bug — shows a
+                   scoped message and lets the user retry the current page, instead of tearing
+                   down the whole circuit and losing every other open tab/page for that user. *@
+                <ErrorBoundary @ref="_errorBoundary">
+                    <ChildContent>
+                        @Body
+                    </ChildContent>
+                    <ErrorContent>
+                        <MudAlert Severity="Severity.Error" Class="ma-4">
+                            <MudText>Something went wrong loading or saving this page.</MudText>
+                            <MudText Typo="Typo.body2" Class="mt-1">
+                                This is usually transient (e.g. another user saving at the same moment). Try again.
+                            </MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Error" Class="mt-2"
+                                       OnClick="@(() => _errorBoundary?.Recover())">
+                                Try again
+                            </MudButton>
+                        </MudAlert>
+                    </ErrorContent>
+                </ErrorBoundary>
             </div>
         </MudContainer>
     </MudMainContent>
@@ -151,6 +171,7 @@
     private bool _drawerOpen = true;
     private bool _isDark = false;
     private string _periodLabel = "…";
+    private ErrorBoundary? _errorBoundary;
 
     protected override async Task OnInitializedAsync()
     {

@@ -73,7 +73,7 @@ public class EstimateService
         }
 
         db.Estimates.Add(estimate);
-        await db.SaveChangesAsync();
+        await JournalPoster.SaveChangesTranslatedAsync(db);
         return estimate;
     }
 

@@ -69,6 +69,14 @@ using (var scope = app.Services.CreateScope())
     var sp = scope.ServiceProvider;
     var dbf = sp.GetRequiredService<IDbContextFactory<AegisDbContext>>();
     await using var db = await dbf.CreateDbContextAsync();
+
+    // WAL mode lets readers proceed while a write is in flight (default rollback-journal mode
+    // blocks everyone on a writer). Only meaningful for Sqlite; a no-op statement on other
+    // providers would just error, so gate it on the configured provider.
+    var provider = builder.Configuration["Database:Provider"] ?? DatabaseProvider.Sqlite;
+    if (provider == DatabaseProvider.Sqlite)
+        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+
     await SeedData.EnsureSeededAsync(db,
         sp.GetRequiredService<UserManager<AppUser>>(),
         sp.GetRequiredService<RoleManager<IdentityRole>>());

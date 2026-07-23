@@ -148,7 +148,8 @@
             var user = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             if (IsEdit)
             {
-                var acc = await Coa.UpdateAsync(Existing!.Id, _name, _category, _currency, _parentId, _description, _isActive);
+                var acc = await Coa.UpdateAsync(Existing!.Id, _name, _category, _currency, _parentId, _description,
+                    _isActive, Existing.RowVersion, user);
                 Snackbar.Add($"Account {acc.Code} updated.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(acc.Id));
             }

@@ -32,6 +32,13 @@ public class Account : ICompanyScoped
 
     public bool IsActive { get; set; } = true;
 
+    public string? UpdatedBy { get; set; }
+    public DateTime? UpdatedAtUtc { get; set; }
+
+    /// <summary>Optimistic-concurrency token. Regenerated on every update; the save fails if the
+    /// value the editor started from no longer matches what's in the database.</summary>
+    public Guid RowVersion { get; set; } = Guid.NewGuid();
+
     public NormalBalance NormalBalance => Type.NormalBalance();
 
     public ICollection<JournalLine> Lines { get; set; } = new List<JournalLine>();
