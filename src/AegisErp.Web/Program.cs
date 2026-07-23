@@ -90,7 +90,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+// NOTE: no app-level HTTPS redirect. Hosting platforms (Render, Fly.io, Azure) terminate TLS at
+// their edge and force HTTPS there, then forward plain HTTP to the container. An in-app redirect
+// would fire on the platform's internal HTTP health-check probe (returning a 307 instead of 200)
+// and the deploy would be marked unhealthy. HSTS above still advises browsers to use HTTPS.
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();

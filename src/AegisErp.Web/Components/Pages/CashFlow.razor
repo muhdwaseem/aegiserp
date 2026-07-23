@@ -75,21 +75,23 @@
     private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
     private async Task Load() { if (_periodId > 0) _cf = await Reports.GetCashFlowAsync(_periodId); }
 
-    private RenderFragment RenderSection(string title, CashFlowSection section) =>@<div class="cf-sec">
+    @* Parameter is named 'sec' (not 'section'): the Razor 8 compiler parses a leading '@section'
+       as the @section directive, which fails the build. *@
+    private RenderFragment RenderSection(string title, CashFlowSection sec) =>@<div class="cf-sec">
         <div class="cf-sec-hdr">
             <span class="name">@title</span>
-            <span class="amt @(section.Total >= 0 ? "pos" : "neg")">
-                @(section.Total >= 0 ? "+" : "−") AED @Math.Abs(section.Total).ToString("N2")
+            <span class="amt @(sec.Total >= 0 ? "pos" : "neg")">
+                @(sec.Total >= 0 ? "+" : "−") AED @Math.Abs(sec.Total).ToString("N2")
             </span>
         </div>
-        @if (section.Lines.Count == 0)
+        @if (sec.Lines.Count == 0)
         {
-            <div class="cf-empty">No @section.Name.ToLowerInvariant() this period.</div>
+            <div class="cf-empty">No @sec.Name.ToLowerInvariant() this period.</div>
         }
         else
         {
             <table class="cf-tbl">
-                @foreach (var line in section.Lines)
+                @foreach (var line in sec.Lines)
                 {
                     <tr>
                         <td>@line.Label</td>
@@ -101,11 +103,11 @@
                     </tr>
                 }
                 <tr class="sub">
-                    <td>Net cash from @section.Name.ToLowerInvariant()</td>
-                    <td class="@(section.Total >= 0 ? "pos" : "neg")">
-                        @(section.Total < 0
-                            ? $"({Math.Abs(section.Total).ToString("N2")})"
-                            : section.Total.ToString("N2"))
+                    <td>Net cash from @sec.Name.ToLowerInvariant()</td>
+                    <td class="@(sec.Total >= 0 ? "pos" : "neg")">
+                        @(sec.Total < 0
+                            ? $"({Math.Abs(sec.Total).ToString("N2")})"
+                            : sec.Total.ToString("N2"))
                     </td>
                 </tr>
             </table>

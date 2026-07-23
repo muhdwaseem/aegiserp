@@ -7,7 +7,9 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: singapore          # closest free region to the UAE; also: oregon, frankfurt
-    healthCheckPath: /Account/Login
+    # No healthCheckPath: let Render confirm the open port instead of requiring a 200 from a
+    # specific URL. The app seeds two demo companies on first boot, and a strict HTTP health
+    # check can trip during that startup window.
     autoDeploy: true           # redeploy on every push to the default branch
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
