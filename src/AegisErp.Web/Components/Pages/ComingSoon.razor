@@ -1,0 +1,21 @@
+@page "/soon/{Module}"
+@attribute [Authorize]
+
+<PageTitle>@Module · Aegis ERP</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Class="pa-8 d-flex flex-column align-center" Elevation="1">
+        <MudIcon Icon="@Icons.Material.Filled.Construction" Size="Size.Large" Color="Color.Primary" />
+        <MudText Typo="Typo.h5" Class="mt-3">@Module</MudText>
+        <MudText Typo="Typo.body2" Align="Align.Center" Class="mt-2 mud-text-secondary">
+            This module is part of the ERP scope but is not built yet in this foundation.
+            The General Ledger slice (Chart of Accounts, Journal Voucher, General Ledger and
+            Trial Balance) is fully working and shows the pattern the rest will follow.
+        </MudText>
+        <MudButton Href="" Class="mt-4" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack">Back to dashboard</MudButton>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public string Module { get; set; } = "";
+}

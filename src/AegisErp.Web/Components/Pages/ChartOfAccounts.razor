@@ -1,0 +1,282 @@
+@page "/chart-of-accounts"
+@attribute [Authorize]
+@using System.Text
+@using AegisErp.Web.Components.Dialogs
+@inject ChartOfAccountsService Coa
+@inject CompanySession Session
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Chart of Accounts · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <div>
+        <MudText Typo="Typo.h5">Chart of Accounts</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">@(Session.Active?.Name ?? "—") · AED</MudText>
+    </div>
+    <MudSpacer />
+    <MudTextField @bind-Value="_search" Placeholder="Filter by number or name…" Immediate="true" DebounceInterval="200"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense"
+                  Variant="Variant.Outlined" Style="max-width:280px" Class="mt-0" />
+</MudStack>
+
+@* ── Action toolbar (matches the reference: Manage · Data · Reports) ── *@
+<div class="coa-toolbar">
+    <AuthorizeView Roles="@AppRoles.Posters">
+        <div class="tb-grp">
+            <div class="tb-btns">
+                <button class="tb-b prim" @onclick="OpenNew"><span>➕</span>New</button>
+                <button class="tb-b" @onclick="OpenEdit" disabled="@(_selectedId is null)"><span>✏️</span>Edit</button>
+                <button class="tb-b dng" @onclick="DeleteSelected" disabled="@(_selectedId is null)"><span>🗑</span>Delete</button>
+            </div>
+            <div class="tb-lbl">Manage</div>
+        </div>
+        <div class="tb-sep"></div>
+        <div class="tb-grp">
+            <div class="tb-btns">
+                <button class="tb-b" @onclick="@(() => Snackbar.Add("Import — coming soon", Severity.Info))"><span>📥</span>Import</button>
+                <button class="tb-b" @onclick="ExportCsv"><span>📤</span>Export</button>
+            </div>
+            <div class="tb-lbl">Data</div>
+        </div>
+    </AuthorizeView>
+    <div class="tb-sep"></div>
+    <div class="tb-grp">
+        <div class="tb-btns">
+            <button class="tb-b" @onclick="Print"><span>🖨</span>Print</button>
+            <button class="tb-b" @onclick="ExpandAll"><span>⊕</span>Expand all</button>
+            <button class="tb-b" @onclick="CollapseAll"><span>⊖</span>Collapse all</button>
+        </div>
+        <div class="tb-lbl">View</div>
+    </div>
+</div>
+
+<MudPaper Elevation="1" Class="pa-0" id="coa-print">
+    @if (_all is null)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <div class="coa-scroll">
+            <table class="coa">
+                <thead>
+                    <tr>
+                        <th style="width:34px"></th>
+                        <th>Account No.</th><th>Account Name</th><th>Type</th>
+                        <th>Category</th><th>Currency</th><th class="ctr">Dr/Cr</th><th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in DisplayRows())
+                    {
+                        var a = row.Acc;
+                        <tr class="@(a.IsPostable ? "" : "hdr") @(a.Id == _selectedId ? "sel" : "")" @onclick="() => Select(a.Id)">
+                            <td class="exp" style="padding-left:@(6 + row.Level * 20)px">
+                                @if (row.HasChildren)
+                                {
+                                    <span class="chev" @onclick="() => ToggleCollapse(a.Id)" @onclick:stopPropagation="true">
+                                        @(_collapsed.Contains(a.Id) ? "▸" : "▾")
+                                    </span>
+                                }
+                            </td>
+                            <td class="code">@a.Code</td>
+                            <td class="name">@a.Name</td>
+                            <td>@TypeLabel(a.Type)</td>
+                            <td class="muted">@(a.Category ?? "—")</td>
+                            <td class="muted">@(a.IsPostable ? a.Currency : "")</td>
+                            <td class="ctr">
+                                @if (a.IsPostable)
+                                {
+                                    <span class="@(a.NormalBalance == NormalBalance.Debit ? "dr" : "cr")">
+                                        @(a.NormalBalance == NormalBalance.Debit ? "Dr" : "Cr")
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                @if (!a.IsPostable)
+                                {
+                                    <span class="badge hdrbadge">Header</span>
+                                }
+                                else if (a.IsActive)
+                                {
+                                    <span class="badge ok">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge off">Inactive</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="coa-foot">@DisplayRows().Count of @_all.Count accounts</div>
+    }
+</MudPaper>
+
+@code {
+    private List<Account>? _all;
+    private List<Account> _headers = new();
+    private readonly HashSet<int> _collapsed = new();
+    private int? _selectedId;
+    private string _search = "";
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        _all = await Coa.GetAllAsync();
+        _headers = await Coa.GetHeaderAccountsAsync();
+    }
+
+    // Builds the visible, ordered rows honouring collapsed headers. When searching, a flat match list.
+    private List<CoaRow> DisplayRows()
+    {
+        if (_all is null) return new();
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var q = _search.Trim().ToLowerInvariant();
+            return _all
+                .Where(a => a.Code.ToLowerInvariant().Contains(q) || a.Name.ToLowerInvariant().Contains(q))
+                .OrderBy(a => a.Code)
+                .Select(a => new CoaRow(a, 0, false))
+                .ToList();
+        }
+
+        var byParent = _all.ToLookup(a => a.ParentId);
+        var rows = new List<CoaRow>();
+        void Walk(int? parentId, int level)
+        {
+            foreach (var a in byParent[parentId].OrderBy(a => a.Code))
+            {
+                var hasKids = byParent[a.Id].Any();
+                rows.Add(new CoaRow(a, level, hasKids));
+                if (hasKids && !_collapsed.Contains(a.Id)) Walk(a.Id, level + 1);
+            }
+        }
+        Walk(null, 0);
+        return rows;
+    }
+
+    private void Select(int id) => _selectedId = id;
+    private void ToggleCollapse(int id) { if (!_collapsed.Add(id)) _collapsed.Remove(id); }
+    private void ExpandAll() => _collapsed.Clear();
+    private void CollapseAll()
+    {
+        if (_all is null) return;
+        var parentIds = _all.Where(a => a.ParentId is not null).Select(a => a.ParentId!.Value).ToHashSet();
+        _collapsed.Clear();
+        foreach (var id in parentIds) _collapsed.Add(id);
+    }
+
+    private async Task OpenNew()
+    {
+        var parameters = new DialogParameters<NewAccountDialog> { { x => x.Headers, _headers } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewAccountDialog>("New Account", parameters, options);
+        if ((await dialog.Result) is { Canceled: false }) await Reload();
+    }
+
+    private async Task OpenEdit()
+    {
+        if (_selectedId is not int id || _all is null) return;
+        var acc = _all.First(a => a.Id == id);
+        var parameters = new DialogParameters<NewAccountDialog> { { x => x.Headers, _headers }, { x => x.Existing, acc } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewAccountDialog>("Edit Account", parameters, options);
+        if ((await dialog.Result) is { Canceled: false }) await Reload();
+    }
+
+    private async Task DeleteSelected()
+    {
+        if (_selectedId is not int id || _all is null) return;
+        var acc = _all.First(a => a.Id == id);
+        var ok = await DialogService.ShowMessageBox("Delete account",
+            $"Delete {acc.Code} — {acc.Name}? This cannot be undone.", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await Coa.DeleteAsync(id);
+            Snackbar.Add($"Account {acc.Code} deleted.", Severity.Success);
+            _selectedId = null;
+            await Reload();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ExportCsv()
+    {
+        if (_all is null) return;
+        var sb = new StringBuilder();
+        sb.AppendLine("Account No,Account Name,Type,Category,Currency,Postable,Normal Balance,Status");
+        foreach (var a in _all.OrderBy(a => a.Code))
+            sb.AppendLine(string.Join(",",
+                Csv(a.Code), Csv(a.Name), Csv(TypeLabel(a.Type)), Csv(a.Category), Csv(a.Currency),
+                a.IsPostable ? "Yes" : "Header",
+                a.IsPostable ? (a.NormalBalance == NormalBalance.Debit ? "Dr" : "Cr") : "",
+                a.IsPostable ? (a.IsActive ? "Active" : "Inactive") : "Header"));
+        await JS.InvokeVoidAsync("aegisDownload", "chart-of-accounts.csv", sb.ToString(), "text/csv");
+        Snackbar.Add("Exported chart-of-accounts.csv", Severity.Success);
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private static string Csv(string? s)
+    {
+        s ??= "";
+        return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+    }
+
+    private static string TypeLabel(AccountType t) => t == AccountType.Income ? "Revenue" : t.ToString();
+
+    private record CoaRow(Account Acc, int Level, bool HasChildren);
+}
+
+<style>
+    .coa-toolbar { display:flex; align-items:stretch; gap:0; background:var(--mud-palette-surface);
+        border:1px solid var(--mud-palette-lines-default); border-radius:8px; padding:6px 4px; margin-bottom:12px; flex-wrap:wrap; }
+    .coa-toolbar .tb-grp { display:flex; flex-direction:column; align-items:center; padding:0 10px; }
+    .coa-toolbar .tb-btns { display:flex; gap:2px; }
+    .coa-toolbar .tb-lbl { font-size:10.5px; color:var(--mud-palette-text-secondary); text-transform:uppercase; letter-spacing:.05em; margin-top:3px; }
+    .coa-toolbar .tb-sep { width:1px; background:var(--mud-palette-lines-default); margin:2px 4px; }
+    .tb-b { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:52px; padding:5px 8px;
+        background:none; border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:11.5px;
+        color:var(--mud-palette-text-primary); font-family:inherit; line-height:1.2; }
+    .tb-b span { font-size:15px; }
+    .tb-b:hover:not(:disabled) { background:var(--mud-palette-action-default-hover); border-color:var(--mud-palette-lines-default); }
+    .tb-b:disabled { opacity:.4; cursor:not-allowed; }
+    .tb-b.prim { color:var(--mud-palette-primary); }
+    .tb-b.dng { color:var(--mud-palette-error); }
+
+    .coa-scroll { overflow-x:auto; }
+    table.coa { width:100%; border-collapse:collapse; font-size:13.5px; }
+    table.coa thead th { text-align:left; padding:9px 14px; background:var(--mud-palette-background-grey);
+        font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--mud-palette-text-secondary);
+        border-bottom:1px solid var(--mud-palette-lines-default); white-space:nowrap; }
+    table.coa td { padding:7px 14px; border-bottom:1px solid var(--mud-palette-lines-default); }
+    table.coa tbody tr { cursor:pointer; }
+    table.coa tbody tr:hover { background:var(--mud-palette-action-default-hover); }
+    table.coa tr.sel { background:var(--mud-palette-primary-hover) !important; box-shadow:inset 3px 0 0 var(--mud-palette-primary); }
+    table.coa tr.hdr { background:var(--mud-palette-background-grey); font-weight:700; }
+    table.coa td.exp { text-align:center; color:var(--mud-palette-text-secondary); }
+    table.coa .chev { display:inline-block; width:20px; user-select:none; cursor:pointer; }
+    table.coa td.code { font-family:monospace; }
+    table.coa .muted { color:var(--mud-palette-text-secondary); font-size:12.5px; }
+    table.coa td.ctr, table.coa th.ctr { text-align:center; }
+    table.coa .dr { color:var(--mud-palette-info); font-weight:700; font-size:11px; }
+    table.coa .cr { color:var(--mud-palette-error); font-weight:700; font-size:11px; }
+    .badge { font-size:10.5px; padding:2px 8px; border-radius:999px; font-weight:600; }
+    .badge.ok { background:var(--mud-palette-success-hover); color:var(--mud-palette-success); }
+    .badge.off { background:var(--mud-palette-action-disabled-background); color:var(--mud-palette-text-secondary); }
+    .badge.hdrbadge { background:var(--mud-palette-secondary-hover); color:var(--mud-palette-secondary); }
+    .coa-foot { padding:9px 14px; font-size:12px; color:var(--mud-palette-text-secondary);
+        border-top:1px solid var(--mud-palette-lines-default); }
+
+    @@media print {
+        .mud-appbar, .mud-drawer, .coa-toolbar { display:none !important; }
+        .mud-main-content { padding:0 !important; }
+    }
+</style>

@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+publish/
+app.zip
+.git/
+.vs/
+.vscode/
+*.db
+*.db-shm
+*.db-wal
+.azure-target.json

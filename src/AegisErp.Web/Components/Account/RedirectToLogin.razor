@@ -1,0 +1,9 @@
+@inject NavigationManager Nav
+
+@code {
+    // Full reload so the request goes through the cookie-auth middleware,
+    // which appends the ReturnUrl and renders the static login page.
+    protected override void OnInitialized() =>
+        Nav.NavigateTo($"Account/Login?ReturnUrl={Uri.EscapeDataString("/" + Nav.ToBaseRelativePath(Nav.Uri))}",
+            forceLoad: true);
+}

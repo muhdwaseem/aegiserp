@@ -1,0 +1,384 @@
+@page "/company-setup"
+@page "/company-setup/new"
+@attribute [Authorize(Roles = AppRoles.Admins)]
+@inject CompanyService Company
+@inject CompanySession Session
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_isNew ? "New Company" : "Company Setup") · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <div>
+        <MudText Typo="Typo.h5">@(_isNew ? "New Company" : "Company Setup")</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            @(_isNew
+                ? "Complete the setup below to create the company."
+                : $"Configure company · {_c?.CompanyCode}")
+        </MudText>
+    </div>
+    <MudSpacer />
+    @if (_isNew)
+    {
+        <MudButton Variant="Variant.Text" OnClick="@(() => Navigation.NavigateTo("companies"))">Cancel</MudButton>
+    }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@(_isNew ? Icons.Material.Filled.Add : Icons.Material.Filled.Save)"
+               OnClick="Save" Disabled="@(_c is null || _saving)">
+        @(_isNew ? "Create Company" : "Save")
+    </MudButton>
+</MudStack>
+
+@if (_isNew)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+        Work through the tabs — <b>General</b> and <b>Financial</b> are the minimum needed. The company
+        starts with empty books, so add its chart of accounts and fiscal periods before posting.
+    </MudAlert>
+}
+
+@if (_c is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-5" Border="true">
+
+            @* ── 1. General ── *@
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.LegalName" Label="Company Name (Legal)" Required="true" /></MudItem>
+                    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.TradeName" Label="Trade Name" /></MudItem>
+                    <MudItem xs="12" sm="4">
+                        @if (_isNew)
+                        {
+                            <MudTextField @bind-Value="_c.CompanyCode" Label="Company Code" Required="true"
+                                          HelperText="Short unique code, e.g. MERID" />
+                        }
+                        else
+                        {
+                            <MudTextField Value="_c.CompanyCode" Label="Company Code" ReadOnly="true" HelperText="Fixed once created" />
+                        }
+                    </MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.LicenseNumber" Label="License Number" Required="true" /></MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.LicenseType" Label="License Type">
+                            <MudSelectItem Value="@("LLC")">LLC</MudSelectItem>
+                            <MudSelectItem Value="@("FZE")">FZE</MudSelectItem>
+                            <MudSelectItem Value="@("Sole Establishment")">Sole Establishment</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">@DateField("Registration Date", () => _c.RegistrationDate, v => _c.RegistrationDate = v)</MudItem>
+                    <MudItem xs="12" sm="4">@DateField("License Expiry Date", () => _c.LicenseExpiryDate, v => _c.LicenseExpiryDate = v)</MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.Country" Label="Country" /></MudItem>
+                    <MudItem xs="12" sm="4">@EmirateSelect("Emirate", () => _c.Emirate, v => _c.Emirate = v)</MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.PlaceOfIncorporation" Label="Place of Incorporation" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.IsFreeZone" Label="Free Zone Entity" Color="Color.Primary" /></MudItem>
+                    @if (_c.IsFreeZone)
+                    {
+                        <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.IsDesignatedZone" Label="Designated Zone" Color="Color.Primary" /></MudItem>
+                    }
+                </MudGrid>
+            </MudTabPanel>
+
+            @* ── 2. Financial ── *@
+            <MudTabPanel Text="Financial">
+                <MudGrid>
+                    <MudItem xs="12" sm="4">@DateField("Financial Year Start", () => _c.FinancialYearStart, SetFyStart)</MudItem>
+                    <MudItem xs="12" sm="4">@DateField("Financial Year End (auto)", () => _c.FinancialYearEnd, v => _c.FinancialYearEnd = v)</MudItem>
+                    <MudItem xs="12" sm="4">@DateField("Books Start Date", () => _c.BooksStartDate, v => _c.BooksStartDate = v)</MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.AccountingMethod" Label="Accounting Method">
+                            <MudSelectItem Value="@("Accrual")">Accrual</MudSelectItem>
+                            <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.FiscalYear" Label="Fiscal Year">
+                            <MudSelectItem Value="@("Jan–Dec")">Jan–Dec</MudSelectItem>
+                            <MudSelectItem Value="@("Apr–Mar")">Apr–Mar</MudSelectItem>
+                            <MudSelectItem Value="@("Jul–Jun")">Jul–Jun</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">@CurrencySelect("Base Currency", () => _c.BaseCurrency, v => _c.BaseCurrency = v ?? "AED")</MudItem>
+                    <MudItem xs="12" sm="4">@CurrencySelect("Reporting Currency", () => _c.ReportingCurrency, v => _c.ReportingCurrency = v)</MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            @* ── 3. Localization ── *@
+            <MudTabPanel Text="Localization">
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.OrganizationLanguage" Label="Organization Language" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.CommunicationLanguage" Label="Communication Language" HelperText="Comma-separated" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.InvoiceLanguage" Label="Invoice Language" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.TimeZone" Label="Time Zone" /></MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.DateFormat" Label="Date Format">
+                            <MudSelectItem Value="@("dd/MM/yyyy")">dd/MM/yyyy</MudSelectItem>
+                            <MudSelectItem Value="@("MM/dd/yyyy")">MM/dd/yyyy</MudSelectItem>
+                            <MudSelectItem Value="@("yyyy-MM-dd")">yyyy-MM-dd</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            @* ── 4. Address ── *@
+            <MudTabPanel Text="Address">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Registered Address</MudText>
+                <MudGrid>
+                    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.AddressLine1" Label="Address Line 1" /></MudItem>
+                    <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.AddressLine2" Label="Address Line 2" /></MudItem>
+                    <MudItem xs="12" sm="3"><MudTextField @bind-Value="_c.City" Label="City" /></MudItem>
+                    <MudItem xs="12" sm="3">@EmirateSelect("Emirate", () => _c.AddressEmirate, v => _c.AddressEmirate = v)</MudItem>
+                    <MudItem xs="12" sm="2"><MudTextField @bind-Value="_c.POBox" Label="PO Box" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.AddressCountry" Label="Country" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.Phone" Label="Phone Number" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.Fax" Label="Fax Number" /></MudItem>
+                </MudGrid>
+                <MudDivider Class="my-4" />
+                <MudSwitch T="bool" @bind-Value="_c.BillingSameAsRegistered" Label="Billing address same as registered" Color="Color.Primary" />
+                @if (!_c.BillingSameAsRegistered)
+                {
+                    <MudGrid Class="mt-1">
+                        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.BillingAddressLine1" Label="Billing Address Line 1" /></MudItem>
+                        <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.BillingAddressLine2" Label="Billing Address Line 2" /></MudItem>
+                        <MudItem xs="12" sm="3"><MudTextField @bind-Value="_c.BillingCity" Label="City" /></MudItem>
+                        <MudItem xs="12" sm="3">@EmirateSelect("Emirate", () => _c.BillingEmirate, v => _c.BillingEmirate = v)</MudItem>
+                        <MudItem xs="12" sm="2"><MudTextField @bind-Value="_c.BillingPOBox" Label="PO Box" /></MudItem>
+                        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.BillingCountry" Label="Country" /></MudItem>
+                    </MudGrid>
+                }
+            </MudTabPanel>
+
+            @* ── 5. VAT ── *@
+            <MudTabPanel Text="VAT">
+                <MudGrid>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.VatRegistered" Label="VAT Registered" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.TrnLabel" Label="TRN Label">
+                            <MudSelectItem Value="@("TRN")">TRN</MudSelectItem>
+                            <MudSelectItem Value="@("GST")">GST</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.TrnNumber" Label="@($"{_c.TrnLabel} Number")" HelperText="15 digits" Validation="@(new Func<string, string?>(ValidateTrn))" /></MudItem>
+                    <MudItem xs="12" sm="4">@DateField("VAT Registration Date", () => _c.VatRegistrationDate, v => _c.VatRegistrationDate = v)</MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.VatScheme" Label="VAT Scheme">
+                            <MudSelectItem Value="@("Standard")">Standard</MudSelectItem>
+                            <MudSelectItem Value="@("Cash")">Cash</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">
+                        <MudSelect T="string" @bind-Value="_c.VatFilingFrequency" Label="VAT Filing Frequency">
+                            <MudSelectItem Value="@("Monthly")">Monthly</MudSelectItem>
+                            <MudSelectItem Value="@("Quarterly")">Quarterly</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                    <MudItem xs="12" sm="4">@DateField("VAT Deregistration Date", () => _c.VatDeregistrationDate, v => _c.VatDeregistrationDate = v)</MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            @* ── 6. Corporate Tax ── *@
+            <MudTabPanel Text="Corporate Tax">
+                <MudGrid>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.CtRegistered" Label="CT Registered" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.CtTrn" Label="Corporate Tax TRN" /></MudItem>
+                    <MudItem xs="12" sm="4">@DateField("First Tax Period Start", () => _c.FirstTaxPeriodStart, v => _c.FirstTaxPeriodStart = v)</MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.FreeZonePerson" Label="Free Zone Person" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.QfzpStatus" Label="QFZP Status" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.SmallBusinessRelief" Label="Small Business Relief" Color="Color.Primary" /></MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            @* ── 7. Tax Configuration ── *@
+            <MudTabPanel Text="Tax Config">
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_c.DefaultVatRate" Label="Default VAT Rate" Adornment="Adornment.End" AdornmentText="%" HideSpinButtons="true" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.InputVatAccountCode" Label="Input VAT GL Account" HelperText="Account code, e.g. 13010" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.OutputVatAccountCode" Label="Output VAT GL Account" HelperText="Account code, e.g. 22010" /></MudItem>
+                </MudGrid>
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">Tax rate table and tax groups map to the Chart of Accounts — managed there for now.</MudAlert>
+            </MudTabPanel>
+
+            @* ── 8. System Controls ── *@
+            <MudTabPanel Text="System">
+                <MudGrid>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.MultiCompanyEnabled" Label="Multi-Company" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.AuditTrailEnabled" Label="Audit Trail" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.ApprovalWorkflowEnabled" Label="Approval Workflow" Color="Color.Primary" /></MudItem>
+                </MudGrid>
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">Document number series and posting groups are configured per the Chart of Accounts and voucher prefixes.</MudAlert>
+            </MudTabPanel>
+
+            @* ── 9. Bank Accounts ── *@
+            <MudTabPanel Text="Bank Accounts">
+                <div class="d-flex justify-end mb-2">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddBank">Add Bank</MudButton>
+                </div>
+                <MudSimpleTable Dense="true" Bordered="true" Striped="true" Style="overflow-x:auto">
+                    <thead>
+                        <tr><th>Bank Name</th><th>Account Name</th><th>Account Number</th><th>IBAN</th><th>SWIFT</th><th>Cur.</th><th>Primary</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var bank in _c.BankAccounts)
+                        {
+                            <tr>
+                                <td><MudTextField @bind-Value="bank.BankName" Margin="Margin.Dense" /></td>
+                                <td><MudTextField @bind-Value="bank.AccountName" Margin="Margin.Dense" /></td>
+                                <td><MudTextField @bind-Value="bank.AccountNumber" Margin="Margin.Dense" /></td>
+                                <td><MudTextField @bind-Value="bank.Iban" Margin="Margin.Dense" /></td>
+                                <td><MudTextField @bind-Value="bank.Swift" Margin="Margin.Dense" Style="width:90px" /></td>
+                                <td><MudTextField @bind-Value="bank.Currency" Margin="Margin.Dense" Style="width:64px" /></td>
+                                <td><MudSwitch T="bool" @bind-Value="bank.IsPrimary" Color="Color.Primary" /></td>
+                                <td><MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => _c.BankAccounts.Remove(bank))" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudTabPanel>
+
+            @* ── 10. Documents (UAE) ── *@
+            <MudTabPanel Text="Documents">
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">Required UAE documents. File upload/storage is a planned enhancement.</MudText>
+                <MudList T="string" Dense="true">
+                    @foreach (var doc in RequiredDocs)
+                    {
+                        <MudListItem T="string" Icon="@Icons.Material.Filled.Description">
+                            <div class="d-flex align-center" style="width:100%">
+                                <span>@doc</span>
+                                <MudSpacer />
+                                <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="true" StartIcon="@Icons.Material.Filled.Upload">Upload</MudButton>
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    private CompanySetup? _c;
+
+    private static readonly string[] Emirates =
+        { "Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah" };
+    private static readonly string[] RequiredDocs =
+        { "Trade License Copy", "Memorandum of Association (MOA)", "VAT Certificate", "Emirates ID", "Passport Copy", "Other Supporting Documents" };
+
+    private bool _isNew;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isNew = Navigation.Uri.EndsWith("/new", StringComparison.OrdinalIgnoreCase);
+        await Session.EnsureInitialisedAsync();
+
+        if (_isNew && !Session.IsFirmAdmin)
+        {
+            Snackbar.Add("Only a firm administrator can create companies.", Severity.Error);
+            Navigation.NavigateTo("");
+            return;
+        }
+
+        _c = _isNew ? BlankCompany() : await Company.GetAsync();
+    }
+
+    /// <summary>Sensible starting point for a brand-new company; the user completes it in the tabs.</summary>
+    private static CompanySetup BlankCompany()
+    {
+        var yearStart = new DateOnly(DateTime.Today.Year, 1, 1);
+        return new CompanySetup
+        {
+            Country = "UAE",
+            AddressCountry = "UAE",
+            AccountingMethod = "Accrual",
+            FiscalYear = "Jan–Dec",
+            BaseCurrency = "AED",
+            ReportingCurrency = "AED",
+            OrganizationLanguage = "English",
+            InvoiceLanguage = "English",
+            TimeZone = "Asia/Dubai",
+            DateFormat = "dd/MM/yyyy",
+            TrnLabel = "TRN",
+            FinancialYearStart = yearStart,
+            FinancialYearEnd = yearStart.AddYears(1).AddDays(-1),
+            BooksStartDate = yearStart,
+            DefaultVatRate = 5m,
+            InputVatAccountCode = "13010",
+            OutputVatAccountCode = "22010",
+            BillingSameAsRegistered = true,
+            MultiCompanyEnabled = true,
+            AuditTrailEnabled = true,
+        };
+    }
+
+    private void SetFyStart(DateOnly? v)
+    {
+        _c!.FinancialYearStart = v;
+        if (v is DateOnly d) _c.FinancialYearEnd = d.AddYears(1).AddDays(-1); // auto
+    }
+
+    private void AddBank() => _c!.BankAccounts.Add(new CompanyBankAccount { Currency = "AED" });
+
+    private string? ValidateTrn(string trn) =>
+        string.IsNullOrWhiteSpace(trn) || (trn.Length == 15 && trn.All(char.IsDigit)) ? null : "TRN must be 15 digits";
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            if (_isNew)
+            {
+                var created = await Company.CreateAsync(_c!);
+                await Session.RefreshAsync();
+                Session.SwitchTo(created.Id);   // drop the user straight into the new company
+                Snackbar.Add($"Company {created.CompanyCode} created — you are now working in it.", Severity.Success);
+                Navigation.NavigateTo("companies");
+                return;
+            }
+
+            await Company.SaveAsync(_c!);
+            Snackbar.Add("Company setup saved.", Severity.Success);
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Could not save: " + ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    // ── field helpers ──
+    private RenderFragment DateField(string label, Func<DateOnly?> get, Action<DateOnly?> set) => __builder =>
+    {
+        <MudDatePicker Label="@label"
+                       Date="@(get()?.ToDateTime(TimeOnly.MinValue))"
+                       DateChanged="@(d => set(d.HasValue ? DateOnly.FromDateTime(d.Value) : null))" />
+    };
+
+    private RenderFragment EmirateSelect(string label, Func<string?> get, Action<string?> set) => __builder =>
+    {
+        <MudSelect T="string" Label="@label" Value="get()" ValueChanged="set" Clearable="true">
+            @foreach (var em in Emirates)
+            {
+                <MudSelectItem Value="em">@em</MudSelectItem>
+            }
+        </MudSelect>
+    };
+
+    private RenderFragment CurrencySelect(string label, Func<string?> get, Action<string?> set) => __builder =>
+    {
+        <MudSelect T="string" Label="@label" Value="get()" ValueChanged="set">
+            <MudSelectItem Value="@("AED")">AED — UAE Dirham</MudSelectItem>
+            <MudSelectItem Value="@("USD")">USD — US Dollar</MudSelectItem>
+            <MudSelectItem Value="@("EUR")">EUR — Euro</MudSelectItem>
+            <MudSelectItem Value="@("GBP")">GBP — British Pound</MudSelectItem>
+        </MudSelect>
+    };
+}

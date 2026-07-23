@@ -1,0 +1,276 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject LedgerService Ledger
+@inject CompanySession Session
+@inject NavigationManager Navigation
+
+@* One-way IsDarkMode: the app controls the theme (default light) so the OS preference can't flip it unexpectedly. The toolbar button toggles _isDark. *@
+<MudThemeProvider Theme="_theme" IsDarkMode="_isDark" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+        <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight:700;letter-spacing:-.3px">Aegis&nbsp;ERP</MudText>
+        <MudText Typo="Typo.caption" Class="ml-2 d-none d-sm-flex" Style="opacity:.7">Finance &amp; Operations</MudText>
+        <MudSpacer />
+        @* Company switcher — re-scopes every query to the chosen company. *@
+        <AuthorizeView>
+            <Authorized>
+                @if (Session.Companies.Count > 1)
+                {
+                    <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Class="d-none d-md-flex">
+                        <ActivatorContent>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Inherit"
+                                     Icon="@Icons.Material.Filled.Business" Class="company-chip">
+                                @(Session.Active?.Name ?? "Select company") ▾
+                            </MudChip>
+                        </ActivatorContent>
+                        <ChildContent>
+                            <div class="px-4 py-2">
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">Switch company</MudText>
+                            </div>
+                            <MudDivider />
+                            @foreach (var c in Session.Companies)
+                            {
+                                <MudMenuItem OnClick="@(() => SwitchCompany(c.CompanyId))">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                        @if (c.CompanyId == Session.Active?.CompanyId)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Primary" />
+                                        }
+                                        else
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" />
+                                        }
+                                        <div>
+                                            <MudText Typo="Typo.body2"><b>@c.Name</b></MudText>
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">@c.Code · @c.Role</MudText>
+                                        </div>
+                                    </MudStack>
+                                </MudMenuItem>
+                            }
+                        </ChildContent>
+                    </MudMenu>
+                }
+                else if (Session.Active is not null)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Inherit"
+                             Icon="@Icons.Material.Filled.Business" Class="d-none d-md-flex company-chip">@Session.Active.Name</MudChip>
+                }
+            </Authorized>
+        </AuthorizeView>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Inherit" Icon="@Icons.Material.Filled.CalendarMonth" Class="d-none d-md-flex">@_periodLabel</MudChip>
+        <MudIconButton Icon="@(_isDark ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                       Color="Color.Inherit" OnClick="@(() => _isDark = !_isDark)" />
+        <AuthorizeView>
+            <Authorized>
+                <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                    <ActivatorContent>
+                        <MudChip T="string" Icon="@Icons.Material.Filled.Person" Color="Color.Inherit" Variant="Variant.Text">
+                            @context.User.Identity?.Name
+                        </MudChip>
+                    </ActivatorContent>
+                    <ChildContent>
+                        <div class="px-4 py-2">
+                            <MudText Typo="Typo.body2"><b>@context.User.Identity?.Name</b></MudText>
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                @string.Join(", ", context.User.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).Select(c => c.Value))
+                            </MudText>
+                        </div>
+                        <MudDivider />
+                        <form action="Account/Logout" method="post" class="px-4 py-2">
+                            <AntiforgeryToken />
+                            <button type="submit"
+                                    style="background:none;border:none;cursor:pointer;color:var(--mud-palette-error);font-size:13px;font-weight:600;padding:0">
+                                Sign out
+                            </button>
+                        </form>
+                    </ChildContent>
+                </MudMenu>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" Elevation="2" ClipMode="DrawerClipMode.Always" Variant="DrawerVariant.Responsive">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.False" Class="pa-4">
+            @* Keyed by company: switching disposes and rebuilds the page so it reloads its data
+               under the new company scope, without a full page reload. *@
+            <div @key="@(Session.Active?.CompanyId ?? 0)">
+                @Body
+            </div>
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+
+@* App-bar text/chips: MudChip's text variant dims the inherited colour to a faint grey on the
+   navy bar. Force crisp white with a subtle translucent pill so they read clearly. *@
+<style>
+    .mud-appbar .mud-chip.mud-chip-text {
+        color: #ffffff !important;
+        background-color: rgba(255, 255, 255, 0.10);
+        font-weight: 500;
+    }
+    .mud-appbar .mud-chip .mud-chip-icon,
+    .mud-appbar .mud-chip .mud-icon-root,
+    .mud-appbar .mud-chip.mud-chip-text:hover {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+    .mud-appbar .mud-chip.mud-chip-text:hover {
+        background-color: rgba(255, 255, 255, 0.18);
+    }
+    /* Toolbar icon buttons (menu, dark-mode) crisp white */
+    .mud-appbar .mud-icon-button { color: rgba(255, 255, 255, 0.9); }
+
+    /* The active company must be unmistakable — it decides whose books you are editing. */
+    .mud-appbar .mud-chip.company-chip {
+        background-color: rgba(46, 134, 222, 0.30) !important;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        font-weight: 700 !important;
+        letter-spacing: .2px;
+    }
+    .mud-appbar .mud-chip.company-chip:hover {
+        background-color: rgba(46, 134, 222, 0.45) !important;
+    }
+</style>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _isDark = false;
+    private string _periodLabel = "…";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+
+        // Several companies and none chosen yet → make the user pick, so it is never ambiguous
+        // whose books are open. (Skip the redirect when already on the picker.)
+        if (Session.NeedsSelection && !Navigation.Uri.Contains("/select-company", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("select-company");
+            return;
+        }
+
+        // The company can also change from the picker page, so refresh the header when it does.
+        Session.Changed += OnCompanyChanged;
+        await LoadPeriodAsync();
+    }
+
+    private void OnCompanyChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadPeriodAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Session.Changed -= OnCompanyChanged;
+
+    private async Task LoadPeriodAsync()
+    {
+        // Periods are per company, so this must be read after the company is resolved.
+        var p = Session.Active is null
+            ? null
+            : await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today));
+        _periodLabel = p is null ? "No period" : $"Period {p.PeriodNo} · {p.Name}";
+    }
+
+    private async Task SwitchCompany(int companyId)
+    {
+        Session.SwitchTo(companyId);
+        await LoadPeriodAsync();
+        // No reload: a forceLoad would start a new circuit and drop the selection. Instead the
+        // @key on the body below changes with the company, so Blazor rebuilds the current page
+        // and its OnInitializedAsync re-queries under the new scope.
+        StateHasChanged();
+    }
+
+    // Palette mapped to the original prototype's design tokens, tuned for both modes.
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#2e86de",
+            PrimaryContrastText = "#ffffff",
+            Secondary = "#5b2da0",
+            Info = "#185fa5",
+            Success = "#0f6b35",
+            Warning = "#92600a",
+            Error = "#c0392b",
+            Dark = "#1f2d3d",
+
+            Background = "#f5f6f8",
+            Surface = "#ffffff",
+            BackgroundGray = "#eceef2",
+
+            AppbarBackground = "#1f2d3d",
+            AppbarText = "rgba(255,255,255,0.92)",
+            DrawerBackground = "#ffffff",
+            DrawerText = "#3a4256",
+            DrawerIcon = "#5a6478",
+
+            TextPrimary = "#1c2333",
+            TextSecondary = "#5a6478",
+            TextDisabled = "rgba(28,35,51,0.38)",
+            ActionDefault = "#6b7488",
+            ActionDisabled = "rgba(28,35,51,0.26)",
+            ActionDisabledBackground = "rgba(28,35,51,0.10)",
+
+            LinesDefault = "#e2e5ec",
+            LinesInputs = "#c8cdd8",
+            Divider = "#e6e9f0",
+            DividerLight = "rgba(0,0,0,0.05)",
+            TableLines = "#e6e9f0",
+            TableStriped = "rgba(28,35,51,0.02)",
+            TableHover = "rgba(46,134,222,0.07)",
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#5b9ef2",
+            PrimaryContrastText = "#0a1220",
+            Secondary = "#a78bfa",
+            Info = "#60a5fa",
+            Success = "#4ade80",
+            Warning = "#fbbf24",
+            Error = "#f87171",
+            Dark = "#0d1117",
+
+            Background = "#161a21",     // page
+            Surface = "#1e2530",        // cards / paper (elevated)
+            BackgroundGray = "#232b37",
+
+            AppbarBackground = "#111820",
+            AppbarText = "rgba(255,255,255,0.92)",
+            DrawerBackground = "#151a22",
+            DrawerText = "#a6afc0",
+            DrawerIcon = "#8790a4",
+
+            TextPrimary = "#e8eaf0",
+            TextSecondary = "#a6afc0",
+            TextDisabled = "rgba(232,234,240,0.34)",
+            ActionDefault = "#8891a3",
+            ActionDisabled = "rgba(232,234,240,0.26)",
+            ActionDisabledBackground = "rgba(232,234,240,0.10)",
+
+            LinesDefault = "#2c3242",
+            LinesInputs = "#3a4152",
+            Divider = "#2c3242",
+            DividerLight = "rgba(255,255,255,0.06)",
+            TableLines = "#2c3242",
+            TableStriped = "rgba(255,255,255,0.03)",
+            TableHover = "rgba(91,158,242,0.10)",
+        },
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "7px" }
+    };
+}

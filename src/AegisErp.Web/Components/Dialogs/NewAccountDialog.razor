@@ -1,0 +1,172 @@
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsEdit ? "Edit Account" : "New Main Account")</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">General Ledger · Chart of Accounts</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="5">
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.End">
+                    <MudTextField @bind-Value="_code" Label="Account No." Required="true" Immediate="true" Placeholder="e.g. 51030" Disabled="IsEdit" />
+                    @if (!IsEdit)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Bolt" OnClick="AutoNumber">Auto</MudButton>
+                    }
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12" sm="7">
+                <MudTextField @bind-Value="_name" Label="Account Name" Required="true" Placeholder="e.g. Utilities Expense" />
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudSelect T="AccountType" @bind-Value="_type" Label="Account Type" Required="true" Disabled="IsEdit">
+                    <MudSelectItem Value="AccountType.Asset">Asset</MudSelectItem>
+                    <MudSelectItem Value="AccountType.Liability">Liability</MudSelectItem>
+                    <MudSelectItem Value="AccountType.Equity">Equity</MudSelectItem>
+                    <MudSelectItem Value="AccountType.Income">Revenue</MudSelectItem>
+                    <MudSelectItem Value="AccountType.Expense">Expense</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_category" Label="Main Account Category" Clearable="true">
+                    @foreach (var c in Categories)
+                    {
+                        <MudSelectItem Value="c">@c</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_currency" Label="Currency">
+                    <MudSelectItem Value="@("AED")">AED — UAE Dirham</MudSelectItem>
+                    <MudSelectItem Value="@("USD")">USD — US Dollar</MudSelectItem>
+                    <MudSelectItem Value="@("EUR")">EUR — Euro</MudSelectItem>
+                    <MudSelectItem Value="@("GBP")">GBP — British Pound</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int?" @bind-Value="_parentId" Label="Parent Account / Group" Clearable="true">
+                    @foreach (var h in Headers.Where(h => h.Id != Existing?.Id))
+                    {
+                        <MudSelectItem T="int?" Value="h.Id">@h.Code — @h.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            @if (!IsEdit)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="bool" @bind-Value="_isPostable" Label="Posting Type">
+                        <MudSelectItem Value="true">Allow posting</MudSelectItem>
+                        <MudSelectItem Value="false">Do not allow posting (header)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudNumericField T="decimal" @bind-Value="_openingBalance" Label="Opening Balance" HideSpinButtons="true"
+                                     Disabled="@(!_isPostable)" Adornment="Adornment.End" AdornmentText="@_currency" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="4" Class="d-flex align-center">
+                    <MudSwitch T="bool" @bind-Value="_isActive" Label="Active" Color="Color.Primary" />
+                </MudItem>
+            }
+
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_description" Label="Description / Notes" Lines="2" Placeholder="Optional description for this account…" />
+            </MudItem>
+
+            @if (!IsEdit && _openingBalance != 0)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        An opening balance posts a balanced entry against equity account 31010.
+                    </MudAlert>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Check"
+                   OnClick="Save" Disabled="_saving">@(IsEdit ? "Save Changes" : "Save Account")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter] public List<Account> Headers { get; set; } = new();
+    [Parameter] public Account? Existing { get; set; }
+
+    private bool IsEdit => Existing is not null;
+
+    private string _code = "";
+    private string _name = "";
+    private AccountType _type = AccountType.Expense;
+    private string? _category;
+    private string _currency = "AED";
+    private int? _parentId;
+    private bool _isPostable = true;
+    private bool _isActive = true;
+    private decimal _openingBalance;
+    private string? _description;
+    private bool _saving;
+
+    private static readonly string[] Categories =
+    {
+        "Cash and cash equivalents", "Accounts receivable", "Inventory", "Fixed asset",
+        "Accounts payable", "Current liability", "Long-term liability",
+        "Income", "Direct expense", "Indirect expense", "Other income"
+    };
+
+    protected override void OnInitialized()
+    {
+        if (Existing is Account e)
+        {
+            _code = e.Code; _name = e.Name; _type = e.Type; _category = e.Category;
+            _currency = e.Currency; _parentId = e.ParentId; _isPostable = e.IsPostable;
+            _isActive = e.IsActive; _description = e.Description;
+        }
+    }
+
+    private async Task AutoNumber()
+    {
+        if (_parentId is null) { Snackbar.Add("Pick a parent group first, then Auto.", Severity.Info); return; }
+        var next = await Coa.SuggestCodeAsync(_parentId);
+        if (!string.IsNullOrEmpty(next)) _code = next;
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            var user = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            if (IsEdit)
+            {
+                var acc = await Coa.UpdateAsync(Existing!.Id, _name, _category, _currency, _parentId, _description, _isActive);
+                Snackbar.Add($"Account {acc.Code} updated.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(acc.Id));
+            }
+            else
+            {
+                var input = new NewAccountInput(_code, _name, _type, _isPostable, _category, _currency, _parentId, _description,
+                    _isPostable ? _openingBalance : 0);
+                var acc = await Coa.CreateAsync(input, user);
+                Snackbar.Add($"Account {acc.Code} created.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(acc.Id));
+            }
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

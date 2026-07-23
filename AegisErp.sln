@@ -1,0 +1,50 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F613CE69-90C1-4A35-94ED-9E0F1D20AB7C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AegisErp.Domain", "src\AegisErp.Domain\AegisErp.Domain.csproj", "{918A8A1C-EE2C-41AC-98A5-1FEEF410259D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AegisErp.Infrastructure", "src\AegisErp.Infrastructure\AegisErp.Infrastructure.csproj", "{A58F75E9-61E6-4D70-B234-57D65CD7014C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AegisErp.Web", "src\AegisErp.Web\AegisErp.Web.csproj", "{3F3F094E-D573-4CDF-B2EB-CAEAF0C89598}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{9D350BC5-E4BC-46C9-A651-D7FBDB3F7D5A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AegisErp.Tests", "tests\AegisErp.Tests\AegisErp.Tests.csproj", "{25B22E3B-EB1C-4F43-B3D3-CF72042305D3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{918A8A1C-EE2C-41AC-98A5-1FEEF410259D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{918A8A1C-EE2C-41AC-98A5-1FEEF410259D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{918A8A1C-EE2C-41AC-98A5-1FEEF410259D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{918A8A1C-EE2C-41AC-98A5-1FEEF410259D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A58F75E9-61E6-4D70-B234-57D65CD7014C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A58F75E9-61E6-4D70-B234-57D65CD7014C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A58F75E9-61E6-4D70-B234-57D65CD7014C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A58F75E9-61E6-4D70-B234-57D65CD7014C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3F3F094E-D573-4CDF-B2EB-CAEAF0C89598}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F3F094E-D573-4CDF-B2EB-CAEAF0C89598}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F3F094E-D573-4CDF-B2EB-CAEAF0C89598}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F3F094E-D573-4CDF-B2EB-CAEAF0C89598}.Release|Any CPU.Build.0 = Release|Any CPU
+		{25B22E3B-EB1C-4F43-B3D3-CF72042305D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{25B22E3B-EB1C-4F43-B3D3-CF72042305D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{25B22E3B-EB1C-4F43-B3D3-CF72042305D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{25B22E3B-EB1C-4F43-B3D3-CF72042305D3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{918A8A1C-EE2C-41AC-98A5-1FEEF410259D} = {F613CE69-90C1-4A35-94ED-9E0F1D20AB7C}
+		{A58F75E9-61E6-4D70-B234-57D65CD7014C} = {F613CE69-90C1-4A35-94ED-9E0F1D20AB7C}
+		{3F3F094E-D573-4CDF-B2EB-CAEAF0C89598} = {F613CE69-90C1-4A35-94ED-9E0F1D20AB7C}
+		{25B22E3B-EB1C-4F43-B3D3-CF72042305D3} = {9D350BC5-E4BC-46C9-A651-D7FBDB3F7D5A}
+	EndGlobalSection
+EndGlobal

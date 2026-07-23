@@ -1,0 +1,28 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+artifacts/
+publish/
+app.zip
+.azure-target.json
+
+# Local databases (dev SQLite)
+*.db
+*.db-shm
+*.db-wal
+
+# User/IDE
+.vs/
+.vscode/
+*.user
+*.suo
+.idea/
+
+# Secrets / local config
+appsettings.*.local.json
+*.env
+
+# OS
+Thumbs.db
+.DS_Store

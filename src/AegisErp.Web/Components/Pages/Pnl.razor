@@ -1,0 +1,98 @@
+@page "/pnl"
+@attribute [Authorize]
+@inject LedgerService Ledger
+
+<PageTitle>P&amp;L Statement · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Profit &amp; Loss Statement</MudText>
+    <MudSpacer />
+    @if (_periods is not null)
+    {
+        <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="Period" Dense="true" Style="max-width:220px">
+            @foreach (var p in _periods)
+            {
+                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</MudStack>
+
+@if (_pnl is not null)
+{
+    <MudPaper Elevation="1">
+        <MudTable Items="_pnl.Income" Dense="true" Bordered="false" Elevation="0">
+            <HeaderContent>
+                <MudTh>Income</MudTh>
+                <MudTh Style="text-align:right">This Period</MudTh>
+                <MudTh Style="text-align:right">YTD</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</MudTd>
+                <MudTd Style="text-align:right" Class="mud-success-text">@context.Period.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right" Class="mud-success-text">@context.Ytd.ToString("N2")</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                <MudTh><b>Total Income</b></MudTh>
+                <MudTh Style="text-align:right"><b>@_pnl.IncomePeriod.ToString("N2")</b></MudTh>
+                <MudTh Style="text-align:right"><b>@_pnl.IncomeYtd.ToString("N2")</b></MudTh>
+            </FooterContent>
+        </MudTable>
+
+        <MudDivider />
+
+        <MudTable Items="_pnl.Expenses" Dense="true" Bordered="false" Elevation="0" Class="mt-2">
+            <HeaderContent>
+                <MudTh>Expenses</MudTh>
+                <MudTh Style="text-align:right">This Period</MudTh>
+                <MudTh Style="text-align:right">YTD</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</MudTd>
+                <MudTd Style="text-align:right" Class="mud-error-text">@context.Period.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right" Class="mud-error-text">@context.Ytd.ToString("N2")</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                <MudTh><b>Total Expenses</b></MudTh>
+                <MudTh Style="text-align:right"><b>@_pnl.ExpensePeriod.ToString("N2")</b></MudTh>
+                <MudTh Style="text-align:right"><b>@_pnl.ExpenseYtd.ToString("N2")</b></MudTh>
+            </FooterContent>
+        </MudTable>
+
+        <div class="pnl-net">
+            <div>
+                <div class="lbl">Net Profit (Period)</div>
+                <div class="val @(_pnl.NetPeriod >= 0 ? "pos" : "neg")">AED @_pnl.NetPeriod.ToString("N2")</div>
+            </div>
+            <div>
+                <div class="lbl">Net Profit (YTD)</div>
+                <div class="val @(_pnl.NetYtd >= 0 ? "pos" : "neg")">AED @_pnl.NetYtd.ToString("N2")</div>
+            </div>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private List<FiscalPeriod>? _periods;
+    private int _periodId;
+    private ProfitAndLoss? _pnl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _periods = await Ledger.GetPeriodsAsync();
+        _periodId = (await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today)))?.Id
+                    ?? _periods.LastOrDefault()?.Id ?? 0;
+        await Load();
+    }
+
+    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
+    private async Task Load() { if (_periodId > 0) _pnl = await Ledger.GetProfitAndLossAsync(_periodId); }
+}
+
+<style>
+    .pnl-net { display:flex; gap:32px; flex-wrap:wrap; padding:16px; background:var(--mud-palette-background-grey); border-top:1px solid var(--mud-palette-lines-default); }
+    .pnl-net .lbl { font-size:12px; color:var(--mud-palette-text-secondary); text-transform:uppercase; letter-spacing:.04em; }
+    .pnl-net .val { font-size:20px; font-weight:700; }
+    .pnl-net .val.pos { color:var(--mud-palette-success); }
+    .pnl-net .val.neg { color:var(--mud-palette-error); }
+</style>

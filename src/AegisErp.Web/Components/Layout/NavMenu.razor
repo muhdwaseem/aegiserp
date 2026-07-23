@@ -1,0 +1,70 @@
+<MudNavMenu Class="pa-2">
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+
+    <MudNavGroup Title="General Ledger" Icon="@Icons.Material.Filled.AccountBalance" Expanded="true">
+        <MudNavLink Href="chart-of-accounts" Icon="@Icons.Material.Filled.MenuBook">Chart of Accounts</MudNavLink>
+        <MudNavLink Href="journal-voucher" Icon="@Icons.Material.Filled.PostAdd">Journal Voucher</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Reports" Icon="@Icons.Material.Filled.Assessment" Expanded="true">
+        <MudNavLink Href="trial-balance" Icon="@Icons.Material.Filled.Balance">Trial Balance</MudNavLink>
+        <MudNavLink Href="pnl" Icon="@Icons.Material.Filled.TrendingUp">P&amp;L Statement</MudNavLink>
+        <MudNavLink Href="balance-sheet" Icon="@Icons.Material.Filled.AccountBalanceWallet">Balance Sheet</MudNavLink>
+        <MudNavLink Href="cash-flow" Icon="@Icons.Material.Filled.WaterfallChart">Cash Flow</MudNavLink>
+        <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Insights">MIS &amp; Segment Reports</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Accounts Receivable" Icon="@Icons.Material.Filled.CallReceived" Expanded="true">
+        <MudNavLink Href="customers" Icon="@Icons.Material.Filled.Groups">Customers</MudNavLink>
+        <MudNavLink Href="sales-invoice" Icon="@Icons.Material.Filled.ReceiptLong">Sales Invoice</MudNavLink>
+        <MudNavLink Href="estimate" Icon="@Icons.Material.Filled.RequestQuote">Estimate / Quotation</MudNavLink>
+        <MudNavLink Href="delivery-note" Icon="@Icons.Material.Filled.LocalShipping">Delivery Note</MudNavLink>
+        <MudNavLink Href="receipt-voucher" Icon="@Icons.Material.Filled.Payments">Receipt Voucher</MudNavLink>
+        <MudNavLink Href="credit-note" Icon="@Icons.Material.Filled.Undo">Credit Note</MudNavLink>
+        <MudNavLink Href="ar-aging" Icon="@Icons.Material.Filled.EventNote">AR Aging</MudNavLink>
+    </MudNavGroup>
+
+    <MudNavGroup Title="Accounts Payable" Icon="@Icons.Material.Filled.CallMade" Expanded="true">
+        <MudNavLink Href="vendors" Icon="@Icons.Material.Filled.Factory">Vendors</MudNavLink>
+        <MudNavLink Href="purchase-invoice" Icon="@Icons.Material.Filled.Description">Purchase Invoice</MudNavLink>
+        <MudNavLink Href="payment-voucher" Icon="@Icons.Material.Filled.CreditCard">Payment Voucher</MudNavLink>
+        <MudNavLink Href="debit-note" Icon="@Icons.Material.Filled.Redo">Debit Note</MudNavLink>
+        <MudNavLink Href="ap-aging" Icon="@Icons.Material.Filled.EventNote">AP Aging</MudNavLink>
+    </MudNavGroup>
+
+    <AuthorizeView Roles="@AppRoles.Admins">
+        <MudNavGroup Title="Settings" Icon="@Icons.Material.Filled.Settings">
+            <MudNavLink Href="company-setup" Icon="@Icons.Material.Filled.Business">Company Setup</MudNavLink>
+            <AuthorizeView Roles="@AppRoles.FirmAdmin" Context="firm">
+                <MudNavLink Href="companies" Icon="@Icons.Material.Filled.Domain">Companies &amp; Access</MudNavLink>
+            </AuthorizeView>
+            <MudNavLink Href="users" Icon="@Icons.Material.Filled.AdminPanelSettings">Users &amp; Roles</MudNavLink>
+        </MudNavGroup>
+    </AuthorizeView>
+</MudNavMenu>
+
+@* Force high-contrast nav text in both themes (text-primary is dark in light, light in dark).
+   Active item gets a bold accent bar instead of low-contrast coloured text. *@
+<style>
+    .mud-navmenu .mud-nav-link,
+    .mud-navmenu .mud-nav-group > .mud-nav-link {
+        color: var(--mud-palette-text-primary);
+        font-weight: 500;
+        opacity: 1;
+    }
+    .mud-navmenu .mud-nav-link .mud-nav-link-icon {
+        color: var(--mud-palette-text-secondary);
+    }
+    .mud-navmenu .mud-nav-link.active {
+        color: var(--mud-palette-text-primary) !important;
+        background-color: rgba(46, 134, 222, 0.12);
+        font-weight: 700;
+        box-shadow: inset 3px 0 0 var(--mud-palette-primary);
+    }
+    .mud-navmenu .mud-nav-link.active .mud-nav-link-icon {
+        color: var(--mud-palette-primary);
+    }
+    .mud-navmenu .mud-nav-link:hover {
+        background-color: var(--mud-palette-action-default-hover);
+    }
+</style>

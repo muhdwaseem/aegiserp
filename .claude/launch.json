@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "aegis-web",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\Users\\shahin\\AppData\\Local\\Temp\\claude\\D--FreeLance-C-ERP\\b820af10-9a9a-41cb-af38-33bdd66e129f\\scratchpad\\dn.ps1",
+        "run",
+        "--project",
+        "src/AegisErp.Web",
+        "--urls",
+        "http://localhost:5199",
+        "--no-launch-profile",
+        "--environment",
+        "Development"
+      ],
+      "port": 5199
+    }
+  ]
+}

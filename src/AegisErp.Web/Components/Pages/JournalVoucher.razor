@@ -1,0 +1,221 @@
+@page "/journal-voucher"
+@attribute [Authorize(Roles = AppRoles.Posters)]
+@inject JournalService Journal
+@inject ChartOfAccountsService Coa
+@inject LedgerService Ledger
+@inject ISnackbar Snackbar
+
+<PageTitle>Journal Voucher · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">Journal Voucher</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="VoucherType" @bind-Value="_type" Label="Type" Dense="true">
+                @* Invoices come from their own modules so document numbering stays consistent. *@
+                @foreach (var t in new[] { VoucherType.Journal, VoucherType.Receipt, VoucherType.Payment, VoucherType.Opening })
+                {
+                    <MudSelectItem Value="t">@t</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Date" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="int" @bind-Value="_periodId" Label="Period" Dense="true">
+                @if (_periods is not null)
+                {
+                    @foreach (var p in _periods)
+                    {
+                        <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_reference" Label="Reference" Placeholder="Optional" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Description of the entry" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable Items="_lines" Dense="true" Bordered="true" Elevation="1" Class="mb-2">
+    <HeaderContent>
+        <MudTh Style="width:40px">#</MudTh>
+        <MudTh>Account</MudTh>
+        <MudTh>Cost Center</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh Style="text-align:right;width:140px">Debit</MudTh>
+        <MudTh Style="text-align:right;width:140px">Credit</MudTh>
+        <MudTh Style="width:48px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
+        <MudTd>
+            <MudSelect T="int" @bind-Value="context.AccountId" Dense="true" Margin="Margin.Dense" FullWidth="true">
+                <MudSelectItem Value="0">— select —</MudSelectItem>
+                @if (_accounts is not null)
+                {
+                    @foreach (var a in _accounts)
+                    {
+                        <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudTd>
+        <MudTd>
+            <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" FullWidth="true" Clearable="true">
+                @if (_costCenters is not null)
+                {
+                    @foreach (var c in _costCenters)
+                    {
+                        <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudTd>
+        <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" /></MudTd>
+        <MudTd Style="text-align:right">
+            <MudNumericField T="decimal" Value="context.Debit" ValueChanged="v => OnDebit(context, v)" Min="0" HideSpinButtons="true" Margin="Margin.Dense" />
+        </MudTd>
+        <MudTd Style="text-align:right">
+            <MudNumericField T="decimal" Value="context.Credit" ValueChanged="v => OnCredit(context, v)" Min="0" HideSpinButtons="true" Margin="Margin.Dense" />
+        </MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 2" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
+    <MudSpacer />
+    <MudText Class="mr-4">Total Dr: <b>@TotalDebit.ToString("N2")</b></MudText>
+    <MudText Class="mr-4">Total Cr: <b>@TotalCredit.ToString("N2")</b></MudText>
+    @if (IsBalanced)
+    {
+        <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Balanced</MudChip>
+    }
+    else
+    {
+        <MudChip T="string" Color="Color.Error" Icon="@Icons.Material.Filled.Warning">Diff @Difference.ToString("N2")</MudChip>
+    }
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PostAdd"
+               Disabled="@(!IsBalanced || _posting)" OnClick="Post">Post Voucher</MudButton>
+</MudStack>
+
+@if (_recent is not null && _recent.Count > 0)
+{
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent vouchers</MudText>
+    <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>Voucher</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Narration</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+            <MudTh>Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Style="font-family:monospace">@context.VoucherNo</MudTd>
+            <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd>@context.Type</MudTd>
+            <MudTd>@context.Narration</MudTd>
+            <MudTd Style="text-align:right">@context.TotalDebit.ToString("N2")</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">@context.Status</MudChip></MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Account>? _accounts;
+    private List<CostCenter>? _costCenters;
+    private List<FiscalPeriod>? _periods;
+    private List<AegisErp.Domain.Entities.JournalVoucher>? _recent;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    private string _userName = "System Admin";
+
+    private VoucherType _type = VoucherType.Journal;
+    private DateTime? _date;
+    private int _periodId;
+    private string? _narration;
+    private string? _reference;
+    private bool _posting;
+
+    private readonly List<LineVm> _lines = new() { new(), new() };
+
+    private decimal TotalDebit => _lines.Sum(l => l.Debit);
+    private decimal TotalCredit => _lines.Sum(l => l.Credit);
+    private decimal Difference => TotalDebit - TotalCredit;
+    private bool IsBalanced => Difference == 0m && TotalDebit > 0m && _lines.Count(l => l.AccountId > 0) >= 2;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = await Coa.GetAllAsync(postableOnly: true);
+        _costCenters = await Coa.GetCostCentersAsync();
+        _periods = await Ledger.GetPeriodsAsync();
+        _date = DateTime.Today;
+        SyncPeriodToDate();
+        _recent = await Journal.GetRecentAsync(8);
+        if (AuthState is not null)
+            _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
+    }
+
+    // Keep the period aligned with the chosen date (posting validates date ∈ period).
+    private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
+    private void SyncPeriodToDate()
+    {
+        if (_periods is null || _date is null) return;
+        var d = DateOnly.FromDateTime(_date.Value);
+        var match = _periods.FirstOrDefault(p => d >= p.StartDate && d <= p.EndDate);
+        if (match is not null) _periodId = match.Id;
+        else if (_periodId == 0) _periodId = _periods.LastOrDefault()?.Id ?? 0;
+    }
+
+    private void AddLine() => _lines.Add(new());
+    private void RemoveLine(LineVm l) { if (_lines.Count > 2) _lines.Remove(l); }
+
+    // Debit and credit are mutually exclusive per line.
+    private void OnDebit(LineVm l, decimal v) { l.Debit = v; if (v > 0) l.Credit = 0; }
+    private void OnCredit(LineVm l, decimal v) { l.Credit = v; if (v > 0) l.Debit = 0; }
+
+    private async Task Post()
+    {
+        _posting = true;
+        try
+        {
+            var inputs = _lines
+                .Where(l => l.AccountId > 0 && (l.Debit > 0 || l.Credit > 0))
+                .Select(l => new VoucherLineInput(l.AccountId, l.CostCenterId, l.Description, l.Debit, l.Credit));
+
+            var v = await Journal.CreateAndPostAsync(
+                _type, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
+                _narration, _reference, _userName, inputs, DateTime.UtcNow);
+
+            Snackbar.Add($"Posted {v.VoucherNo}.", Severity.Success);
+            _lines.Clear(); _lines.Add(new()); _lines.Add(new());
+            _narration = _reference = null;
+            _recent = await Journal.GetRecentAsync(8);
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _posting = false; }
+    }
+
+    private class LineVm
+    {
+        public int AccountId { get; set; }
+        public int? CostCenterId { get; set; }
+        public string? Description { get; set; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+}

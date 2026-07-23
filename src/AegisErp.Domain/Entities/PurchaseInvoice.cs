@@ -1,0 +1,106 @@
+namespace AegisErp.Domain.Entities;
+
+/// <summary>
+/// An AP purchase (vendor) invoice. Posting it generates a balanced GL voucher
+/// (Dr expense/asset net per line / Dr VAT input / Cr Accounts Payable gross).
+/// </summary>
+public class PurchaseInvoice : ICompanyScoped
+{
+    public int Id { get; set; }
+
+    /// <summary>Owning company.</summary>
+    public int CompanyId { get; set; }
+
+    /// <summary>Document number, e.g. "PINV-2026-0007". Shared with the generated GL voucher. Unique within the company.</summary>
+    public string InvoiceNo { get; set; } = string.Empty;
+
+    /// <summary>The vendor's own invoice/bill reference (optional).</summary>
+    public string? VendorRef { get; set; }
+
+    public int VendorId { get; set; }
+    public Vendor Vendor { get; set; } = null!;
+
+    public DateOnly Date { get; set; }
+    public DateOnly DueDate { get; set; }
+
+    public int FiscalPeriodId { get; set; }
+    public FiscalPeriod FiscalPeriod { get; set; } = null!;
+
+    public VoucherStatus Status { get; set; } = VoucherStatus.Draft;
+
+    public string? Narration { get; set; }
+
+    /// <summary>The GL voucher generated when this invoice was posted.</summary>
+    public int? JournalVoucherId { get; set; }
+    public JournalVoucher? JournalVoucher { get; set; }
+
+    public string CreatedBy { get; set; } = "System Admin";
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime? PostedAtUtc { get; set; }
+
+    public List<PurchaseInvoiceLine> Lines { get; set; } = new();
+
+    public decimal TotalNet => Lines.Sum(l => l.Net);
+    public decimal TotalVat => Lines.Sum(l => l.Vat);
+    public decimal TotalGross => Lines.Sum(l => l.Gross);
+
+    /// <summary>Validates the invoice and transitions it to Posted. The caller generates the GL voucher.</summary>
+    public void Post(DateTime nowUtc)
+    {
+        if (Status == VoucherStatus.Posted)
+            throw new PostingException("Purchase invoice is already posted.");
+        if (VendorId == 0)
+            throw new PostingException("Purchase invoice has no vendor.");
+        if (Lines.Count == 0)
+            throw new PostingException("Purchase invoice needs at least one line.");
+        if (DueDate < Date)
+            throw new PostingException("Due date cannot be before the invoice date.");
+
+        foreach (var line in Lines)
+        {
+            if (line.ExpenseAccountId == 0)
+                throw new PostingException($"Line {line.LineNo} has no expense/asset account.");
+            if (line.Quantity <= 0)
+                throw new PostingException($"Line {line.LineNo} quantity must be positive.");
+            if (line.UnitPrice < 0)
+                throw new PostingException($"Line {line.LineNo} unit price cannot be negative.");
+            if (line.VatRate is < 0 or > 1)
+                throw new PostingException($"Line {line.LineNo} VAT rate is invalid.");
+        }
+
+        if (TotalGross <= 0)
+            throw new PostingException("Purchase invoice total must be positive.");
+
+        Status = VoucherStatus.Posted;
+        PostedAtUtc = nowUtc;
+    }
+}
+
+/// <summary>A purchase invoice line: quantity × unit price with a VAT rate, posted to an expense/asset account.</summary>
+public class PurchaseInvoiceLine
+{
+    public int Id { get; set; }
+
+    public int PurchaseInvoiceId { get; set; }
+    public PurchaseInvoice PurchaseInvoice { get; set; } = null!;
+
+    public int LineNo { get; set; }
+    public string Description { get; set; } = string.Empty;
+
+    /// <summary>The expense or asset account this line is charged to.</summary>
+    public int ExpenseAccountId { get; set; }
+    public Account ExpenseAccount { get; set; } = null!;
+
+    public int? CostCenterId { get; set; }
+    public CostCenter? CostCenter { get; set; }
+
+    public decimal Quantity { get; set; } = 1;
+    public decimal UnitPrice { get; set; }
+
+    /// <summary>Fractional VAT rate, e.g. 0.05 for UAE 5%.</summary>
+    public decimal VatRate { get; set; } = 0.05m;
+
+    public decimal Net => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
+    public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
+    public decimal Gross => Net + Vat;
+}

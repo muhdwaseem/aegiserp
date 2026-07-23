@@ -1,0 +1,95 @@
+@page "/select-company"
+@attribute [Authorize]
+@layout Layout.MainLayout
+@inject CompanySession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Select Company · Aegis ERP</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-6">
+    <MudText Typo="Typo.h5" Class="mb-1">Select a company</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+        You have access to more than one company. Choose whose books you want to work in —
+        everything you view or post from here on belongs to that company.
+    </MudText>
+
+    @if (Session.HasNoCompanies)
+    {
+        <MudAlert Severity="Severity.Warning">
+            Your account has not been granted access to any company yet. Ask a firm administrator
+            to assign you to one under <b>Settings → Companies &amp; Access</b>.
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var c in Session.Companies)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-4 company-card" Elevation="2" @onclick="@(() => Enter(c.CompanyId))">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                            <MudAvatar Color="Color.Primary" Size="Size.Large">@Initials(c.Name)</MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.subtitle1"><b>@c.Name</b></MudText>
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">
+                                    <span style="font-family:monospace">@c.Code</span>
+                                </MudText>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@RoleColour(c.Role)" Class="ml-n2 mt-1">
+                                    @c.Role
+                                </MudChip>
+                            </div>
+                            <MudSpacer />
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Color="Color.Primary" />
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudText Typo="Typo.caption" Class="mud-text-secondary mt-4 d-block">
+            You can switch company at any time from the name shown in the top bar.
+        </MudText>
+    }
+</MudContainer>
+
+<style>
+    .company-card { cursor:pointer; transition:box-shadow .15s ease, transform .15s ease; }
+    .company-card:hover { box-shadow:var(--mud-elevation-6); transform:translateY(-2px); }
+</style>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+
+        // Nothing to choose — go straight in.
+        if (Session.Active is not null)
+            Navigation.NavigateTo("");
+    }
+
+    private void Enter(int companyId)
+    {
+        Session.SwitchTo(companyId);
+        // No forceLoad: a full reload would start a new circuit and lose the selection,
+        // bouncing straight back to this picker.
+        Navigation.NavigateTo("");
+    }
+
+    private static Color RoleColour(string role) => role switch
+    {
+        AppRoles.Admin => Color.Primary,
+        AppRoles.Accountant => Color.Info,
+        _ => Color.Default
+    };
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => (parts[0][..1] + parts[1][..1]).ToUpperInvariant()
+        };
+    }
+}

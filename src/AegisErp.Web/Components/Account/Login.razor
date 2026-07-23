@@ -1,0 +1,90 @@
+@page "/Account/Login"
+@layout AccountLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@inject SignInManager<AppUser> SignInManager
+@inject NavigationManager Nav
+@inject ILogger<Login> Logger
+
+<PageTitle>Sign in · Aegis ERP</PageTitle>
+
+<div style="background:#fff;border:1px solid #e2e5ec;border-radius:8px;padding:28px;box-shadow:0 4px 12px rgba(0,0,0,.06)">
+    <h1 style="font-size:17px;font-weight:700;color:#1c2333;margin-bottom:4px">Sign in</h1>
+    <p style="font-size:12.5px;color:#8a93a6;margin-bottom:18px">Use your Aegis FZE account</p>
+
+    @if (_error is not null)
+    {
+        <div style="background:#fce8e6;color:#c0392b;border-radius:6px;padding:10px 12px;font-size:12.5px;margin-bottom:14px">@_error</div>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="LoginUserAsync" FormName="login">
+        <DataAnnotationsValidator />
+        <div style="margin-bottom:12px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#4a5568;margin-bottom:4px">Email</label>
+            <InputText @bind-Value="Input.Email" autocomplete="username"
+                       style="width:100%;padding:9px 12px;border:1px solid #c8cdd8;border-radius:6px;font-size:13px" />
+            <ValidationMessage For="() => Input.Email" style="color:#c0392b;font-size:11.5px" />
+        </div>
+        <div style="margin-bottom:16px">
+            <label style="display:block;font-size:12px;font-weight:600;color:#4a5568;margin-bottom:4px">Password</label>
+            <InputText type="password" @bind-Value="Input.Password" autocomplete="current-password"
+                       style="width:100%;padding:9px 12px;border:1px solid #c8cdd8;border-radius:6px;font-size:13px" />
+            <ValidationMessage For="() => Input.Password" style="color:#c0392b;font-size:11.5px" />
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:#4a5568;margin-bottom:18px">
+            <InputCheckbox @bind-Value="Input.RememberMe" /> Remember me
+        </label>
+        <button type="submit"
+                style="width:100%;padding:10px;background:#2e86de;color:#fff;border:none;border-radius:6px;font-size:13.5px;font-weight:600;cursor:pointer">
+            Sign in
+        </button>
+    </EditForm>
+
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid #eceef2;font-size:11.5px;color:#8a93a6;line-height:1.7">
+        <b>Demo accounts</b><br />
+        admin@aegisfze.com / Admin@123! (Admin)<br />
+        finance@aegisfze.com / Finance@123! (Accountant)<br />
+        viewer@aegisfze.com / Viewer@123! (Viewer)
+    </div>
+</div>
+
+@code {
+    private string? _error;
+
+    [SupplyParameterFromForm] private InputModel Input { get; set; } = new();
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    public async Task LoginUserAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(
+            Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: false);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("User {Email} signed in", Input.Email);
+            Nav.NavigateTo(SafeReturnUrl()); // static SSR: framework converts this to a redirect
+        }
+        else
+        {
+            _error = "Invalid email or password.";
+        }
+    }
+
+    // Only allow local return URLs to prevent open redirects.
+    private string SafeReturnUrl() =>
+        !string.IsNullOrEmpty(ReturnUrl) && !ReturnUrl.Contains("://") && !ReturnUrl.StartsWith("//")
+            ? ReturnUrl
+            : "/";
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Password is required")]
+        public string Password { get; set; } = "";
+
+        public bool RememberMe { get; set; }
+    }
+}

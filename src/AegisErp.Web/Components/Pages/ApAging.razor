@@ -1,0 +1,69 @@
+@page "/ap-aging"
+@attribute [Authorize]
+@inject VendorService VendorSvc
+
+<PageTitle>AP Aging · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">AP Aging</MudText>
+    <MudSpacer />
+    <MudDatePicker Date="_asOf" DateChanged="OnAsOfChanged" Label="As of" Style="max-width:180px" />
+</MudStack>
+
+<MudTable Items="_rows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null">
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Vendor</MudTh>
+        <MudTh Style="text-align:right">Current</MudTh>
+        <MudTh Style="text-align:right">1–30</MudTh>
+        <MudTh Style="text-align:right">31–60</MudTh>
+        <MudTh Style="text-align:right">61–90</MudTh>
+        <MudTh Style="text-align:right">90+</MudTh>
+        <MudTh Style="text-align:right">Unallocated</MudTh>
+        <MudTh Style="text-align:right">Total Due</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace">@context.Code</MudTd>
+        <MudTd>@context.Name</MudTd>
+        <MudTd Style="text-align:right">@Cell(context.Current)</MudTd>
+        <MudTd Style="text-align:right">@Cell(context.Days1To30)</MudTd>
+        <MudTd Style="text-align:right" Class="@(context.Days31To60 > 0 ? "mud-warning-text" : "")">@Cell(context.Days31To60)</MudTd>
+        <MudTd Style="text-align:right" Class="@(context.Days61To90 > 0 ? "mud-error-text" : "")">@Cell(context.Days61To90)</MudTd>
+        <MudTd Style="text-align:right" Class="@(context.Over90 > 0 ? "mud-error-text" : "")">@Cell(context.Over90)</MudTd>
+        <MudTd Style="text-align:right">@Cell(context.UnallocatedDebits)</MudTd>
+        <MudTd Style="text-align:right;font-weight:700">@context.Total.ToString("N2")</MudTd>
+    </RowTemplate>
+    <FooterContent>
+        @if (_rows is not null && _rows.Count > 0)
+        {
+            <MudTh colspan="2"><b>Total (AED)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.Current).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.Days1To30).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.Days31To60).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.Days61To90).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.Over90).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.UnallocatedDebits).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_rows.Sum(r => r.Total).ToString("N2")</b></MudTh>
+        }
+    </FooterContent>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No open AP balances as of the selected date.</MudText>
+    </NoRecordsContent>
+</MudTable>
+<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
+    Buckets are days past the invoice due date. "Unallocated" are on-account payments / debit notes not tied to a purchase invoice.
+</MudText>
+
+@code {
+    private List<ApAgingRow>? _rows;
+    private DateTime? _asOf = DateTime.Today;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task OnAsOfChanged(DateTime? d) { _asOf = d; await Load(); }
+
+    private async Task Load() =>
+        _rows = await VendorSvc.GetAgingAsync(DateOnly.FromDateTime(_asOf ?? DateTime.Today));
+
+    private static string Cell(decimal v) => v > 0 ? v.ToString("N2") : "—";
+}

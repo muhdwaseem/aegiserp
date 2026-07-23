@@ -1,0 +1,100 @@
+@page "/balance-sheet"
+@attribute [Authorize]
+@inject LedgerService Ledger
+
+<PageTitle>Balance Sheet · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Balance Sheet</MudText>
+    <MudSpacer />
+    @if (_periods is not null)
+    {
+        <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="As at period" Dense="true" Style="max-width:220px">
+            @foreach (var p in _periods)
+            {
+                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</MudStack>
+
+@if (_bs is not null)
+{
+    @if (_bs.IsBalanced)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">Balanced — total assets equal total liabilities plus equity.</MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">Out of balance by @Math.Abs(_bs.TotalAssets - _bs.TotalLiabilitiesAndEquity).ToString("N2").</MudAlert>
+    }
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            @Section("Assets", _bs.Assets, _bs.TotalAssets, null)
+        </MudItem>
+        <MudItem xs="12" md="6">
+            @Section("Liabilities", _bs.Liabilities, _bs.TotalLiabilities, null)
+            @Section("Equity", _bs.Equity, _bs.TotalEquity, _bs.CurrentYearEarnings)
+            <MudPaper Class="pa-3 mt-3" Elevation="1" Style="background:var(--mud-palette-background-grey)">
+                <div style="display:flex;justify-content:space-between;font-weight:700">
+                    <span>Total Liabilities &amp; Equity</span>
+                    <span style="font-family:monospace">@_bs.TotalLiabilitiesAndEquity.ToString("N2")</span>
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private List<FiscalPeriod>? _periods;
+    private int _periodId;
+    private AegisErp.Infrastructure.Services.BalanceSheet? _bs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _periods = await Ledger.GetPeriodsAsync();
+        _periodId = (await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today)))?.Id
+                    ?? _periods.LastOrDefault()?.Id ?? 0;
+        await Load();
+    }
+
+    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
+    private async Task Load() { if (_periodId > 0) _bs = await Ledger.GetBalanceSheetAsync(_periodId); }
+
+    // extraLabel/extra: an optional roll-up line (used for current-year earnings under Equity).
+    private RenderFragment Section(string title, IReadOnlyList<BsLine> lines, decimal total, decimal? currentEarnings) => __builder =>
+    {
+        <MudPaper Class="pa-0 mt-0 mb-3" Elevation="1">
+            <div class="bs-title">@title</div>
+            <table class="bs-tbl">
+                @foreach (var l in lines)
+                {
+                    <tr>
+                        <td><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@l.Code</span> @l.Name</td>
+                        <td class="amt">@l.Amount.ToString("N2")</td>
+                    </tr>
+                }
+                @if (currentEarnings is decimal ce)
+                {
+                    <tr>
+                        <td>Current-year earnings</td>
+                        <td class="amt">@ce.ToString("N2")</td>
+                    </tr>
+                }
+                <tr class="tot">
+                    <td>Total @title</td>
+                    <td class="amt">@total.ToString("N2")</td>
+                </tr>
+            </table>
+        </MudPaper>
+    };
+}
+
+<style>
+    .bs-title { padding:9px 14px; font-weight:700; background:var(--mud-palette-background-grey); border-bottom:1px solid var(--mud-palette-lines-default); }
+    .bs-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
+    .bs-tbl td { padding:7px 14px; border-bottom:1px solid var(--mud-palette-lines-default); }
+    .bs-tbl td.amt { text-align:right; font-family:monospace; }
+    .bs-tbl tr.tot td { font-weight:700; border-top:1px solid var(--mud-palette-lines-default); border-bottom:0; }
+</style>

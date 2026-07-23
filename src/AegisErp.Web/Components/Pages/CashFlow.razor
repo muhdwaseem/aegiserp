@@ -1,0 +1,131 @@
+@page "/cash-flow"
+@attribute [Authorize]
+@inject ReportsService Reports
+@inject LedgerService Ledger
+
+<PageTitle>Cash Flow · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Cash Flow Statement</MudText>
+    <MudSpacer />
+    @if (_periods is not null)
+    {
+        <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="Period" Dense="true" Style="max-width:220px">
+            @foreach (var p in _periods)
+            {
+                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</MudStack>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Indirect method — net profit adjusted for working-capital movements. Every account is classified into
+    one section, so the sections always reconcile to the actual movement on the cash &amp; bank accounts.
+</MudText>
+
+@if (_cf is not null)
+{
+    @if (!_cf.IsReconciled)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">
+            Cash flow does not reconcile: sections total @_cf.NetChange.ToString("N2") but cash moved @_cf.ActualCashMovement.ToString("N2").
+        </MudAlert>
+    }
+
+    <MudPaper Elevation="1" Class="mb-4">
+        @RenderSection("A. " + _cf.Operating.Name, _cf.Operating)
+        <MudDivider />
+        @RenderSection("B. " + _cf.Investing.Name, _cf.Investing)
+        <MudDivider />
+        @RenderSection("C. " + _cf.Financing.Name, _cf.Financing)
+
+        <div class="cf-tot">
+            <div>
+                <div class="lbl">Opening Cash</div>
+                <div class="val">AED @_cf.OpeningCash.ToString("N2")</div>
+            </div>
+            <div>
+                <div class="lbl">Net Change</div>
+                <div class="val @(_cf.NetChange >= 0 ? "pos" : "neg")">
+                    @(_cf.NetChange >= 0 ? "+" : "−") AED @Math.Abs(_cf.NetChange).ToString("N2")
+                </div>
+            </div>
+            <div>
+                <div class="lbl">Closing Cash</div>
+                <div class="val accent">AED @_cf.ClosingCash.ToString("N2")</div>
+            </div>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private List<FiscalPeriod>? _periods;
+    private int _periodId;
+    private CashFlowStatement? _cf;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _periods = await Ledger.GetPeriodsAsync();
+        _periodId = (await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today)))?.Id
+                    ?? _periods.LastOrDefault()?.Id ?? 0;
+        await Load();
+    }
+
+    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
+    private async Task Load() { if (_periodId > 0) _cf = await Reports.GetCashFlowAsync(_periodId); }
+
+    private RenderFragment RenderSection(string title, CashFlowSection section) =>@<div class="cf-sec">
+        <div class="cf-sec-hdr">
+            <span class="name">@title</span>
+            <span class="amt @(section.Total >= 0 ? "pos" : "neg")">
+                @(section.Total >= 0 ? "+" : "−") AED @Math.Abs(section.Total).ToString("N2")
+            </span>
+        </div>
+        @if (section.Lines.Count == 0)
+        {
+            <div class="cf-empty">No @section.Name.ToLowerInvariant() this period.</div>
+        }
+        else
+        {
+            <table class="cf-tbl">
+                @foreach (var line in section.Lines)
+                {
+                    <tr>
+                        <td>@line.Label</td>
+                        <td class="@(line.Amount >= 0 ? "pos" : "neg")">
+                            @(line.Amount < 0
+                                ? $"({Math.Abs(line.Amount).ToString("N2")})"
+                                : line.Amount.ToString("N2"))
+                        </td>
+                    </tr>
+                }
+                <tr class="sub">
+                    <td>Net cash from @section.Name.ToLowerInvariant()</td>
+                    <td class="@(section.Total >= 0 ? "pos" : "neg")">
+                        @(section.Total < 0
+                            ? $"({Math.Abs(section.Total).ToString("N2")})"
+                            : section.Total.ToString("N2"))
+                    </td>
+                </tr>
+            </table>
+        }
+    </div>;
+}
+
+<style>
+    .cf-sec-hdr { display:flex; align-items:center; justify-content:space-between; padding:12px 16px;
+                  background:var(--mud-palette-background-grey); font-weight:700; font-size:14px; }
+    .cf-tbl { width:100%; border-collapse:collapse; }
+    .cf-tbl td { padding:7px 16px; font-size:13.5px; border-bottom:1px solid var(--mud-palette-lines-default); }
+    .cf-tbl td:last-child { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .cf-tbl tr.sub td { font-weight:700; background:var(--mud-palette-background-grey); }
+    .cf-empty { padding:12px 16px; font-size:13px; font-style:italic; color:var(--mud-palette-text-secondary); }
+    .pos { color:var(--mud-palette-success); }
+    .neg { color:var(--mud-palette-error); }
+    .cf-tot { display:flex; gap:32px; flex-wrap:wrap; padding:16px;
+              background:var(--mud-palette-background-grey); border-top:2px solid var(--mud-palette-lines-default); }
+    .cf-tot .lbl { font-size:12px; color:var(--mud-palette-text-secondary); text-transform:uppercase; letter-spacing:.04em; }
+    .cf-tot .val { font-size:20px; font-weight:700; }
+    .cf-tot .val.accent { color:var(--mud-palette-primary); }
+</style>

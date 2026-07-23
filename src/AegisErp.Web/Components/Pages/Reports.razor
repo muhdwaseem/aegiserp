@@ -1,0 +1,165 @@
+@page "/reports"
+@attribute [Authorize]
+@inject ReportsService ReportSvc
+
+<PageTitle>MIS &amp; Segment Reports · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">MIS &amp; Segment Reports</MudText>
+
+@* ── Quick links to the standard statements ── *@
+<MudGrid Class="mb-4">
+    @foreach (var card in _quickLinks)
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-4 report-card" Elevation="1" @onclick="@(() => Nav(card.Href))">
+                <MudIcon Icon="@card.Icon" Color="Color.Primary" />
+                <MudText Typo="Typo.subtitle2" Class="mt-2">@card.Title</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@card.Subtitle</MudText>
+            </MudPaper>
+        </MudItem>
+    }
+</MudGrid>
+
+@* ── Report builder ── *@
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-3">Report Builder — Segment / Cost Centre</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="ReportKind" Value="_kind" ValueChanged="OnKindChanged" Label="Report type" Dense="true">
+                <MudSelectItem Value="ReportKind.SegmentPnl">Segment P&amp;L (by cost centre)</MudSelectItem>
+                <MudSelectItem Value="ReportKind.CustomerRevenue">Customer-wise Revenue</MudSelectItem>
+                <MudSelectItem Value="ReportKind.VendorSpend">Vendor-wise Spend</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_from" Label="Period from" /></MudItem>
+        <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_to" Label="Period to" /></MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow"
+                       FullWidth="true" Disabled="_loading" OnClick="Run">Run</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_kind == ReportKind.SegmentPnl && _segments is not null)
+{
+    <MudTable Items="_segments" Dense="true" Hover="true" Striped="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Segment</MudTh>
+            <MudTh Style="text-align:right">Revenue</MudTh>
+            <MudTh Style="text-align:right">Expense</MudTh>
+            <MudTh Style="text-align:right">Net</MudTh>
+            <MudTh Style="text-align:right">Margin</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Style="font-family:monospace">@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd Style="text-align:right" Class="mud-success-text">@context.Revenue.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right" Class="mud-error-text">@context.Expense.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right;font-weight:600" Class="@(context.Net >= 0 ? "mud-success-text" : "mud-error-text")">
+                @context.Net.ToString("N2")
+            </MudTd>
+            <MudTd Style="text-align:right">@(context.Revenue == 0 ? "—" : context.Margin.ToString("P1"))</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTh colspan="2"><b>Total (AED)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_segments.Sum(r => r.Revenue).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_segments.Sum(r => r.Expense).ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_segments.Sum(r => r.Net).ToString("N2")</b></MudTh>
+            <MudTh />
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No revenue or expense posted in this range.</MudText></NoRecordsContent>
+    </MudTable>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
+        Segments come from the cost centre tagged on each posted journal line. Lines with no cost centre appear as "Unassigned".
+    </MudText>
+}
+
+@if (_kind != ReportKind.SegmentPnl && _parties is not null)
+{
+    <MudTable Items="_parties" Dense="true" Hover="true" Striped="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>@(_kind == ReportKind.CustomerRevenue ? "Customer" : "Vendor")</MudTh>
+            <MudTh Style="text-align:right">Documents</MudTh>
+            <MudTh Style="text-align:right">@(_kind == ReportKind.CustomerRevenue ? "Revenue (excl. VAT)" : "Spend (excl. VAT)")</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Style="font-family:monospace">@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd Style="text-align:right">@context.DocumentCount</MudTd>
+            <MudTd Style="text-align:right;font-weight:600">@context.Amount.ToString("N2")</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTh colspan="2"><b>Total (AED)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_parties.Sum(r => r.DocumentCount)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_parties.Sum(r => r.Amount).ToString("N2")</b></MudTh>
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No documents posted in this range.</MudText></NoRecordsContent>
+    </MudTable>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
+        Amounts exclude VAT and are net of @(_kind == ReportKind.CustomerRevenue ? "credit notes" : "debit notes").
+    </MudText>
+}
+
+@code {
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+
+    public enum ReportKind { SegmentPnl, CustomerRevenue, VendorSpend }
+
+    private record QuickLink(string Title, string Subtitle, string Icon, string Href);
+
+    private readonly QuickLink[] _quickLinks =
+    {
+        new("Trial Balance", "Debit/credit by account", Icons.Material.Filled.Balance, "trial-balance"),
+        new("P&L Statement", "Income vs expense", Icons.Material.Filled.TrendingUp, "pnl"),
+        new("Balance Sheet", "Assets, liabilities & equity", Icons.Material.Filled.AccountBalanceWallet, "balance-sheet"),
+        new("Cash Flow Statement", "Indirect method by period", Icons.Material.Filled.WaterfallChart, "cash-flow"),
+        new("AR Aging", "Receivables by age bucket", Icons.Material.Filled.EventNote, "ar-aging"),
+        new("AP Aging", "Payables by age bucket", Icons.Material.Filled.EventNote, "ap-aging"),
+    };
+
+    private ReportKind _kind = ReportKind.SegmentPnl;
+    private DateTime? _from = new DateTime(DateTime.Today.Year, 1, 1);
+    private DateTime? _to = DateTime.Today;
+    private bool _loading;
+
+    private List<SegmentPnlRow>? _segments;
+    private List<PartyAmountRow>? _parties;
+
+    protected override async Task OnInitializedAsync() => await Run();
+
+    private void Nav(string href) => Navigation.NavigateTo(href);
+
+    private async Task OnKindChanged(ReportKind kind) { _kind = kind; await Run(); }
+
+    private async Task Run()
+    {
+        _loading = true;
+        try
+        {
+            // Widen the default range back a year so the seeded 2026 fiscal year is visible.
+            var from = DateOnly.FromDateTime(_from ?? DateTime.Today.AddYears(-1));
+            var to = DateOnly.FromDateTime(_to ?? DateTime.Today);
+
+            if (_kind == ReportKind.SegmentPnl)
+            {
+                _segments = await ReportSvc.GetSegmentPnlAsync(from, to);
+                _parties = null;
+            }
+            else
+            {
+                _parties = _kind == ReportKind.CustomerRevenue
+                    ? await ReportSvc.GetCustomerRevenueAsync(from, to)
+                    : await ReportSvc.GetVendorSpendAsync(from, to);
+                _segments = null;
+            }
+        }
+        finally { _loading = false; }
+    }
+}
+
+<style>
+    .report-card { cursor:pointer; transition:box-shadow .15s ease, transform .15s ease; height:100%; }
+    .report-card:hover { box-shadow:var(--mud-elevation-4); transform:translateY(-2px); }
+</style>

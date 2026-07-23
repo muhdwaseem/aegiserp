@@ -1,0 +1,227 @@
+using AegisErp.Domain;
+using AegisErp.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace AegisErp.Infrastructure.Services;
+
+/// <summary>
+/// Read-side queries over posted vouchers: account ledger, trial balance and dashboard KPIs.
+/// Decimal aggregates are done in memory after materialising, which keeps the same code
+/// working on SQLite (no native decimal) and PostgreSQL alike.
+/// </summary>
+public class LedgerService
+{
+    private readonly IDbContextFactory<AegisDbContext> _dbf;
+    public LedgerService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
+
+    public async Task<List<FiscalPeriod>> GetPeriodsAsync()
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.FiscalPeriods.AsNoTracking()
+            .OrderBy(p => p.StartDate).ToListAsync();
+    }
+
+    /// <summary>The period containing the given date, falling back to the latest period.</summary>
+    public async Task<FiscalPeriod?> GetDefaultPeriodAsync(DateOnly date)
+    {
+        var periods = await GetPeriodsAsync();
+        return periods.FirstOrDefault(p => date >= p.StartDate && date <= p.EndDate)
+               ?? periods.LastOrDefault();
+    }
+
+    private sealed record PostedLine(DateOnly Date, string VoucherNo, string Type, string? Narration,
+        string? CostCenter, int AccountId, decimal Debit, decimal Credit);
+
+    private static async Task<List<PostedLine>> PostedLinesAsync(AegisDbContext db) =>
+        await db.JournalLines.AsNoTracking()
+            .Where(l => l.JournalVoucher.Status == VoucherStatus.Posted)
+            .Select(l => new PostedLine(
+                l.JournalVoucher.Date, l.JournalVoucher.VoucherNo, l.JournalVoucher.Type.ToString(),
+                l.JournalVoucher.Narration, l.CostCenter != null ? l.CostCenter.Code : null,
+                l.AccountId, l.Debit, l.Credit))
+            .ToListAsync();
+
+    public async Task<AccountLedger> GetAccountLedgerAsync(int accountId, int periodId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var account = await db.Accounts.AsNoTracking().FirstAsync(a => a.Id == accountId);
+        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        var sign = account.NormalBalance == NormalBalance.Debit ? 1m : -1m;
+
+        var lines = await PostedLinesAsync(db);
+        var forAccount = lines.Where(l => l.AccountId == accountId).ToList();
+
+        // Opening = net position (in the account's normal direction) before the period starts.
+        var opening = sign * forAccount.Where(l => l.Date < period.StartDate).Sum(l => l.Debit - l.Credit);
+
+        var inPeriod = forAccount
+            .Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate)
+            .OrderBy(l => l.Date).ThenBy(l => l.VoucherNo)
+            .ToList();
+
+        var rows = new List<LedgerRow>();
+        var running = opening;
+        decimal totDr = 0, totCr = 0;
+        foreach (var l in inPeriod)
+        {
+            running += sign * (l.Debit - l.Credit);
+            totDr += l.Debit;
+            totCr += l.Credit;
+            rows.Add(new LedgerRow(l.Date, l.VoucherNo, l.Type, l.Narration ?? "", l.CostCenter ?? "",
+                l.Debit, l.Credit, running));
+        }
+
+        return new AccountLedger(account.Code, account.Name, period.Name, account.NormalBalance,
+            opening, totDr, totCr, running, rows);
+    }
+
+    public async Task<TrialBalance> GetTrialBalanceAsync(int periodId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+        var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= period.EndDate).ToList();
+
+        var rows = lines
+            .GroupBy(l => l.AccountId)
+            .Select(g =>
+            {
+                var acc = accounts[g.Key];
+                var net = g.Sum(l => l.Debit - l.Credit); // signed, debit-positive
+                return new TrialBalanceRow(acc.Code, acc.Name,
+                    net > 0 ? net : 0m, net < 0 ? -net : 0m);
+            })
+            .Where(r => r.Debit != 0 || r.Credit != 0)
+            .OrderBy(r => r.Code)
+            .ToList();
+
+        return new TrialBalance(period.Name, rows, rows.Sum(r => r.Debit), rows.Sum(r => r.Credit));
+    }
+
+    public async Task<DashboardKpis> GetDashboardAsync(int periodId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+        var lines = await PostedLinesAsync(db);
+
+        decimal SignedByType(AccountType t, bool inPeriodOnly)
+        {
+            var q = lines.Where(l => accounts[l.AccountId].Type == t);
+            if (inPeriodOnly) q = q.Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate);
+            return q.Sum(l => l.Debit - l.Credit);
+        }
+
+        decimal BalanceOfCodePrefix(string prefix)
+        {
+            var ids = accounts.Values.Where(a => a.Code.StartsWith(prefix)).Select(a => a.Id).ToHashSet();
+            return lines.Where(l => ids.Contains(l.AccountId) && l.Date <= period.EndDate)
+                        .Sum(l => l.Debit - l.Credit);
+        }
+
+        var income = -SignedByType(AccountType.Income, true);   // income is credit-normal
+        var expense = SignedByType(AccountType.Expense, true);
+        var cash = BalanceOfCodePrefix("110");                  // cash & bank
+        var receivables = BalanceOfCodePrefix("12010");
+        var payables = -BalanceOfCodePrefix("21010");           // payable is credit-normal
+        var drafts = await db.JournalVouchers.CountAsync(v => v.Status == VoucherStatus.Draft);
+
+        return new DashboardKpis(period.Name, income, expense, income - expense, cash, receivables, payables, drafts);
+    }
+
+    /// <summary>Revenue and expense per fiscal period, for the dashboard chart.</summary>
+    public async Task<PeriodSeries> GetRevenueExpenseSeriesAsync()
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var periods = await db.FiscalPeriods.AsNoTracking().OrderBy(p => p.StartDate).ToListAsync();
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+        var lines = await PostedLinesAsync(db);
+
+        var labels = new List<string>();
+        var revenue = new List<double>();
+        var expense = new List<double>();
+        foreach (var p in periods)
+        {
+            var inP = lines.Where(l => l.Date >= p.StartDate && l.Date <= p.EndDate).ToList();
+            var rev = -inP.Where(l => accounts[l.AccountId].Type == AccountType.Income).Sum(l => l.Debit - l.Credit);
+            var exp = inP.Where(l => accounts[l.AccountId].Type == AccountType.Expense).Sum(l => l.Debit - l.Credit);
+            labels.Add(p.Name.Replace(" 2026", ""));
+            revenue.Add((double)rev);
+            expense.Add((double)exp);
+        }
+        return new PeriodSeries(labels.ToArray(), revenue.ToArray(), expense.ToArray());
+    }
+
+    /// <summary>Balances of the cash &amp; bank accounts (codes starting 110) as at the latest period end.</summary>
+    public async Task<List<CashBalance>> GetCashBalancesAsync()
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var latest = await db.FiscalPeriods.AsNoTracking().OrderByDescending(p => p.StartDate).FirstOrDefaultAsync();
+        var end = latest?.EndDate ?? DateOnly.MaxValue;
+        var accounts = await db.Accounts.AsNoTracking()
+            .Where(a => a.IsPostable && a.Code.StartsWith("110")).ToListAsync();
+        var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= end).ToList();
+
+        return accounts
+            .Select(a => new CashBalance(a.Code, a.Name, lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)))
+            .OrderByDescending(c => c.Balance)
+            .ToList();
+    }
+
+    /// <summary>Profit &amp; loss for a period, with cumulative year-to-date (to period end) alongside.</summary>
+    public async Task<ProfitAndLoss> GetProfitAndLossAsync(int periodId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+        var lines = await PostedLinesAsync(db);
+
+        // sign: income is credit-normal (flip), expense is debit-normal.
+        List<PnlLine> Build(AccountType type, decimal sign) =>
+            accounts.Values.Where(a => a.Type == type)
+                .Select(a =>
+                {
+                    var forAcct = lines.Where(l => l.AccountId == a.Id);
+                    var period_ = sign * forAcct.Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate).Sum(l => l.Debit - l.Credit);
+                    var ytd = sign * forAcct.Where(l => l.Date <= period.EndDate).Sum(l => l.Debit - l.Credit);
+                    return new PnlLine(a.Code, a.Name, period_, ytd);
+                })
+                .Where(l => l.Period != 0 || l.Ytd != 0)
+                .OrderBy(l => l.Code)
+                .ToList();
+
+        var income = Build(AccountType.Income, -1m);
+        var expenses = Build(AccountType.Expense, 1m);
+
+        return new ProfitAndLoss(period.Name, income, expenses,
+            income.Sum(l => l.Period), income.Sum(l => l.Ytd),
+            expenses.Sum(l => l.Period), expenses.Sum(l => l.Ytd));
+    }
+
+    /// <summary>Balance sheet as at the period end. Current-year earnings roll into equity so it balances.</summary>
+    public async Task<BalanceSheet> GetBalanceSheetAsync(int periodId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+        var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= period.EndDate).ToList();
+
+        List<BsLine> Build(AccountType type, decimal sign) =>
+            accounts.Values.Where(a => a.Type == type)
+                .Select(a => new BsLine(a.Code, a.Name,
+                    sign * lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)))
+                .Where(l => l.Amount != 0)
+                .OrderBy(l => l.Code)
+                .ToList();
+
+        var assets = Build(AccountType.Asset, 1m);           // debit-normal
+        var liabilities = Build(AccountType.Liability, -1m); // credit-normal
+        var equity = Build(AccountType.Equity, -1m);         // credit-normal
+
+        // Current-year earnings = income − expenses to date; keeps assets = liabilities + equity.
+        var income = -lines.Where(l => accounts[l.AccountId].Type == AccountType.Income).Sum(l => l.Debit - l.Credit);
+        var expense = lines.Where(l => accounts[l.AccountId].Type == AccountType.Expense).Sum(l => l.Debit - l.Credit);
+
+        return new BalanceSheet(period.Name, assets, liabilities, equity, income - expense);
+    }
+}

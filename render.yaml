@@ -1,0 +1,20 @@
+# Render Blueprint — deploys Aegis ERP (Blazor Server) from the Dockerfile.
+# On render.com: New → Blueprint → connect this repo → Apply.
+services:
+  - type: web
+    name: aegiserp
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore          # closest free region to the UAE; also: oregon, frankfurt
+    healthCheckPath: /Account/Login
+    autoDeploy: true           # redeploy on every push to the default branch
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Database__Provider
+        value: Sqlite
+      # Free tier has no persistent disk, so the SQLite file lives in the container and
+      # resets (re-seeding the demo data) whenever the service restarts or redeploys.
+      - key: ConnectionStrings__Sqlite
+        value: Data Source=/data/aegis_erp.db

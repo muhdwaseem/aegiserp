@@ -1,0 +1,17 @@
+# Fly.io config for Aegis ERP (Blazor Server).
+# 'fly launch' will set a unique app name; change primary_region if you like.
+app = "aegis-erp-demo"
+primary_region = "bom"          # Mumbai (closest to UAE); or "fra" (Frankfurt)
+
+[build]
+
+[http_service]
+  internal_port = 8080          # matches the Dockerfile's EXPOSE / ASPNETCORE_URLS
+  force_https = true
+  auto_stop_machines = "stop"   # sleeps when idle to save cost
+  auto_start_machines = true    # wakes on the next request
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"                # enough for .NET 8 Blazor Server + seeding

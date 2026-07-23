@@ -1,0 +1,180 @@
+@page "/receipt-voucher"
+@attribute [Authorize(Roles = AppRoles.Posters)]
+@inject ReceiptService ReceiptSvc
+@inject CustomerService CustomerSvc
+@inject ChartOfAccountsService Coa
+@inject LedgerService Ledger
+@inject ISnackbar Snackbar
+
+<PageTitle>Receipt Voucher · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">Receipt Voucher</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" Value="_customerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true">
+                <MudSelectItem Value="0">— select —</MudSelectItem>
+                @if (_customers is not null)
+                {
+                    @foreach (var c in _customers)
+                    {
+                        <MudSelectItem Value="c.Id">@c.Code — @c.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" Value="_invoiceId" ValueChanged="OnInvoiceChanged" Label="Allocate to invoice (optional)" Dense="true">
+                <MudSelectItem Value="0">On account</MudSelectItem>
+                @foreach (var inv in _openInvoices)
+                {
+                    <MudSelectItem Value="inv.Id">@inv.InvoiceNo — outstanding @inv.Outstanding.ToString("N2")</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="int" @bind-Value="_bankAccountId" Label="Deposit to" Dense="true">
+                <MudSelectItem Value="0">— select bank —</MudSelectItem>
+                @if (_bankAccounts is not null)
+                {
+                    @foreach (var a in _bankAccounts)
+                    {
+                        <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Date" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="int" @bind-Value="_periodId" Label="Period" Dense="true">
+                @if (_periods is not null)
+                {
+                    @foreach (var p in _periods)
+                    {
+                        <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudNumericField T="decimal" @bind-Value="_amount" Label="Amount (AED)" Min="0" HideSpinButtons="true" />
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PostAdd" FullWidth="true"
+                       Disabled="@(!CanPost || _posting)" OnClick="Post">Post Receipt</MudButton>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Defaults to 'Customer receipt — customer'" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_recent is not null && _recent.Count > 0)
+{
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent receipts</MudText>
+    <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>Receipt</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh>Customer</MudTh>
+            <MudTh>Allocated To</MudTh>
+            <MudTh>Bank</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+            <MudTh>Status</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Style="font-family:monospace">@context.ReceiptNo</MudTd>
+            <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd>@context.Customer.Name</MudTd>
+            <MudTd Style="font-family:monospace;font-size:11.5px">@(context.SalesInvoice?.InvoiceNo ?? "On account")</MudTd>
+            <MudTd>@context.BankAccount.Name</MudTd>
+            <MudTd Style="text-align:right;font-weight:600">@context.Amount.ToString("N2")</MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">@context.Status</MudChip></MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Customer>? _customers;
+    private List<Account>? _bankAccounts;
+    private List<FiscalPeriod>? _periods;
+    private List<CustomerReceipt>? _recent;
+    private List<OpenInvoice> _openInvoices = new();
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    private string _userName = "System Admin";
+
+    private int _customerId;
+    private int _invoiceId;
+    private int _bankAccountId;
+    private DateTime? _date = DateTime.Today;
+    private int _periodId;
+    private decimal _amount;
+    private string? _narration;
+    private bool _posting;
+
+    private bool CanPost => _customerId > 0 && _bankAccountId > 0 && _periodId > 0 && _amount > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        // Bank/cash accounts live in the 11xxx range of the chart.
+        _bankAccounts = accounts.Where(a => a.Type == AccountType.Asset && a.Code.StartsWith("110")).ToList();
+        _periods = await Ledger.GetPeriodsAsync();
+        SyncPeriodToDate();
+        _recent = await ReceiptSvc.GetRecentAsync(8);
+        if (AuthState is not null)
+            _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
+    }
+
+    private async Task OnCustomerChanged(int id)
+    {
+        _customerId = id;
+        _invoiceId = 0;
+        _openInvoices = id > 0 ? await CustomerSvc.GetOpenInvoicesAsync(id) : new();
+    }
+
+    private void OnInvoiceChanged(int id)
+    {
+        _invoiceId = id;
+        var inv = _openInvoices.FirstOrDefault(i => i.Id == id);
+        if (inv is not null) _amount = inv.Outstanding; // prefill with the outstanding balance
+    }
+
+    private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
+
+    private void SyncPeriodToDate()
+    {
+        if (_periods is null || _date is null) return;
+        var dd = DateOnly.FromDateTime(_date.Value);
+        var match = _periods.FirstOrDefault(p => dd >= p.StartDate && dd <= p.EndDate);
+        if (match is not null) _periodId = match.Id;
+        else if (_periodId == 0) _periodId = _periods.LastOrDefault()?.Id ?? 0;
+    }
+
+    private async Task Post()
+    {
+        _posting = true;
+        try
+        {
+            var r = await ReceiptSvc.CreateAndPostAsync(
+                _customerId, _invoiceId > 0 ? _invoiceId : null,
+                DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
+                _bankAccountId, _amount, _narration, _userName, DateTime.UtcNow);
+
+            Snackbar.Add($"Posted {r.ReceiptNo} — GL voucher generated.", Severity.Success);
+            _amount = 0; _narration = null; _invoiceId = 0;
+            _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
+            _recent = await ReceiptSvc.GetRecentAsync(8);
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _posting = false; }
+    }
+}

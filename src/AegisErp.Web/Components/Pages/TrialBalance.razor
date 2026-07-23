@@ -1,0 +1,67 @@
+@page "/trial-balance"
+@attribute [Authorize]
+@inject LedgerService Ledger
+
+<PageTitle>Trial Balance · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Trial Balance</MudText>
+    <MudSpacer />
+    @if (_periods is not null)
+    {
+        <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="As at period" Dense="true" Style="max-width:220px">
+            @foreach (var p in _periods)
+            {
+                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+            }
+        </MudSelect>
+    }
+</MudStack>
+
+@if (_tb is not null)
+{
+    @if (_tb.IsBalanced)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">In balance — total debits equal total credits.</MudAlert>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">Out of balance by @Math.Abs(_tb.TotalDebit - _tb.TotalCredit).ToString("N2").</MudAlert>
+    }
+
+    <MudTable Items="_tb.Rows" Dense="true" Hover="true" Bordered="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Code</MudTh>
+            <MudTh>Account</MudTh>
+            <MudTh Style="text-align:right">Debit</MudTh>
+            <MudTh Style="text-align:right">Credit</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd Style="font-family:monospace">@context.Code</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTh Style="text-align:right" colspan="2"><b>Total (AED)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalDebit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalCredit.ToString("N2")</b></MudTh>
+        </FooterContent>
+    </MudTable>
+}
+
+@code {
+    private List<FiscalPeriod>? _periods;
+    private int _periodId;
+    private AegisErp.Infrastructure.Services.TrialBalance? _tb;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _periods = await Ledger.GetPeriodsAsync();
+        _periodId = _periods.LastOrDefault()?.Id ?? 0;
+        await Load();
+    }
+
+    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
+    private async Task Load() { if (_periodId > 0) _tb = await Ledger.GetTrialBalanceAsync(_periodId); }
+}

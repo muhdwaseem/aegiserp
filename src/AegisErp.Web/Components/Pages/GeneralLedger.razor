@@ -1,0 +1,115 @@
+@page "/general-ledger"
+@attribute [Authorize]
+@inject LedgerService Ledger
+@inject ChartOfAccountsService Coa
+
+<PageTitle>General Ledger · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">General Ledger</MudText>
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="5">
+            <MudSelect T="int" Value="_accountId" ValueChanged="OnAccountChanged" Label="Account" Dense="true">
+                @if (_accounts is not null)
+                {
+                    @foreach (var a in _accounts)
+                    {
+                        <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="Period" Dense="true">
+                @if (_periods is not null)
+                {
+                    @foreach (var p in _periods)
+                    {
+                        <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_ledger is not null)
+{
+    <MudStack Row="true" Spacing="4" Class="mb-3" Wrap="Wrap.Wrap">
+        @SummaryCard("Opening", BalanceText(_ledger.Opening))
+        @SummaryCard("Total Debit", _ledger.TotalDebit.ToString("N2"))
+        @SummaryCard("Total Credit", _ledger.TotalCredit.ToString("N2"))
+        @SummaryCard("Closing", BalanceText(_ledger.Closing), true)
+    </MudStack>
+
+    <MudTable Items="_ledger.Rows" Dense="true" Hover="true" Bordered="true" Striped="true">
+        <HeaderContent>
+            <MudTh>Date</MudTh>
+            <MudTh>Voucher</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Narration</MudTh>
+            <MudTh>Cost Ctr</MudTh>
+            <MudTh Style="text-align:right">Debit</MudTh>
+            <MudTh Style="text-align:right">Credit</MudTh>
+            <MudTh Style="text-align:right">Balance</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Date">@context.Date.ToString("yyyy-MM-dd")</MudTd>
+            <MudTd DataLabel="Voucher" Style="font-family:monospace">@context.VoucherNo</MudTd>
+            <MudTd DataLabel="Type"><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@context.Type</MudChip></MudTd>
+            <MudTd DataLabel="Narration">@context.Narration</MudTd>
+            <MudTd DataLabel="Cost Ctr">@context.CostCenter</MudTd>
+            <MudTd DataLabel="Debit" Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "—")</MudTd>
+            <MudTd DataLabel="Credit" Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
+            <MudTd DataLabel="Balance" Style="text-align:right;font-weight:600">@BalanceText(context.RunningBalance)</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4 mud-text-secondary">No posted entries for this account in @_ledger.Period.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    private List<Account>? _accounts;
+    private List<FiscalPeriod>? _periods;
+    private int _accountId;
+    private int _periodId;
+    private AccountLedger? _ledger;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _accounts = await Coa.GetAllAsync(postableOnly: true);
+        _periods = await Ledger.GetPeriodsAsync();
+        _accountId = _accounts.FirstOrDefault()?.Id ?? 0;
+        _periodId = _periods.LastOrDefault()?.Id ?? 0;
+        await Load();
+    }
+
+    private async Task OnAccountChanged(int id) { _accountId = id; await Load(); }
+    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
+
+    private async Task Load()
+    {
+        if (_accountId > 0 && _periodId > 0)
+            _ledger = await Ledger.GetAccountLedgerAsync(_accountId, _periodId);
+    }
+
+    // Balances are sign-normalized to the account's normal direction: a positive value
+    // means the account sits on its normal side (Dr for assets/expenses, Cr for the rest).
+    private string BalanceText(decimal bal)
+    {
+        var onNormalSide = bal >= 0;
+        var normalIsDebit = _ledger?.NormalBalance == AegisErp.Domain.NormalBalance.Debit;
+        var isDebit = onNormalSide ? normalIsDebit : !normalIsDebit;
+        return (isDebit ? "Dr " : "Cr ") + Math.Abs(bal).ToString("N2");
+    }
+
+    private RenderFragment SummaryCard(string Label, string Value, bool Bold = false) => __builder =>
+    {
+        <MudPaper Class="pa-3" Elevation="0" Style="min-width:150px;border:1px solid var(--mud-palette-lines-default)">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">@Label</MudText>
+            <MudText Typo="Typo.h6" Style="@(Bold ? "font-weight:700" : "")">@Value</MudText>
+        </MudPaper>
+    };
+}

@@ -1,0 +1,150 @@
+@page "/companies"
+@attribute [Authorize(Roles = AppRoles.FirmAdmin)]
+@using Microsoft.AspNetCore.Identity
+@inject CompanyService CompanySvc
+@inject CompanyAccessService AccessSvc
+@inject CompanySession Session
+@inject UserManager<AppUser> Users
+@inject ISnackbar Snackbar
+
+<PageTitle>Companies · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Companies</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+               Href="company-setup/new">New Company</MudButton>
+</MudStack>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Each company keeps a completely separate set of books — its own chart of accounts, periods,
+    documents and numbering. Staff only see the companies they are granted access to.
+</MudText>
+
+<MudTable Items="_companies" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_companies is null"
+          T="CompanySetup" OnRowClick="RowClicked" RowClass="cursor-pointer">
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Legal Name</MudTh>
+        <MudTh>Emirate</MudTh>
+        <MudTh>Currency</MudTh>
+        <MudTh>Financial Year</MudTh>
+        <MudTh>TRN</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace">@context.CompanyCode</MudTd>
+        <MudTd><b>@context.LegalName</b></MudTd>
+        <MudTd>@context.Emirate</MudTd>
+        <MudTd>@context.BaseCurrency</MudTd>
+        <MudTd>@context.FiscalYear</MudTd>
+        <MudTd Style="font-family:monospace;font-size:11.5px">@context.TrnNumber</MudTd>
+    </RowTemplate>
+</MudTable>
+<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">Click a company to manage who can access it.</MudText>
+
+@if (_selected is not null)
+{
+    <MudPaper Class="pa-4 mt-4" Elevation="2">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+            <MudText Typo="Typo.subtitle1">Access — @_selected.LegalName</MudText>
+            <MudSpacer />
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _selected = null)" />
+        </MudStack>
+
+        <MudGrid Class="mb-3">
+            <MudItem xs="12" sm="5">
+                <MudSelect T="string" @bind-Value="_grantUserId" Label="User" Dense="true">
+                    <MudSelectItem T="string" Value="@("")">— select user —</MudSelectItem>
+                    @foreach (var u in _allUsers)
+                    {
+                        <MudSelectItem T="string" Value="@u.Id">@u.DisplayName (@u.Email)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_grantRole" Label="Role in this company" Dense="true">
+                    @foreach (var r in AppRoles.CompanyRoles)
+                    {
+                        <MudSelectItem T="string" Value="@r">@r</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4" Class="d-flex align-center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+                           Disabled="@(string.IsNullOrEmpty(_grantUserId))" OnClick="Grant">Grant Access</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="_members" Dense="true" Bordered="true" Striped="true">
+            <HeaderContent>
+                <MudTh>User</MudTh>
+                <MudTh>Email</MudTh>
+                <MudTh>Role</MudTh>
+                <MudTh Style="width:120px"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.DisplayName</MudTd>
+                <MudTd>@context.Email</MudTd>
+                <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@context.Role</MudChip></MudTd>
+                <MudTd>
+                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text"
+                               OnClick="@(() => Revoke(context.UserId))">Revoke</MudButton>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Class="pa-4 mud-text-secondary">
+                    No one has explicit access. Firm administrators can still reach this company.
+                </MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    private List<CompanySetup>? _companies;
+    private CompanySetup? _selected;
+    private List<CompanyMemberRow> _members = new();
+    private List<AppUser> _allUsers = new();
+
+    private string _grantUserId = "";
+    private string _grantRole = AppRoles.Accountant;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _companies = await CompanySvc.GetAllAsync();
+        _allUsers = Users.Users.OrderBy(u => u.Email).ToList();
+    }
+
+    private async Task RowClicked(TableRowClickEventArgs<CompanySetup> args)
+    {
+        if (args.Item is null) return;
+        _selected = args.Item;
+        _members = await AccessSvc.GetMembersAsync(_selected.Id);
+    }
+
+    private async Task Grant()
+    {
+        if (_selected is null || string.IsNullOrEmpty(_grantUserId)) return;
+        try
+        {
+            await AccessSvc.GrantAsync(_grantUserId, _selected.Id, _grantRole);
+            _members = await AccessSvc.GetMembersAsync(_selected.Id);
+            _grantUserId = "";
+            Snackbar.Add("Access granted.", Severity.Success);
+            await Session.RefreshAsync();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Revoke(string userId)
+    {
+        if (_selected is null) return;
+        await AccessSvc.RevokeAsync(userId, _selected.Id);
+        _members = await AccessSvc.GetMembersAsync(_selected.Id);
+        Snackbar.Add("Access revoked.", Severity.Info);
+        await Session.RefreshAsync();
+    }
+}

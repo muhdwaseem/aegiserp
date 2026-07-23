@@ -1,0 +1,638 @@
+<title>Aegis ERP — System Flow &amp; Architecture</title>
+<style>
+  :root{
+    --accent:#2e86de; --accent-ink:#1a6fc2; --accent-soft:#e8f1fd;
+    --ground:#fbfcfd; --surface:#ffffff; --panel:#eef3f9; --panel-2:#e6edf6;
+    --ink:#172231; --ink-2:#4d5a72; --ink-3:#7c8aa1;
+    --border:#e0e7f1; --border-2:#cdd7e6;
+    --ok:#0f6b35; --ok-soft:#dcf5e7; --warn:#8a5a04; --warn-soft:#fbeecb;
+    --err:#c0392b; --err-soft:#fbe4e1; --dr:#1a6fc2; --cr:#0f6b35;
+    --mono:'Cascadia Code','Cascadia Mono',ui-monospace,'SFMono-Regular','Consolas',monospace;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',system-ui,sans-serif;
+    --shadow:0 1px 2px rgba(18,34,54,.04),0 6px 20px rgba(18,34,54,.06);
+    --radius:12px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --accent:#63a6ef; --accent-ink:#94c2f6; --accent-soft:#132639;
+      --ground:#0e131b; --surface:#151d28; --panel:#1a232f; --panel-2:#212c3a;
+      --ink:#e9eef5; --ink-2:#a7b4c8; --ink-3:#6f7e95;
+      --border:#26303f; --border-2:#33404f;
+      --ok:#4ade80; --ok-soft:#0f2e1c; --warn:#fbbf24; --warn-soft:#332708;
+      --err:#f87171; --err-soft:#361718; --dr:#7cc0ff; --cr:#4ade80;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --accent:#2e86de; --accent-ink:#1a6fc2; --accent-soft:#e8f1fd;
+    --ground:#fbfcfd; --surface:#ffffff; --panel:#eef3f9; --panel-2:#e6edf6;
+    --ink:#172231; --ink-2:#4d5a72; --ink-3:#7c8aa1;
+    --border:#e0e7f1; --border-2:#cdd7e6;
+    --ok:#0f6b35; --ok-soft:#dcf5e7; --warn:#8a5a04; --warn-soft:#fbeecb;
+    --err:#c0392b; --err-soft:#fbe4e1; --dr:#1a6fc2; --cr:#0f6b35;
+    --shadow:0 1px 2px rgba(18,34,54,.04),0 6px 20px rgba(18,34,54,.06);
+  }
+  :root[data-theme="dark"]{
+    --accent:#63a6ef; --accent-ink:#94c2f6; --accent-soft:#132639;
+    --ground:#0e131b; --surface:#151d28; --panel:#1a232f; --panel-2:#212c3a;
+    --ink:#e9eef5; --ink-2:#a7b4c8; --ink-3:#6f7e95;
+    --border:#26303f; --border-2:#33404f;
+    --ok:#4ade80; --ok-soft:#0f2e1c; --warn:#fbbf24; --warn-soft:#332708;
+    --err:#f87171; --err-soft:#361718; --dr:#7cc0ff; --cr:#4ade80;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 26px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+    font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased;}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+
+  a{color:var(--accent-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,.mono{font-family:var(--mono);font-size:.86em}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+  /* ---- Masthead ---- */
+  .mast{max-width:1180px;margin:0 auto;padding:48px 28px 24px}
+  .mast .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent-ink);display:flex;align-items:center;gap:10px}
+  .mast .kicker::before{content:"";width:26px;height:26px;border-radius:7px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--accent),#54c8f8);box-shadow:var(--shadow)}
+  .mast h1{font-size:clamp(30px,5vw,46px);line-height:1.05;margin:.5em 0 .25em;letter-spacing:-.02em;
+    font-weight:800;text-wrap:balance;max-width:16ch}
+  .mast .lede{font-size:clamp(17px,2.3vw,20px);color:var(--ink-2);max-width:60ch;margin:0}
+  .mast .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .tag{font-family:var(--mono);font-size:12px;padding:5px 10px;border-radius:999px;
+    background:var(--panel);border:1px solid var(--border);color:var(--ink-2)}
+
+  /* ---- Layout ---- */
+  .wrap{max-width:1180px;margin:0 auto;padding:8px 28px 90px;display:grid;
+    grid-template-columns:232px minmax(0,1fr);gap:44px;align-items:start}
+  nav.toc{position:sticky;top:20px;align-self:start;font-size:13.5px;max-height:calc(100vh - 40px);
+    overflow:auto;padding-right:6px}
+  nav.toc .toc-h{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--ink-3);margin:0 0 10px;padding-left:34px}
+  nav.toc ol{list-style:none;margin:0;padding:0;counter-reset:s}
+  nav.toc li{counter-increment:s;margin:1px 0}
+  nav.toc a{display:grid;grid-template-columns:26px 1fr;gap:8px;padding:5px 8px;border-radius:7px;
+    color:var(--ink-2);align-items:baseline}
+  nav.toc a::before{content:counter(s,decimal-leading-zero);font-family:var(--mono);font-size:11px;
+    color:var(--ink-3);text-align:right}
+  nav.toc a:hover{background:var(--panel);color:var(--ink);text-decoration:none}
+  nav.toc a:hover::before{color:var(--accent-ink)}
+
+  main{min-width:0}
+  section{scroll-margin-top:20px;padding:14px 0 8px;border-top:1px solid var(--border)}
+  section:first-of-type{border-top:0}
+  .eyebrow{font-family:var(--mono);font-size:12px;color:var(--accent-ink);letter-spacing:.06em;
+    display:block;margin-bottom:4px}
+  h2{font-size:clamp(23px,3.4vw,30px);line-height:1.15;letter-spacing:-.015em;margin:.1em 0 .5em;
+    font-weight:800;text-wrap:balance}
+  h3{font-size:18px;margin:1.7em 0 .4em;font-weight:700;letter-spacing:-.01em}
+  p{margin:.7em 0;max-width:68ch}
+  main ul,main ol{max-width:68ch;padding-left:1.25em}
+  main li{margin:.3em 0}
+  strong{font-weight:700}
+  .lead{font-size:18px;color:var(--ink-2);max-width:64ch}
+
+  .callout{border:1px solid var(--border);border-left:3px solid var(--accent);background:var(--panel);
+    border-radius:10px;padding:14px 18px;margin:18px 0;font-size:15px}
+  .callout .ct{font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--accent-ink);margin-bottom:3px}
+
+  /* ---- Tables ---- */
+  .tbl{overflow-x:auto;margin:18px 0;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:14.5px}
+  th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--border)}
+  thead th{background:var(--panel);font-size:12px;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--ink-2);font-weight:700;white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:var(--panel)}
+  td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13.5px}
+  td .mono,td code{color:var(--ink)}
+  .dr{color:var(--dr);font-weight:600}.cr{color:var(--cr);font-weight:600}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:11.5px;padding:2px 8px;border-radius:999px;
+    border:1px solid var(--border-2);background:var(--panel);color:var(--ink-2);white-space:nowrap}
+  .pill.role{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink)}
+  .pill.admin{background:var(--err-soft);color:var(--err)}
+  .pill.post{background:var(--accent-soft);color:var(--accent-ink)}
+  .pill.any{background:var(--panel-2)}
+
+  /* ---- Diagram primitives ---- */
+  .figscroll{overflow-x:auto;margin:20px 0}
+  figure{margin:0}
+  figcaption{font-size:13px;color:var(--ink-3);margin-top:8px;font-style:italic}
+
+  .node{background:var(--surface);border:1px solid var(--border-2);border-radius:10px;padding:11px 15px;
+    box-shadow:var(--shadow);font-size:14px;line-height:1.4;max-width:520px}
+  .node .nt{font-weight:700;font-size:14px}
+  .node small{display:block;color:var(--ink-3);font-size:12.5px;margin-top:2px}
+  .node.acc{border-color:var(--accent);background:var(--accent-soft)}
+  .node.good{border-color:var(--ok);background:var(--ok-soft)}
+  .node.dec{border-radius:999px;border-style:dashed;border-color:var(--accent);background:var(--surface);
+    font-weight:600;text-align:center}
+
+  .flow{display:flex;flex-direction:column;align-items:center;gap:0;text-align:center;padding:6px 0}
+  .flow .node{width:min(560px,100%);text-align:left}
+  .arrow{width:2px;height:22px;background:var(--border-2);position:relative;flex:0 0 auto}
+  .arrow::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);
+    border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--border-2)}
+  .arrow.lbl::before{content:attr(data-l);position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    font-family:var(--mono);font-size:11px;color:var(--ink-3);white-space:nowrap}
+  .branch{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;width:100%}
+  .branch>div{display:flex;flex-direction:column;align-items:center;flex:1;min-width:190px}
+
+  /* architecture bands */
+  .arch{display:flex;flex-direction:column;gap:0;align-items:center}
+  .band{width:100%;border:1px solid var(--border-2);border-radius:12px;padding:14px 16px;background:var(--panel)}
+  .band .bl{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--accent-ink);margin-bottom:9px}
+  .band.dom{background:var(--accent-soft);border-color:var(--accent)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 11px;
+    font-size:13px;box-shadow:var(--shadow)}
+  .chip b{font-weight:700}
+
+  /* sequence */
+  .seq{display:flex;flex-direction:column;gap:9px;counter-reset:sq}
+  .step{display:grid;grid-template-columns:30px auto 1fr;gap:12px;align-items:start;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+  .step::before{counter-increment:sq;content:counter(sq);font-family:var(--mono);font-size:12px;
+    color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;width:26px;height:26px;
+    display:grid;place-items:center;font-weight:700}
+  .actor{font-family:var(--mono);font-size:11.5px;padding:3px 8px;border-radius:6px;background:var(--panel-2);
+    color:var(--ink-2);white-space:nowrap;align-self:start}
+  .step .sx{font-size:14px}
+  .step.out{background:var(--ok-soft);border-color:var(--ok)}
+  .step.out::before{background:var(--ok);color:#fff;content:"✓"}
+
+  /* entity cards */
+  .er{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+  .ent{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)}
+  .ent h4{margin:0;padding:8px 12px;background:var(--panel);font-size:13.5px;font-family:var(--mono);
+    border-bottom:1px solid var(--border);color:var(--accent-ink)}
+  .ent ul{margin:0;padding:8px 12px;list-style:none;font-size:12.5px;color:var(--ink-2)}
+  .ent li{margin:2px 0;font-family:var(--mono);font-size:12px}
+  .ent li .k{color:var(--ink-3)}
+
+  .chain{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .chain .node{max-width:none;flex:0 1 auto;padding:8px 12px}
+  .chain .car{color:var(--ink-3);font-size:18px}
+
+  hr.sub{border:0;border-top:1px dashed var(--border-2);margin:26px 0}
+  .foot{max-width:1180px;margin:0 auto;padding:22px 28px 60px;color:var(--ink-3);font-size:13px;
+    border-top:1px solid var(--border)}
+
+  @media (max-width:900px){
+    .wrap{grid-template-columns:1fr;gap:0}
+    nav.toc{display:none}
+  }
+</style>
+
+<header class="mast">
+  <div class="kicker">Aegis ERP · Technical Reference</div>
+  <h1>System Flow &amp; Architecture</h1>
+  <p class="lede">How the ERP works end to end — the architecture, the double-entry accounting model, the posting engine at its heart, authentication, and the full flow of every module built so far.</p>
+  <div class="meta">
+    <span class="tag">.NET 8</span>
+    <span class="tag">Blazor Server</span>
+    <span class="tag">EF Core</span>
+    <span class="tag">PostgreSQL / SQLite</span>
+    <span class="tag">ASP.NET Identity</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc" aria-label="Contents">
+    <p class="toc-h">Contents</p>
+    <ol>
+      <li><a href="#s1">What Aegis ERP is</a></li>
+      <li><a href="#s2">Technology stack</a></li>
+      <li><a href="#s3">Architecture</a></li>
+      <li><a href="#s4">Accounting concepts</a></li>
+      <li><a href="#s5">The data model</a></li>
+      <li><a href="#s6">The posting engine</a></li>
+      <li><a href="#s7">Auth &amp; authorization</a></li>
+      <li><a href="#s8">Request lifecycle</a></li>
+      <li><a href="#s9">General Ledger</a></li>
+      <li><a href="#s10">Accounts Receivable</a></li>
+      <li><a href="#s11">The dashboard</a></li>
+      <li><a href="#s12">Worked example</a></li>
+      <li><a href="#s13">Reporting math</a></li>
+      <li><a href="#s14">Seeded demo data</a></li>
+      <li><a href="#s15">Run &amp; test</a></li>
+      <li><a href="#s16">Limitations</a></li>
+      <li><a href="#s17">Roadmap</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <section id="s1">
+      <span class="eyebrow">01 — Overview</span>
+      <h2>What Aegis ERP is</h2>
+      <p class="lead">A finance &amp; operations system for a fictional UAE company, <strong>Aegis FZE</strong> (currency AED, 5% VAT), rebuilt from an HTML prototype styled after Microsoft Dynamics 365 Business Central.</p>
+      <p>What works today:</p>
+      <ul>
+        <li><strong>General Ledger</strong> — chart of accounts, manual journal vouchers, the account ledger, and the trial balance.</li>
+        <li><strong>Accounts Receivable</strong> — customers, sales invoices that automatically generate their GL entries, customer receipts with invoice allocation, AR aging, and customer statements.</li>
+        <li><strong>Security</strong> — cookie-based login, three roles, and page-level authorization.</li>
+      </ul>
+      <div class="callout">
+        <div class="ct">The defining property</div>
+        Every financial document becomes a balanced, double-entry GL voucher, and the books are balanced by construction. You cannot post an invoice without its General Ledger entry, and you cannot post anything that doesn't balance.
+      </div>
+    </section>
+
+    <section id="s2">
+      <span class="eyebrow">02 — Stack</span>
+      <h2>Technology stack</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Layer</th><th>Choice</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Runtime</td><td><strong>.NET 8 (C#)</strong></td><td>Strong typing, transactions, maintainability for finance code</td></tr>
+          <tr><td>UI</td><td><strong>Blazor Server + MudBlazor 7</strong></td><td>One language end to end; components cover grids, dialogs, forms</td></tr>
+          <tr><td>ORM</td><td><strong>EF Core 8</strong></td><td>Migrations, LINQ, provider-agnostic</td></tr>
+          <tr><td>Database</td><td><strong>PostgreSQL / SQLite</strong></td><td>Postgres for production; SQLite for zero-setup local dev</td></tr>
+          <tr><td>Auth</td><td><strong>ASP.NET Core Identity</strong></td><td>Standard cookie auth and role management</td></tr>
+          <tr><td>Tests</td><td><strong>xUnit</strong></td><td>Fast in-memory tests over the posting engine and AR flows</td></tr>
+        </tbody>
+      </table></div>
+      <p>The database provider is chosen at runtime by a single config key — the same codebase runs on SQLite locally and PostgreSQL in production with <strong>no code changes</strong>.</p>
+    </section>
+
+    <section id="s3">
+      <span class="eyebrow">03 — Architecture</span>
+      <h2>Architecture at a glance</h2>
+      <p>Three projects plus tests, with dependencies pointing strictly inward. The <strong>Domain</strong> depends on nothing; <strong>Infrastructure</strong> depends on Domain; <strong>Web</strong> depends on both but only reaches the database through services.</p>
+      <div class="figscroll"><figure>
+        <div class="arch" style="min-width:520px">
+          <div class="band"><div class="bl">AegisErp.Web · Blazor Server + MudBlazor</div>
+            <div class="chips"><span class="chip"><b>Razor pages</b> &amp; components</span><span class="chip">Identity wiring</span><span class="chip">Render-mode gating</span></div></div>
+          <div class="arrow" style="height:26px"></div>
+          <div class="band"><div class="bl">AegisErp.Infrastructure</div>
+            <div class="chips"><span class="chip"><b>AegisDbContext</b> · EF Core + Identity</span><span class="chip"><b>JournalPoster</b> · posting engine</span><span class="chip">Application services</span><span class="chip">SeedData</span></div></div>
+          <div class="arrow" style="height:26px"></div>
+          <div class="band dom"><div class="bl">AegisErp.Domain · pure C#, no dependencies</div>
+            <div class="chips"><span class="chip">Entities + enums</span><span class="chip"><b>Posting rules</b> · Voucher / Invoice / Receipt <code>.Post()</code></span></div></div>
+        </div>
+        <figcaption>Dependencies point inward ↓. The double-entry rules live in the Domain, so the UI can never bypass them. Tests target the services and the Domain directly.</figcaption>
+      </figure></div>
+    </section>
+
+    <section id="s4">
+      <span class="eyebrow">04 — Primer</span>
+      <h2>Accounting concepts you need first</h2>
+      <p>The system rests on standard double-entry bookkeeping. Five ideas:</p>
+      <p><strong>Chart of Accounts</strong> — the list of accounts money is tracked in. Each account has a <code>Code</code> (e.g. <code>12010</code>), a name, and a type.</p>
+      <p><strong>Normal balance</strong> — every account carries its balance on one side, <em>derived from its type</em>, never stored:</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Account type</th><th>Normal balance</th></tr></thead>
+        <tbody>
+          <tr><td>Asset, Expense</td><td><span class="dr">Debit</span></td></tr>
+          <tr><td>Liability, Equity, Income</td><td><span class="cr">Credit</span></td></tr>
+        </tbody>
+      </table></div>
+      <p><strong>Cost centers</strong> — a dimension tagging lines by segment (Admin, Passport Services, Travel &amp; Tourism, HR).</p>
+      <p><strong>Fiscal periods</strong> — accounting months. Every voucher posts into exactly one period, and its date must fall inside it.</p>
+      <p><strong>Vouchers &amp; double entry</strong> — the ledger unit is a <strong>JournalVoucher</strong>: a header plus two or more lines, each a debit <em>or</em> a credit. A voucher only posts when <strong>total debits = total credits</strong>.</p>
+      <p><strong>Subledger over the GL</strong> — Accounts Receivable is a subledger: customers, invoices, and receipts live in their own tables, but the money always also flows through the GL control account <code>12010 – Accounts Receivable</code>.</p>
+    </section>
+
+    <section id="s5">
+      <span class="eyebrow">05 — Data</span>
+      <h2>The data model</h2>
+      <p>The core GL entities plus the AR subledger. Every posted document links to the <code>JournalVoucher</code> it generated.</p>
+      <div class="figscroll"><figure>
+        <div class="er" style="min-width:520px">
+          <div class="ent"><h4>Account</h4><ul><li><span class="k">Code</span> · unique</li><li><span class="k">Name</span></li><li><span class="k">Type</span> → NormalBalance</li><li><span class="k">IsPostable</span></li></ul></div>
+          <div class="ent"><h4>JournalVoucher</h4><ul><li><span class="k">VoucherNo</span> · unique</li><li><span class="k">Type · Status</span></li><li><span class="k">Date · FiscalPeriod</span></li><li><span class="k">Lines</span> · 2+</li></ul></div>
+          <div class="ent"><h4>JournalLine</h4><ul><li><span class="k">Account</span></li><li><span class="k">CostCenter?</span></li><li><span class="k">Debit</span></li><li><span class="k">Credit</span></li></ul></div>
+          <div class="ent"><h4>Customer</h4><ul><li><span class="k">Code</span> · C-000N</li><li><span class="k">Name · TRN</span></li><li><span class="k">PaymentTermsDays</span></li></ul></div>
+          <div class="ent"><h4>SalesInvoice</h4><ul><li><span class="k">InvoiceNo</span> · unique</li><li><span class="k">Customer · Date · DueDate</span></li><li><span class="k">Lines</span> · 1+</li><li><span class="k">→ JournalVoucher</span></li></ul></div>
+          <div class="ent"><h4>CustomerReceipt</h4><ul><li><span class="k">ReceiptNo</span> · unique</li><li><span class="k">Customer · BankAccount</span></li><li><span class="k">SalesInvoice?</span> · allocation</li><li><span class="k">→ JournalVoucher</span></li></ul></div>
+        </div>
+        <figcaption>Relationships: a voucher has 2+ lines; an invoice/receipt each generate one voucher; a receipt optionally settles one invoice (else it's “on account”).</figcaption>
+      </figure></div>
+      <p>Persistence rules: unique indexes on every document number; money is <code>decimal(18,2)</code>; enums persist as readable strings; master records use restrictive deletes; the ASP.NET Identity tables share the same database.</p>
+    </section>
+
+    <section id="s6">
+      <span class="eyebrow">06 — The engine</span>
+      <h2>The posting engine — the heart of the system</h2>
+      <p>Everything that touches the ledger goes through one place: <code>JournalPoster</code>. It builds and validates a GL voucher <strong>on the caller's DbContext and transaction, without committing</strong> — so a document and its GL entry commit together, atomically.</p>
+
+      <div class="figscroll"><figure>
+        <div class="seq" style="min-width:520px">
+          <div class="step"><span class="actor">Service</span><span class="sx">Open a DbContext and <code>BeginTransactionAsync()</code>; build the SalesInvoice + lines.</span></div>
+          <div class="step"><span class="actor">Domain</span><span class="sx"><code>invoice.Post(now)</code> validates the invoice (customer, lines, due date, positive total).</span></div>
+          <div class="step"><span class="actor">Poster</span><span class="sx">Gate the fiscal period (exists · not closed · date inside it), assign the voucher number, build the GL lines.</span></div>
+          <div class="step"><span class="actor">Domain</span><span class="sx"><code>voucher.Post(now)</code> enforces <strong>debits = credits</strong> and every line rule.</span></div>
+          <div class="step"><span class="actor">Poster</span><span class="sx"><code>db.Add(voucher)</code> — tracked but <em>not saved</em>. The invoice is added too.</span></div>
+          <div class="step out"><span class="actor">DbContext</span><span class="sx"><strong>SaveAndCommit</strong> — invoice + GL voucher persist together, or neither does.</span></div>
+        </div>
+        <figcaption>If any step throws, the transaction is disposed without committing and nothing persists.</figcaption>
+      </figure></div>
+
+      <h3>The validation rules</h3>
+      <p><code>JournalVoucher.Post()</code> is the gatekeeper. In order, it rejects:</p>
+      <div class="tbl"><table>
+        <thead><tr><th>#</th><th>Condition</th><th>Message</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Already posted</td><td>Voucher is already posted.</td></tr>
+          <tr><td>2</td><td>Was rejected</td><td>A rejected voucher cannot be posted.</td></tr>
+          <tr><td>3</td><td>Fewer than 2 lines</td><td>A voucher needs at least two lines.</td></tr>
+          <tr><td>4a</td><td>A line has no account</td><td>Line N has no account selected.</td></tr>
+          <tr><td>4b</td><td>A line is negative</td><td>Line N has a negative amount.</td></tr>
+          <tr><td>4c</td><td>A line is both Dr and Cr</td><td>Line N cannot be both debit and credit.</td></tr>
+          <tr><td>4d</td><td>A line has no amount</td><td>Line N has no amount.</td></tr>
+          <tr><td>5</td><td>Debits ≠ credits</td><td>Voucher is out of balance by X (Dr … / Cr …).</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Document numbering</h3>
+      <p>Numbers are <code>PREFIX-YEAR-####</code> from the highest existing suffix + 1, so seeded or skipped numbers never collide. An invoice and its generated voucher <strong>share the same number</strong>.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Type</th><th>Prefix</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>Journal</td><td><code>JV</code></td><td><code>JV-2026-0001</code></td></tr>
+          <tr><td>Receipt</td><td><code>RV</code></td><td><code>RV-2026-0028</code></td></tr>
+          <tr><td>Payment</td><td><code>PV</code></td><td><code>PV-2026-0038</code></td></tr>
+          <tr><td>Sales Invoice</td><td><code>INV</code></td><td><code>INV-2026-0142</code></td></tr>
+          <tr><td>Opening</td><td><code>OB</code></td><td><code>OB-2026-0001</code></td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout"><div class="ct">Concurrency safety net</div>
+        A unique-constraint clash (two users computing the same number at once) is translated into a friendly, recoverable error instead of a crash. This makes the losing writer fail cleanly; full race prevention is a hardening item.</div>
+    </section>
+
+    <section id="s7">
+      <span class="eyebrow">07 — Security</span>
+      <h2>Authentication &amp; authorization</h2>
+      <p>Cookie-based ASP.NET Core Identity, three roles. <code>Posters</code> = Admin + Accountant.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Role</th><th>Can do</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill admin">Admin</span></td><td>Everything, including Users &amp; Roles. Also a poster.</td></tr>
+          <tr><td><span class="pill post">Accountant</span></td><td>Post documents and read everything.</td></tr>
+          <tr><td><span class="pill any">Viewer</span></td><td>Read-only: dashboards, ledgers, reports, customers.</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Login flow</h3>
+      <div class="figscroll"><figure>
+        <div class="seq" style="min-width:520px">
+          <div class="step"><span class="actor">Browser</span><span class="sx">Requests a protected page with no cookie.</span></div>
+          <div class="step"><span class="actor">Middleware</span><span class="sx">Redirects to <code>/Account/Login?ReturnUrl=…</code></span></div>
+          <div class="step"><span class="actor">Login (static SSR)</span><span class="sx">Renders the sign-in form with an antiforgery token.</span></div>
+          <div class="step"><span class="actor">SignInManager</span><span class="sx"><code>PasswordSignInAsync</code> — on success issues the auth cookie.</span></div>
+          <div class="step out"><span class="actor">Browser</span><span class="sx">Redirected to the (validated, local-only) ReturnUrl.</span></div>
+        </div>
+        <figcaption>The login page renders as static server HTML, not a SignalR circuit, so the form posts through cookie middleware. ReturnUrl is validated to prevent open redirects; logout is a POST with antiforgery; a long-lived session is re-checked against the security stamp every 30 minutes.</figcaption>
+      </figure></div>
+
+      <h3>Page-permission matrix</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Page</th><th>Route</th><th>Required</th></tr></thead>
+        <tbody>
+          <tr><td>Dashboard</td><td><code>/</code></td><td><span class="pill any">any user</span></td></tr>
+          <tr><td>Chart of Accounts</td><td><code>/chart-of-accounts</code></td><td><span class="pill any">any user</span></td></tr>
+          <tr><td>General Ledger</td><td><code>/general-ledger</code></td><td><span class="pill any">any user</span></td></tr>
+          <tr><td>Trial Balance</td><td><code>/trial-balance</code></td><td><span class="pill any">any user</span></td></tr>
+          <tr><td>Customers</td><td><code>/customers</code></td><td><span class="pill any">any</span> <span class="pill post">create: posters</span></td></tr>
+          <tr><td>AR Aging</td><td><code>/ar-aging</code></td><td><span class="pill any">any user</span></td></tr>
+          <tr><td>Journal Voucher</td><td><code>/journal-voucher</code></td><td><span class="pill post">Posters</span></td></tr>
+          <tr><td>Sales Invoice</td><td><code>/sales-invoice</code></td><td><span class="pill post">Posters</span></td></tr>
+          <tr><td>Receipt Voucher</td><td><code>/receipt-voucher</code></td><td><span class="pill post">Posters</span></td></tr>
+          <tr><td>Users &amp; Roles</td><td><code>/users</code></td><td><span class="pill admin">Admin</span></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="s8">
+      <span class="eyebrow">08 — Runtime</span>
+      <h2>Request lifecycle (Blazor Server)</h2>
+      <p>The UI lives on the server and talks to the browser over a SignalR circuit. A click is a server event; the server re-renders and pushes a DOM diff back. Data access uses a <strong>DbContext factory</strong> — every service call spins up a short-lived context and disposes it, avoiding the shared-context bug.</p>
+      <div class="figscroll"><figure>
+        <div class="chain" style="min-width:520px">
+          <span class="node">User action</span><span class="car">→</span>
+          <span class="node">SignalR circuit</span><span class="car">→</span>
+          <span class="node">Component handler</span><span class="car">→</span>
+          <span class="node acc">Application service</span><span class="car">→</span>
+          <span class="node">new DbContext</span><span class="car">→</span>
+          <span class="node">Database</span>
+        </div>
+        <figcaption>On startup the app creates the database if missing and seeds roles, users, and the demo company before serving traffic.</figcaption>
+      </figure></div>
+    </section>
+
+    <section id="s9">
+      <span class="eyebrow">09 — Module</span>
+      <h2>General Ledger</h2>
+      <h3>Journal Voucher <span class="pill post" style="vertical-align:middle">Posters</span></h3>
+      <p>The manual double-entry screen — for entries with no source document (accruals, opening balances, corrections).</p>
+      <div class="figscroll"><figure>
+        <div class="flow" style="min-width:480px">
+          <div class="node">Pick type, date, period, narration</div>
+          <div class="arrow"></div>
+          <div class="node">Add lines: account, cost center, debit <em>or</em> credit</div>
+          <div class="arrow"></div>
+          <div class="node dec">Live check: Dr = Cr and ≥ 2 lines?</div>
+          <div class="branch">
+            <div><div class="arrow lbl" data-l="no"></div><div class="node">Chip “Diff X” · Post disabled</div></div>
+            <div><div class="arrow lbl" data-l="yes"></div><div class="node acc">Chip “Balanced” · Post enabled</div></div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node good">Post → validated &amp; saved in a transaction → toast “Posted JV-…”</div>
+        </div>
+        <figcaption>Totals recompute on every keystroke; Post is disabled until the voucher balances. The same rules run again server-side — the UI can't bypass them.</figcaption>
+      </figure></div>
+      <p>The other GL screens: <strong>Chart of Accounts</strong> (list + add), <strong>General Ledger</strong> (an account's opening balance, every posted line with a running balance, and closing — shown in the account's normal direction, Dr or Cr), and <strong>Trial Balance</strong> (all accounts split into Debit/Credit columns with a live “In balance” proof).</p>
+    </section>
+
+    <section id="s10">
+      <span class="eyebrow">10 — Module</span>
+      <h2>Accounts Receivable</h2>
+      <h3>Sales Invoice <span class="pill post" style="vertical-align:middle">Posters</span></h3>
+      <p>The flagship AR flow: posting an invoice <strong>automatically generates its balanced GL voucher.</strong></p>
+      <div class="figscroll"><figure>
+        <div class="flow" style="min-width:480px">
+          <div class="node">Select customer · add lines (description, revenue account, qty × price, VAT)</div>
+          <div class="arrow"></div>
+          <div class="node">Live totals: Net / VAT / Gross</div>
+          <div class="arrow"></div>
+          <div class="node acc">Post → the generated GL voucher lines:</div>
+          <div class="arrow"></div>
+          <div class="node" style="border-color:var(--accent)">
+            <span class="dr">Dr</span> 12010 Accounts Receivable — total Gross<br>
+            <span class="cr">Cr</span> revenue account — Net, per line<br>
+            <span class="cr">Cr</span> 22010 VAT Payable — total VAT
+          </div>
+          <div class="arrow"></div>
+          <div class="node good">Validated (Dr = Cr) &amp; saved atomically → invoice + GL voucher</div>
+        </div>
+        <figcaption>Money math rounds away-from-zero per line. Zero-net lines (e.g. complimentary items) stay on the invoice but are omitted from the GL voucher so it still balances.</figcaption>
+      </figure></div>
+      <p>The rest of AR: <strong>Customers</strong> (with invoiced / received / outstanding totals and a click-through statement), <strong>Receipt Voucher</strong> (Dr bank / Cr AR, allocated to an invoice and capped at its outstanding, or left on account), and <strong>AR Aging</strong>:</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Bucket</th><th>Days past due</th></tr></thead>
+        <tbody>
+          <tr><td>Current</td><td>not yet due</td></tr>
+          <tr><td>1–30</td><td>1–30</td></tr>
+          <tr><td>31–60</td><td>31–60</td></tr>
+          <tr><td>61–90</td><td>61–90</td></tr>
+          <tr><td>90+</td><td>over 90</td></tr>
+        </tbody>
+      </table></div>
+      <div class="callout"><div class="ct">Subledger caveat</div>
+        Customer subledger totals reflect posted AR documents only. The GL opening balance on account 12010 is not attributed to any customer, so the sum of customer outstandings can differ from the GL AR control balance until historical invoices are entered — expected for a fresh subledger, and noted in the UI.</div>
+    </section>
+
+    <section id="s11">
+      <span class="eyebrow">11 — Module</span>
+      <h2>The dashboard</h2>
+      <p>Six KPI tiles for the current period, computed live from posted lines.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Tile</th><th>How it's computed</th></tr></thead>
+        <tbody>
+          <tr><td>Income (period)</td><td>−(sum of Income-account movements in the period)</td></tr>
+          <tr><td>Expenses (period)</td><td>sum of Expense-account movements in the period</td></tr>
+          <tr><td>Net Profit</td><td>Income − Expenses</td></tr>
+          <tr><td>Cash &amp; Bank</td><td>balance of accounts whose code starts <code>110</code>, to period end</td></tr>
+          <tr><td>Receivables</td><td>balance of account <code>12010</code>, to period end</td></tr>
+          <tr><td>Payables</td><td>balance of account <code>21010</code>, to period end</td></tr>
+        </tbody>
+      </table></div>
+      <p>Income and payables are sign-flipped because those accounts are credit-normal, so the tiles read as positive, intuitive numbers.</p>
+    </section>
+
+    <section id="s12">
+      <span class="eyebrow">12 — Walkthrough</span>
+      <h2>End-to-end worked example</h2>
+      <p class="lead">Bill Emirates Group for a travel package, then collect payment — using data actually seeded in the app.</p>
+
+      <h3>Step 1 — Post invoice <code>INV-2026-0142</code></h3>
+      <p>1 × 90,000 @ 5% VAT (Travel &amp; Tourism). The system generates GL voucher <code>INV-2026-0142</code>:</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+        <tbody>
+          <tr><td>12010 Accounts Receivable</td><td class="num dr">94,500.00</td><td class="num"></td></tr>
+          <tr><td>41020 Travel &amp; Tourism Revenue</td><td class="num"></td><td class="num cr">90,000.00</td></tr>
+          <tr><td>22010 VAT Payable</td><td class="num"></td><td class="num cr">4,500.00</td></tr>
+        </tbody>
+      </table></div>
+      <p>Emirates now owes 94,500; revenue and VAT are recognized; the trial balance still balances.</p>
+
+      <h3>Step 2 — Post receipt <code>RV-2026-0028</code></h3>
+      <p>Emirates pays 94,500 into ENBD, allocated to the invoice. Generated GL voucher <code>RV-2026-0028</code>:</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+        <tbody>
+          <tr><td>11020 ENBD Current Account</td><td class="num dr">94,500.00</td><td class="num"></td></tr>
+          <tr><td>12010 Accounts Receivable</td><td class="num"></td><td class="num cr">94,500.00</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>Step 3 — Watch it ripple</h3>
+      <div class="figscroll"><figure>
+        <div class="flow" style="min-width:480px">
+          <div class="branch">
+            <div><div class="node">Invoice INV-2026-0142<br><small>Gross 94,500</small></div><div class="arrow"></div><div class="node acc">GL: Dr AR / Cr Revenue+VAT</div></div>
+            <div><div class="node">Receipt RV-2026-0028<br><small>94,500</small></div><div class="arrow"></div><div class="node acc">GL: Dr Bank / Cr AR</div></div>
+          </div>
+          <div class="arrow"></div>
+          <div class="node good">Cash +94,500 · AR cleared · Revenue 90,000 + VAT 4,500 recognized · Emirates statement = 0 · invoice off AR aging · trial balance still balanced</div>
+        </div>
+        <figcaption>Every one of those views is derived from the two balanced GL vouchers — nothing is updated by hand.</figcaption>
+      </figure></div>
+    </section>
+
+    <section id="s13">
+      <span class="eyebrow">13 — Reference</span>
+      <h2>Reporting math</h2>
+      <p>All reports derive from one projection: every journal line whose voucher is <em>Posted</em>, pulled into memory before any decimal arithmetic (so it runs identically on SQLite and PostgreSQL).</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Report</th><th>Formula</th></tr></thead>
+        <tbody>
+          <tr><td>Account ledger</td><td><span class="mono">sign = +1 if debit-normal else −1</span>; opening = sign × Σ(Dr − Cr) before the period; each row running += sign × (Dr − Cr)</td></tr>
+          <tr><td>Trial balance</td><td>per account net = Σ(Dr − Cr) to period end; positive → Debit column, negative → Credit column</td></tr>
+          <tr><td>Aging</td><td>per open invoice: outstanding = Gross − Σ(allocated receipts), bucketed by (asOf − DueDate) in days</td></tr>
+          <tr><td>Statement</td><td>invoices as debits, receipts as credits, ordered by date, with a running balance</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="s14">
+      <span class="eyebrow">14 — Reference</span>
+      <h2>Seeded demo data</h2>
+      <p>On first run the database is seeded with a complete, balanced demo company.</p>
+      <h3>Demo accounts</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Email</th><th>Password</th><th>Roles</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">admin@aegisfze.com</td><td class="mono">Admin@123!</td><td><span class="pill admin">Admin</span> <span class="pill post">Accountant</span></td></tr>
+          <tr><td class="mono">finance@aegisfze.com</td><td class="mono">Finance@123!</td><td><span class="pill post">Accountant</span></td></tr>
+          <tr><td class="mono">viewer@aegisfze.com</td><td class="mono">Viewer@123!</td><td><span class="pill any">Viewer</span></td></tr>
+        </tbody>
+      </table></div>
+      <h3>Chart of accounts</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Code</th><th>Name</th><th>Type</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">11020</td><td>ENBD Current Account</td><td>Asset</td></tr>
+          <tr><td class="mono">11030</td><td>Mashreq Bank Account</td><td>Asset</td></tr>
+          <tr><td class="mono">12010</td><td>Accounts Receivable</td><td>Asset</td></tr>
+          <tr><td class="mono">13010</td><td>Prepaid Expenses &amp; VAT Input</td><td>Asset</td></tr>
+          <tr><td class="mono">15010</td><td>Fixed Assets</td><td>Asset</td></tr>
+          <tr><td class="mono">21010</td><td>Accounts Payable</td><td>Liability</td></tr>
+          <tr><td class="mono">22010</td><td>VAT Payable</td><td>Liability</td></tr>
+          <tr><td class="mono">31010</td><td>Share Capital &amp; Retained Earnings</td><td>Equity</td></tr>
+          <tr><td class="mono">41010</td><td>Passport Services Revenue</td><td>Income</td></tr>
+          <tr><td class="mono">41020</td><td>Travel &amp; Tourism Revenue</td><td>Income</td></tr>
+          <tr><td class="mono">51010</td><td>Salaries &amp; Wages</td><td>Expense</td></tr>
+          <tr><td class="mono">51020</td><td>Office Rent</td><td>Expense</td></tr>
+        </tbody>
+      </table></div>
+      <p>Also seeded: four fiscal periods (Apr–Jul 2026), four cost centers, three customers, an opening-balance voucher, rent &amp; payroll payments, four sales invoices, and two receipts — all posted through the same engine, so the seeded trial balance is in balance.</p>
+    </section>
+
+    <section id="s15">
+      <span class="eyebrow">15 — Operate</span>
+      <h2>Run &amp; test</h2>
+      <p><strong>Run</strong> — <code>dotnet run --project src/AegisErp.Web</code>. First launch creates <code>aegis_erp.db</code> (SQLite) and seeds everything; sign in with a demo account.</p>
+      <p><strong>Test</strong> — <code>dotnet test</code>. 17 xUnit tests cover posting rules, invoice → GL voucher construction and VAT, receipt allocation and over-allocation rejection, aging buckets, statements, and a full invoice + receipt cycle staying in balance.</p>
+      <p><strong>Switch to PostgreSQL</strong> — set <code>"Database": { "Provider": "Postgres" }</code> and the connection string in <code>appsettings.json</code>. No code change.</p>
+    </section>
+
+    <section id="s16">
+      <span class="eyebrow">16 — Honest notes</span>
+      <h2>Known limitations &amp; hardening</h2>
+      <p>Deliberately deferred; none affect single-user SQLite dev, and the full fixes are PostgreSQL-specific.</p>
+      <ul>
+        <li><strong>Schema management</strong> — uses <code>EnsureCreated()</code>; switch to EF migrations before production (<code>dotnet-ef</code> is already pinned).</li>
+        <li><strong>Concurrent document numbering</strong> — “max + 1” with no lock; the losing writer fails cleanly, but the proper fix is a per-(prefix, year) advisory lock or a Serializable transaction with retry.</li>
+        <li><strong>Concurrent receipt allocation</strong> — the outstanding check isn't DB-enforced, so two simultaneous receipts could over-settle an invoice on Postgres. Fix: lock the invoice row or persist an allocated-total with a check constraint.</li>
+        <li><strong>Period close</strong> — the engine refuses to post into a closed period, but there's no UI to close one yet.</li>
+      </ul>
+    </section>
+
+    <section id="s17">
+      <span class="eyebrow">17 — Ahead</span>
+      <h2>Roadmap</h2>
+      <p>The same Domain → Service → Blazor pattern extends to the rest:</p>
+      <ol>
+        <li><strong>Accounts Payable</strong> — Vendors, Purchase Invoice, Payment Voucher (a mirror of AR).</li>
+        <li><strong>Credit / debit notes</strong> and multi-invoice receipt allocation.</li>
+        <li><strong>Approval workflows</strong> — the prototype's Initiator → Finance → CFO → Posted chains.</li>
+        <li><strong>Period close</strong> and the financial statements (P&amp;L, Balance Sheet, Cash Flow) off the ledger.</li>
+        <li><strong>Inventory, HR / Payroll (WPS), Fixed Assets</strong> with automated depreciation.</li>
+        <li><strong>Production hardening</strong> — migrations, concurrency locks, HTTPS/hosting, backups, a real user-management UI.</li>
+      </ol>
+    </section>
+  </main>
+</div>
+
+<footer class="foot">
+  Aegis ERP — System Flow &amp; Architecture. Describes the system as implemented (General Ledger + Accounts Receivable + authentication). The canonical source is <code>docs/ERP-FLOW.md</code> in the repository; update it alongside the code.
+</footer>

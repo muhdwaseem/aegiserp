@@ -1,0 +1,44 @@
+@page "/users"
+@attribute [Authorize(Roles = AppRoles.Admin)]
+@inject UserManager<AppUser> UserManager
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Users &amp; Roles · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">Users &amp; Roles</MudText>
+
+<MudTable Items="_users" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_users is null">
+    <HeaderContent>
+        <MudTh>Email</MudTh>
+        <MudTh>Display Name</MudTh>
+        <MudTh>Roles</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace">@context.Email</MudTd>
+        <MudTd>@context.DisplayName</MudTd>
+        <MudTd>
+            @foreach (var role in context.Roles)
+            {
+                <MudChip T="string" Size="Size.Small" Color="@(role == AppRoles.Admin ? Color.Error : role == AppRoles.Accountant ? Color.Primary : Color.Default)" Variant="Variant.Text">@role</MudChip>
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
+    Admin manages users; Accountant can post documents; Viewer has read-only access to reports and masters.
+</MudText>
+
+@code {
+    private List<UserRow>? _users;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var users = await UserManager.Users.AsNoTracking().OrderBy(u => u.Email).ToListAsync();
+        var rows = new List<UserRow>();
+        foreach (var u in users)
+            rows.Add(new UserRow(u.Email ?? "", u.DisplayName, await UserManager.GetRolesAsync(u)));
+        _users = rows;
+    }
+
+    private record UserRow(string Email, string DisplayName, IList<string> Roles);
+}

@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+
+@* Static layout for sign-in pages: no interactivity, no MudBlazor providers needed. *@
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f6f8;font-family:'Segoe UI',system-ui,sans-serif">
+    <div style="width:100%;max-width:400px;padding:16px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;justify-content:center">
+            <div style="width:40px;height:40px;border-radius:8px;background:linear-gradient(135deg,#2e86de,#54c8f8);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:16px">AG</div>
+            <div>
+                <div style="font-size:18px;font-weight:700;color:#1c2333">Aegis ERP</div>
+                <div style="font-size:12px;color:#8a93a6">Finance &amp; Operations</div>
+            </div>
+        </div>
+        @Body
+    </div>
+</div>
