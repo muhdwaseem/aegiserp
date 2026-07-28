@@ -24,6 +24,32 @@ public record AccountLedger(
     decimal Closing,
     IReadOnlyList<LedgerRow> Rows);
 
+/// <summary>
+/// One row in the all-accounts general ledger view. Unlike <see cref="LedgerRow"/>, this can mix
+/// entries from different accounts, so it carries its own account identity and running balance
+/// (that account's own net position after this entry — not a combined total across accounts).
+/// </summary>
+public record GeneralLedgerRow(
+    DateOnly Date,
+    string VoucherNo,
+    string Type,
+    string Narration,
+    string AccountCode,
+    string AccountName,
+    string CostCenter,
+    string PostedBy,
+    decimal Debit,
+    decimal Credit,
+    decimal RunningBalance);
+
+public record GeneralLedgerView(
+    string Period,
+    decimal Opening,
+    decimal TotalDebit,
+    decimal TotalCredit,
+    decimal Closing,
+    IReadOnlyList<GeneralLedgerRow> Rows);
+
 /// <summary>One line of a trial balance: an account with its net debit/credit position.</summary>
 public record TrialBalanceRow(string Code, string Name, decimal Debit, decimal Credit);
 

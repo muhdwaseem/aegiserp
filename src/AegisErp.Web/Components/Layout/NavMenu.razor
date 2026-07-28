@@ -3,6 +3,7 @@
 
     <MudNavGroup Title="General Ledger" Icon="@Icons.Material.Filled.AccountBalance" Expanded="true">
         <MudNavLink Href="chart-of-accounts" Icon="@Icons.Material.Filled.MenuBook">Chart of Accounts</MudNavLink>
+        <MudNavLink Href="general-ledger" Icon="@Icons.Material.Filled.FindInPage">General Ledger</MudNavLink>
         <MudNavLink Href="journal-voucher" Icon="@Icons.Material.Filled.PostAdd">Journal Voucher</MudNavLink>
     </MudNavGroup>
 
@@ -35,6 +36,8 @@
     <AuthorizeView Roles="@AppRoles.Admins">
         <MudNavGroup Title="Settings" Icon="@Icons.Material.Filled.Settings">
             <MudNavLink Href="company-setup" Icon="@Icons.Material.Filled.Business">Company Setup</MudNavLink>
+            <MudNavLink Href="currencies" Icon="@Icons.Material.Filled.CurrencyExchange">Currencies</MudNavLink>
+            <MudNavLink Href="tax-configuration" Icon="@Icons.Material.Filled.AccountBalance">Tax Configuration</MudNavLink>
             <AuthorizeView Roles="@AppRoles.FirmAdmin" Context="firm">
                 <MudNavLink Href="companies" Icon="@Icons.Material.Filled.Domain">Companies &amp; Access</MudNavLink>
             </AuthorizeView>

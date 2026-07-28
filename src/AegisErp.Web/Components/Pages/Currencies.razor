@@ -1,0 +1,166 @@
+@page "/currencies"
+@attribute [Authorize(Roles = AppRoles.Admins)]
+@inject CurrencyService CurrencySvc
+@inject CompanyService Companies
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Currencies · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-3">Currency Exchange Rates</MudText>
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Add Currency</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_code" Label="Code (e.g. USD)" MaxLength="3" />
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudTextField @bind-Value="_name" Label="Name" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudNumericField @bind-Value="_rate" Label="@($"Rate vs {_baseCurrency}")" Format="N5" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="Add">Add</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable Items="_rows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null">
+    <HeaderContent>
+        <MudTh>Currency</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh Style="text-align:right">Rate vs @_baseCurrency</MudTh>
+        <MudTh>Last Updated</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh Style="width:60px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace"><b>@context.Code</b></MudTd>
+        <MudTd>@context.Name</MudTd>
+        <MudTd Style="text-align:right">
+            @if (context.IsBase)
+            {
+                <MudText>1.00000</MudText>
+            }
+            else
+            {
+                <MudStack Row="true" Spacing="1" Justify="Justify.FlexEnd" AlignItems="AlignItems.Center">
+                    <MudNumericField T="decimal" Value="RateEdit(context)" ValueChanged="@(v => _rateEdits[context.Id] = v)"
+                                     Format="N5" Margin="Margin.Dense" Style="max-width:110px" />
+                    @if (RateEdit(context) != context.Rate)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => SaveRate(context))" />
+                    }
+                </MudStack>
+            }
+        </MudTd>
+        <MudTd>@(context.IsBase ? "Base Currency" : context.UpdatedAtUtc?.ToString("dd MMM yyyy") ?? "—")</MudTd>
+        <MudTd>
+            @if (context.IsBase)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Text">Base</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                    @(context.IsActive ? "Active" : "Inactive")
+                </MudChip>
+            }
+        </MudTd>
+        <MudTd>
+            @if (!context.IsBase)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                    <MudMenuItem OnClick="@(() => Toggle(context))">@(context.IsActive ? "Deactivate" : "Activate")</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => Delete(context))">Delete</MudMenuItem>
+                </MudMenu>
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private record CurrencyRow(int Id, string Code, string Name, decimal Rate, bool IsActive, DateTime? UpdatedAtUtc, bool IsBase);
+
+    private static readonly Dictionary<string, string> WellKnownNames = new()
+    {
+        ["AED"] = "UAE Dirham", ["USD"] = "US Dollar", ["EUR"] = "Euro",
+        ["GBP"] = "British Pound", ["INR"] = "Indian Rupee",
+    };
+
+    private List<CurrencyRow>? _rows;
+    private readonly Dictionary<int, decimal> _rateEdits = new();
+    private string _baseCurrency = "AED";
+
+    private string _code = "";
+    private string _name = "";
+    private decimal _rate = 1;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        var company = await Companies.GetAsync();
+        _baseCurrency = company.BaseCurrency;
+        var list = await CurrencySvc.GetAllAsync();
+
+        _rows = new List<CurrencyRow>
+        {
+            new(0, _baseCurrency, WellKnownNames.GetValueOrDefault(_baseCurrency, _baseCurrency), 1m, true, null, true)
+        };
+        _rows.AddRange(list.Select(c => new CurrencyRow(c.Id, c.Code, c.Name, c.RateToBase, c.IsActive, c.UpdatedAtUtc, false)));
+        _rateEdits.Clear();
+    }
+
+    private decimal RateEdit(CurrencyRow r) => _rateEdits.TryGetValue(r.Id, out var v) ? v : r.Rate;
+
+    private async Task SaveRate(CurrencyRow r)
+    {
+        try
+        {
+            await CurrencySvc.UpdateRateAsync(r.Id, RateEdit(r));
+            Snackbar.Add($"{r.Code} rate updated.", Severity.Success);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task Add()
+    {
+        var code = _code.Trim().ToUpperInvariant();
+        if (code == _baseCurrency)
+        {
+            Snackbar.Add($"{code} is already the base currency.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            await CurrencySvc.AddAsync(code, string.IsNullOrWhiteSpace(_name) ? WellKnownNames.GetValueOrDefault(code, code) : _name, _rate);
+            Snackbar.Add($"Currency {code} added.", Severity.Success);
+            _code = ""; _name = ""; _rate = 1;
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task Toggle(CurrencyRow r)
+    {
+        await CurrencySvc.SetActiveAsync(r.Id, !r.IsActive);
+        await Load();
+    }
+
+    private async Task Delete(CurrencyRow r)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete currency", $"Delete {r.Code} — {r.Name}?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await CurrencySvc.DeleteAsync(r.Id);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

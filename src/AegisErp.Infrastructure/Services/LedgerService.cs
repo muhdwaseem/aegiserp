@@ -30,16 +30,65 @@ public class LedgerService
     }
 
     private sealed record PostedLine(DateOnly Date, string VoucherNo, string Type, string? Narration,
-        string? CostCenter, int AccountId, decimal Debit, decimal Credit);
+        string? CostCenter, int? CostCenterId, string PostedBy, int AccountId, decimal Debit, decimal Credit);
 
     private static async Task<List<PostedLine>> PostedLinesAsync(AegisDbContext db) =>
         await db.JournalLines.AsNoTracking()
             .Where(l => l.JournalVoucher.Status == VoucherStatus.Posted)
             .Select(l => new PostedLine(
                 l.JournalVoucher.Date, l.JournalVoucher.VoucherNo, l.JournalVoucher.Type.ToString(),
-                l.JournalVoucher.Narration, l.CostCenter != null ? l.CostCenter.Code : null,
+                l.JournalVoucher.Narration, l.CostCenter != null ? l.CostCenter.Code : null, l.CostCenterId,
+                l.JournalVoucher.CreatedBy,
                 l.AccountId, l.Debit, l.Credit))
             .ToListAsync();
+
+    /// <summary>
+    /// All posted entries across every account for a period (the "General Ledger" list view),
+    /// optionally narrowed to one account, one cost center and/or one voucher type. Each row's
+    /// running balance is that row's own account's net position after the entry — mixing rows
+    /// from different accounts does not make the balance column meaningless, since it is always
+    /// scoped to the account the row belongs to.
+    /// </summary>
+    public async Task<GeneralLedgerView> GetGeneralLedgerAsync(
+        int periodId, int? accountId = null, int? costCenterId = null, VoucherType? type = null)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+
+        var lines = await PostedLinesAsync(db);
+        if (accountId is int accId) lines = lines.Where(l => l.AccountId == accId).ToList();
+        if (costCenterId is int ccId) lines = lines.Where(l => l.CostCenterId == ccId).ToList();
+        if (type is VoucherType t) lines = lines.Where(l => l.Type == t.ToString()).ToList();
+
+        // Opening = each account's net position (debit-positive) before the period starts.
+        var running = lines
+            .Where(l => l.Date < period.StartDate)
+            .GroupBy(l => l.AccountId)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Debit - l.Credit));
+        var opening = running.Values.Sum();
+
+        var inPeriod = lines
+            .Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate)
+            .OrderBy(l => l.Date).ThenBy(l => l.VoucherNo)
+            .ToList();
+
+        var rows = new List<GeneralLedgerRow>();
+        decimal totDr = 0, totCr = 0;
+        foreach (var l in inPeriod)
+        {
+            running.TryGetValue(l.AccountId, out var bal);
+            bal += l.Debit - l.Credit;
+            running[l.AccountId] = bal;
+            totDr += l.Debit;
+            totCr += l.Credit;
+            var acc = accounts[l.AccountId];
+            rows.Add(new GeneralLedgerRow(l.Date, l.VoucherNo, l.Type, l.Narration ?? "",
+                acc.Code, acc.Name, l.CostCenter ?? "", l.PostedBy, l.Debit, l.Credit, bal));
+        }
+
+        return new GeneralLedgerView(period.Name, opening, totDr, totCr, opening + totDr - totCr, rows);
+    }
 
     public async Task<AccountLedger> GetAccountLedgerAsync(int accountId, int periodId)
     {

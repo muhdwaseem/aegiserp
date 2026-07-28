@@ -55,6 +55,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<DebitNoteLine> DebitNoteLines => Set<DebitNoteLine>();
     public DbSet<CompanySetup> CompanySetups => Set<CompanySetup>();
     public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
+    public DbSet<Currency> Currencies => Set<Currency>();
+    public DbSet<TaxCode> TaxCodes => Set<TaxCode>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -398,6 +400,24 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(a => a.Currency).HasMaxLength(3);
         });
 
+        b.Entity<Currency>(e =>
+        {
+            e.HasIndex(c => new { c.CompanyId, c.Code }).IsUnique();
+            e.Property(c => c.Code).HasMaxLength(3).IsRequired();
+            e.Property(c => c.Name).HasMaxLength(60).IsRequired();
+            e.Property(c => c.RateToBase).HasPrecision(18, 5);
+        });
+
+        b.Entity<TaxCode>(e =>
+        {
+            e.HasIndex(t => new { t.CompanyId, t.Code }).IsUnique();
+            e.Property(t => t.Code).HasMaxLength(20).IsRequired();
+            e.Property(t => t.Description).HasMaxLength(120).IsRequired();
+            e.Property(t => t.Rate).HasPrecision(5, 2);
+            e.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20);
+            e.HasOne(t => t.GlAccount).WithMany().HasForeignKey(t => t.GlAccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ── Multi-company access ──
         b.Entity<UserCompanyAccess>(e =>
         {
@@ -427,6 +447,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<PurchaseInvoice>(b);
         ConfigureCompanyScope<VendorPayment>(b);
         ConfigureCompanyScope<DebitNote>(b);
+        ConfigureCompanyScope<Currency>(b);
+        ConfigureCompanyScope<TaxCode>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()

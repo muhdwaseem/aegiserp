@@ -52,6 +52,15 @@ public enum DocumentStatus
     Delivered = 6
 }
 
+/// <summary>How a tax code applies: on sales (Output), on purchases (Input), or not at all.</summary>
+public enum TaxCodeKind
+{
+    Output = 1,
+    Input = 2,
+    Exempt = 3,
+    ReverseCharge = 4
+}
+
 public static class AccountTypeExtensions
 {
     /// <summary>Assets and expenses are debit-normal; liabilities, equity and income are credit-normal.</summary>
