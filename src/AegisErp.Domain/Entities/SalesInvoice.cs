@@ -84,6 +84,11 @@ public class SalesInvoiceLine
     public int LineNo { get; set; }
     public string Description { get; set; } = string.Empty;
 
+    /// <summary>The catalog item this line was billed from, if any — used to remember which
+    /// revenue account was last used for this item so it can be pre-filled next time.</summary>
+    public int? ItemId { get; set; }
+    public Item? Item { get; set; }
+
     public int RevenueAccountId { get; set; }
     public Account RevenueAccount { get; set; } = null!;
 

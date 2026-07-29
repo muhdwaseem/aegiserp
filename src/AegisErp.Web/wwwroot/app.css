@@ -2,6 +2,15 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+/* Clickable in-app reference (account code/name, voucher number) that drills into related detail. */
+.gl-link {
+    cursor: pointer;
+    color: var(--mud-palette-primary);
+}
+.gl-link:hover {
+    text-decoration: underline;
+}
+
 a, .btn-link {
     color: #006bb7;
 }

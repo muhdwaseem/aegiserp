@@ -63,7 +63,16 @@
         <MudTd Style="font-family:monospace"><b>@context.Code</b></MudTd>
         <MudTd>@context.Description</MudTd>
         <MudTd Style="text-align:right">@context.Rate.ToString("N2")%</MudTd>
-        <MudTd>@(context.GlAccount is not null ? $"{context.GlAccount.Code} — {context.GlAccount.Name}" : "—")</MudTd>
+        <MudTd>
+            @if (context.GlAccount is not null)
+            {
+                <AccountLink AccountId="context.GlAccount.Id">@context.GlAccount.Code — @context.GlAccount.Name</AccountLink>
+            }
+            else
+            {
+                <text>—</text>
+            }
+        </MudTd>
         <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@KindLabel(context.Kind)</MudChip></MudTd>
         <MudTd>@context.EffectiveFrom.ToString("dd MMM yyyy")</MudTd>
         <MudTd>

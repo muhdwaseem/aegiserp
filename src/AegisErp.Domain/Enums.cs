@@ -35,7 +35,21 @@ public enum VoucherStatus
 {
     Draft = 1,
     Posted = 2,
-    Rejected = 3
+    Void = 3
+}
+
+/// <summary>
+/// Zoho-style display status for a sales invoice. Draft and Void mirror the persisted
+/// <see cref="VoucherStatus"/>; Pending/Overdue/Paid are derived at read time from the due date
+/// and the payments/credit notes applied against the invoice, never stored directly.
+/// </summary>
+public enum ArStatus
+{
+    Draft = 1,
+    Pending = 2,
+    Overdue = 3,
+    Paid = 4,
+    Void = 5
 }
 
 /// <summary>
@@ -59,6 +73,13 @@ public enum TaxCodeKind
     Input = 2,
     Exempt = 3,
     ReverseCharge = 4
+}
+
+/// <summary>Whether an item is a physical good or a billable service.</summary>
+public enum ItemKind
+{
+    Goods = 1,
+    Service = 2
 }
 
 public static class AccountTypeExtensions

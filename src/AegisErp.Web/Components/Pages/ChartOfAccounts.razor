@@ -81,8 +81,26 @@
                                     </span>
                                 }
                             </td>
-                            <td class="code">@a.Code</td>
-                            <td class="name">@a.Name</td>
+                            <td class="code">
+                                @if (a.IsPostable)
+                                {
+                                    <AccountLink AccountId="a.Id">@a.Code</AccountLink>
+                                }
+                                else
+                                {
+                                    @a.Code
+                                }
+                            </td>
+                            <td class="name">
+                                @if (a.IsPostable)
+                                {
+                                    <AccountLink AccountId="a.Id">@a.Name</AccountLink>
+                                }
+                                else
+                                {
+                                    @a.Name
+                                }
+                            </td>
                             <td>@TypeLabel(a.Type)</td>
                             <td class="muted">@(a.Category ?? "—")</td>
                             <td class="muted">@(a.IsPostable ? a.Currency : "")</td>
@@ -227,6 +245,9 @@
     private static string Csv(string? s)
     {
         s ??= "";
+        // Neutralize formula triggers (=, +, -, @, tab, CR) so Excel/LibreOffice/Sheets can't
+        // execute an attacker-controlled account name/category as a formula on open.
+        if (s.Length > 0 && "=+-@\t\r".Contains(s[0])) s = "'" + s;
         return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
     }
 

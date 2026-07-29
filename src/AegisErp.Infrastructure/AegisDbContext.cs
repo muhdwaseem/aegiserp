@@ -57,6 +57,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<TaxCode> TaxCodes => Set<TaxCode>();
+    public DbSet<Item> Items => Set<Item>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -157,6 +158,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Ignore(l => l.Gross);
             e.HasOne(l => l.RevenueAccount).WithMany().HasForeignKey(l => l.RevenueAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.CostCenter).WithMany().HasForeignKey(l => l.CostCenterId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<CustomerReceipt>(e =>
@@ -418,6 +420,22 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasOne(t => t.GlAccount).WithMany().HasForeignKey(t => t.GlAccountId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        b.Entity<Item>(e =>
+        {
+            e.HasIndex(i => new { i.CompanyId, i.Code }).IsUnique();
+            e.Property(i => i.Code).HasMaxLength(20).IsRequired();
+            e.Property(i => i.Name).HasMaxLength(160).IsRequired();
+            e.Property(i => i.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(i => i.Unit).HasMaxLength(20);
+            e.Property(i => i.SellingPrice).HasPrecision(18, 2);
+            e.Property(i => i.CostPrice).HasPrecision(18, 2);
+            e.Property(i => i.SalesDescription).HasMaxLength(300);
+            e.Property(i => i.PurchaseDescription).HasMaxLength(300);
+            e.HasOne(i => i.SalesAccount).WithMany().HasForeignKey(i => i.SalesAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(i => i.PurchaseAccount).WithMany().HasForeignKey(i => i.PurchaseAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(i => i.TaxCode).WithMany().HasForeignKey(i => i.TaxCodeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ── Multi-company access ──
         b.Entity<UserCompanyAccess>(e =>
         {
@@ -449,6 +467,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<DebitNote>(b);
         ConfigureCompanyScope<Currency>(b);
         ConfigureCompanyScope<TaxCode>(b);
+        ConfigureCompanyScope<Item>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()

@@ -98,7 +98,7 @@ else
                 <MudTable Items="_cash" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.None">
                     <HeaderContent><MudTh>Account</MudTh><MudTh Style="text-align:right">Balance (AED)</MudTh></HeaderContent>
                     <RowTemplate>
-                        <MudTd>@context.Name</MudTd>
+                        <MudTd><AccountLink AccountId="context.AccountId">@context.Name</AccountLink></MudTd>
                         <MudTd Style="text-align:right;font-weight:600" Class="mud-success-text">@context.Balance.ToString("N0")</MudTd>
                     </RowTemplate>
                 </MudTable>

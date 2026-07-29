@@ -1,0 +1,296 @@
+@page "/items"
+@attribute [Authorize]
+@inject ItemService ItemSvc
+@inject ChartOfAccountsService Coa
+@inject TaxCodeService TaxCodeSvc
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Items · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">Items</MudText>
+    <MudSpacer />
+    <MudTextField @bind-Value="_search" Placeholder="Search items…" Immediate="true" DebounceInterval="200"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense"
+                  Variant="Variant.Outlined" Style="max-width:260px" Class="mt-0" />
+    <AuthorizeView Roles="@AppRoles.Posters">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNew">New Item</MudButton>
+    </AuthorizeView>
+</MudStack>
+
+@if (_showForm)
+{
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudText Typo="Typo.subtitle1" Class="mb-3">@(_editingId is null ? "New Item" : "Edit Item")</MudText>
+
+        <MudRadioGroup T="ItemKind" @bind-Value="_kind" Class="mb-3">
+            <MudRadio T="ItemKind" Value="ItemKind.Goods" Color="Color.Primary">Goods</MudRadio>
+            <MudRadio T="ItemKind" Value="ItemKind.Service" Color="Color.Primary">Service</MudRadio>
+        </MudRadioGroup>
+
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudTextField Value="@(_editingId is null ? _nextCode : _code)" Label="Item Code" ReadOnly="true" HelperText="Auto-generated" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Item Name" Required="true" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_unit" Label="Unit">
+                    @foreach (var u in Units)
+                    {
+                        <MudSelectItem Value="u">@u</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Sales Information</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal" @bind-Value="_sellingPrice" Label="Selling Price" HideSpinButtons="true" />
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                <MudSelect T="int?" @bind-Value="_salesAccountId" Label="Sales Account (Income)" Clearable="true">
+                    @if (_incomeAccounts is not null)
+                    {
+                        @foreach (var a in _incomeAccounts)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)a.Id)">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_salesDescription" Label="Sales Description" Placeholder="Shown on invoice lines" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">
+            Purchase Information <span class="mud-text-secondary" style="font-weight:400;font-size:12px">(optional)</span>
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal?" @bind-Value="_costPrice" Label="Cost Price" HideSpinButtons="true" />
+            </MudItem>
+            <MudItem xs="12" sm="5">
+                <MudSelect T="int?" @bind-Value="_purchaseAccountId" Label="Purchase Account (Expense)" Clearable="true">
+                    @if (_expenseAccounts is not null)
+                    {
+                        @foreach (var a in _expenseAccounts)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)a.Id)">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_purchaseDescription" Label="Purchase Description" Placeholder="Shown on bill lines" />
+            </MudItem>
+        </MudGrid>
+
+        <MudGrid Class="mt-2">
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int?" @bind-Value="_taxCodeId" Label="Tax Preference" Clearable="true">
+                    <MudSelectItem T="int?" Value="@((int?)null)">Tax Exempt</MudSelectItem>
+                    @if (_taxCodes is not null)
+                    {
+                        @foreach (var t in _taxCodes)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)t.Id)">@t.Code — @t.Rate.ToString("N2")%</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Check" OnClick="Save">Save Item</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="CancelForm">Cancel</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+<MudTable Items="FilteredItems()" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_items is null">
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Type</MudTh>
+        <MudTh>Unit</MudTh>
+        <MudTh Style="text-align:right">Selling Price</MudTh>
+        <MudTh Style="text-align:right">Cost Price</MudTh>
+        <MudTh>Sales Account</MudTh>
+        <MudTh>Tax</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh Style="width:60px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace">@context.Code</MudTd>
+        <MudTd>@context.Name</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@(context.Kind == ItemKind.Goods ? Color.Info : Color.Secondary)">
+                @context.Kind
+            </MudChip>
+        </MudTd>
+        <MudTd>@context.Unit</MudTd>
+        <MudTd Style="text-align:right">@context.SellingPrice.ToString("N2")</MudTd>
+        <MudTd Style="text-align:right">@(context.CostPrice is decimal cp ? cp.ToString("N2") : "—")</MudTd>
+        <MudTd>
+            @if (context.SalesAccount is not null)
+            {
+                <AccountLink AccountId="context.SalesAccount.Id">@context.SalesAccount.Code — @context.SalesAccount.Name</AccountLink>
+            }
+            else
+            {
+                <text>—</text>
+            }
+        </MudTd>
+        <MudTd>@(context.TaxCode is not null ? $"{context.TaxCode.Code} ({context.TaxCode.Rate:N2}%)" : "Exempt")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                @(context.IsActive ? "Active" : "Inactive")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                    <MudMenuItem OnClick="@(() => OpenEdit(context))">Edit</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => Toggle(context))">@(context.IsActive ? "Deactivate" : "Activate")</MudMenuItem>
+                    <MudMenuItem OnClick="@(() => Delete(context))">Delete</MudMenuItem>
+                </MudMenu>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No items yet — add the goods or services you sell or purchase regularly.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private static readonly string[] Units = { "unit", "hrs", "pcs", "box", "kg", "ltr", "day", "month" };
+
+    private List<Item>? _items;
+    private List<Account>? _incomeAccounts;
+    private List<Account>? _expenseAccounts;
+    private List<TaxCode>? _taxCodes;
+    private string _search = "";
+
+    private bool _showForm;
+    private int? _editingId;
+    private string _nextCode = "";
+    private string _code = "";
+    private string _name = "";
+    private ItemKind _kind = ItemKind.Service;
+    private string _unit = "unit";
+    private decimal _sellingPrice;
+    private int? _salesAccountId;
+    private string? _salesDescription;
+    private decimal? _costPrice;
+    private int? _purchaseAccountId;
+    private string? _purchaseDescription;
+    private int? _taxCodeId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _incomeAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
+        _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense).ToList();
+        _taxCodes = (await TaxCodeSvc.GetAllAsync()).Where(t => t.IsActive).ToList();
+        await Load();
+    }
+
+    private async Task Load() => _items = await ItemSvc.GetAllAsync();
+
+    private IEnumerable<Item> FilteredItems()
+    {
+        if (_items is null) return Enumerable.Empty<Item>();
+        if (string.IsNullOrWhiteSpace(_search)) return _items;
+        var q = _search.Trim();
+        return _items.Where(i =>
+            i.Code.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+            i.Name.Contains(q, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task OpenNew()
+    {
+        ResetForm();
+        _nextCode = await ItemSvc.PeekNextCodeAsync();
+        _showForm = true;
+    }
+
+    private void OpenEdit(Item i)
+    {
+        _editingId = i.Id;
+        _code = i.Code;
+        _name = i.Name;
+        _kind = i.Kind;
+        _unit = i.Unit;
+        _sellingPrice = i.SellingPrice;
+        _salesAccountId = i.SalesAccountId;
+        _salesDescription = i.SalesDescription;
+        _costPrice = i.CostPrice;
+        _purchaseAccountId = i.PurchaseAccountId;
+        _purchaseDescription = i.PurchaseDescription;
+        _taxCodeId = i.TaxCodeId;
+        _showForm = true;
+    }
+
+    private void CancelForm() { _showForm = false; ResetForm(); }
+
+    private void ResetForm()
+    {
+        _editingId = null;
+        _name = ""; _kind = ItemKind.Service; _unit = "unit";
+        _sellingPrice = 0; _salesAccountId = null; _salesDescription = null;
+        _costPrice = null; _purchaseAccountId = null; _purchaseDescription = null;
+        _taxCodeId = null;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var input = new NewItemInput(_name, _kind, _unit, _sellingPrice, _salesAccountId, _salesDescription,
+                _costPrice, _purchaseAccountId, _purchaseDescription, _taxCodeId);
+
+            if (_editingId is int id)
+            {
+                await ItemSvc.UpdateAsync(id, input);
+                Snackbar.Add("Item updated.", Severity.Success);
+            }
+            else
+            {
+                var created = await ItemSvc.CreateAsync(input);
+                Snackbar.Add($"Item {created.Code} created.", Severity.Success);
+            }
+
+            _showForm = false;
+            ResetForm();
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Toggle(Item i)
+    {
+        await ItemSvc.SetActiveAsync(i.Id, !i.IsActive);
+        await Load();
+    }
+
+    private async Task Delete(Item i)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete item", $"Delete {i.Code} — {i.Name}?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await ItemSvc.DeleteAsync(i.Id);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

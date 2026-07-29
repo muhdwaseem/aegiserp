@@ -22,6 +22,16 @@ public class PurchaseInvoiceService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>Every invoice, for the invoice list page.</summary>
+    public async Task<List<PurchaseInvoice>> GetAllAsync()
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.PurchaseInvoices.AsNoTracking()
+            .Include(i => i.Vendor).Include(i => i.Lines).Include(i => i.JournalVoucher)
+            .OrderByDescending(i => i.Date).ThenByDescending(i => i.Id)
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Creates and posts a purchase invoice in one transaction: the invoice, its lines and the
     /// generated GL voucher (Dr expense/asset net per line / Dr VAT input / Cr AP gross) are

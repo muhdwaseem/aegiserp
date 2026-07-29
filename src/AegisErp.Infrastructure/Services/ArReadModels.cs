@@ -1,3 +1,6 @@
+using AegisErp.Domain;
+using AegisErp.Domain.Entities;
+
 namespace AegisErp.Infrastructure.Services;
 
 /// <summary>A customer with its subledger position (posted documents only).</summary>
@@ -21,3 +24,7 @@ public record AgingRow(
 
 /// <summary>A posted invoice with money still owing (for receipt allocation pickers).</summary>
 public record OpenInvoice(int Id, string InvoiceNo, DateOnly Date, DateOnly DueDate, decimal Gross, decimal Outstanding);
+
+/// <summary>A sales invoice for the list page, with its Zoho-style display status and remaining
+/// balance computed from payments/credit notes applied — for the invoice list and its status filter.</summary>
+public record SalesInvoiceRow(SalesInvoice Invoice, decimal Balance, ArStatus Status);

@@ -71,7 +71,7 @@
                 @foreach (var l in lines)
                 {
                     <tr>
-                        <td><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@l.Code</span> @l.Name</td>
+                        <td><AccountLink AccountId="l.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@l.Code</span> @l.Name</AccountLink></td>
                         <td class="amt">@l.Amount.ToString("N2")</td>
                     </tr>
                 }

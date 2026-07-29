@@ -1,16 +1,29 @@
 @page "/general-ledger"
 @attribute [Authorize]
+@using System.Text
 @inject LedgerService Ledger
 @inject ChartOfAccountsService Coa
+@inject IJSRuntime JS
 
 <PageTitle>General Ledger · Aegis ERP</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-3">General Ledger</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudText Typo="Typo.h5">General Ledger</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.GridOn" OnClick="ExportExcel">Excel</MudButton>
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PictureAsPdf" OnClick="ExportPdf">PDF</MudButton>
+</MudStack>
 
-<MudPaper Class="pa-3 mb-4" Elevation="1">
+<MudPaper Class="pa-3 mb-4" Elevation="1" id="gl-print-hide">
     <MudGrid>
-        <MudItem xs="12" sm="6" md="4">
-            <MudSelect T="int?" Value="_accountId" ValueChanged="OnAccountChanged" Label="Account" Dense="true" Clearable="true">
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker @bind-Date="_fromDate" Label="From" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2">
+            <MudDatePicker @bind-Date="_toDate" Label="To" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="int?" @bind-Value="_accountId" Label="Account" Dense="true" Clearable="true">
                 <MudSelectItem T="int?" Value="@((int?)null)">— All Accounts —</MudSelectItem>
                 @if (_accounts is not null)
                 {
@@ -22,18 +35,7 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="6" md="3">
-            <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="Period" Dense="true">
-                @if (_periods is not null)
-                {
-                    @foreach (var p in _periods)
-                    {
-                        <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
-                    }
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudSelect T="int?" Value="_costCenterId" ValueChanged="OnCostCenterChanged" Label="Cost Center" Dense="true" Clearable="true">
+            <MudSelect T="int?" @bind-Value="_costCenterId" Label="Cost Center" Dense="true" Clearable="true">
                 <MudSelectItem T="int?" Value="@((int?)null)">All Cost Centers</MudSelectItem>
                 @if (_costCenters is not null)
                 {
@@ -45,7 +47,7 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="6" md="2">
-            <MudSelect T="VoucherType?" Value="_type" ValueChanged="OnTypeChanged" Label="Type" Dense="true" Clearable="true">
+            <MudSelect T="VoucherType?" @bind-Value="_type" Label="Type" Dense="true" Clearable="true">
                 <MudSelectItem T="VoucherType?" Value="@((VoucherType?)null)">All Types</MudSelectItem>
                 @foreach (var t in Enum.GetValues<VoucherType>())
                 {
@@ -53,9 +55,13 @@
                 }
             </MudSelect>
         </MudItem>
+        <MudItem xs="12" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="Load">Run</MudButton>
+        </MudItem>
     </MudGrid>
 </MudPaper>
 
+<div id="gl-print">
 @if (_view is not null)
 {
     <MudStack Row="true" Spacing="4" Class="mb-3" Wrap="Wrap.Wrap">
@@ -75,7 +81,8 @@
             <MudTh>Voucher</MudTh>
             <MudTh>Type</MudTh>
             <MudTh>Narration</MudTh>
-            <MudTh>Account</MudTh>
+            <MudTh>Account No.</MudTh>
+            <MudTh>Account Name</MudTh>
             <MudTh>Cost Ctr</MudTh>
             <MudTh Style="text-align:right">Debit</MudTh>
             <MudTh Style="text-align:right">Credit</MudTh>
@@ -85,10 +92,13 @@
         </HeaderContent>
         <RowTemplate>
             <MudTd DataLabel="Date">@context.Date.ToString("yyyy-MM-dd")</MudTd>
-            <MudTd DataLabel="Voucher" Style="font-family:monospace">@context.VoucherNo</MudTd>
+            <MudTd DataLabel="Voucher" Style="font-family:monospace">
+                <span class="gl-link" @onclick="() => DrillVoucher(context.VoucherNo)" @onclick:stopPropagation="true">@context.VoucherNo</span>
+            </MudTd>
             <MudTd DataLabel="Type"><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@context.Type</MudChip></MudTd>
             <MudTd DataLabel="Narration">@context.Narration</MudTd>
-            <MudTd DataLabel="Account">@context.AccountCode — @context.AccountName</MudTd>
+            <MudTd DataLabel="Account No." Style="font-family:monospace"><AccountLink AccountId="context.AccountId" OnClick="FilterToAccount">@context.AccountCode</AccountLink></MudTd>
+            <MudTd DataLabel="Account Name"><AccountLink AccountId="context.AccountId" OnClick="FilterToAccount">@context.AccountName</AccountLink></MudTd>
             <MudTd DataLabel="Cost Ctr">@context.CostCenter</MudTd>
             <MudTd DataLabel="Debit" Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "—")</MudTd>
             <MudTd DataLabel="Credit" Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
@@ -101,36 +111,76 @@
         </NoRecordsContent>
     </MudTable>
 }
+</div>
 
 @code {
     private List<Account>? _accounts;
-    private List<FiscalPeriod>? _periods;
     private List<CostCenter>? _costCenters;
     private int? _accountId;
-    private int _periodId;
     private int? _costCenterId;
     private VoucherType? _type;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
     private string _search = "";
     private GeneralLedgerView? _view;
+
+    [SupplyParameterFromQuery(Name = "accountId")]
+    [Parameter]
+    public int? QueryAccountId { get; set; }
+
+    private int? _lastQueryAccountId;
 
     protected override async Task OnInitializedAsync()
     {
         _accounts = await Coa.GetAllAsync(postableOnly: true);
-        _periods = await Ledger.GetPeriodsAsync();
         _costCenters = await Coa.GetCostCentersAsync();
-        _periodId = _periods.LastOrDefault()?.Id ?? 0;
+
+        var periods = await Ledger.GetPeriodsAsync();
+        var latest = periods.LastOrDefault();
+        _fromDate = latest?.StartDate.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today.AddDays(-30);
+        _toDate = latest?.EndDate.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
+
+        _accountId = QueryAccountId;
+        _lastQueryAccountId = QueryAccountId;
         await Load();
     }
 
-    private async Task OnAccountChanged(int? id) { _accountId = id; await Load(); }
-    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
-    private async Task OnCostCenterChanged(int? id) { _costCenterId = id; await Load(); }
-    private async Task OnTypeChanged(VoucherType? t) { _type = t; await Load(); }
+    protected override async Task OnParametersSetAsync()
+    {
+        // Drives the "open in ledger" link from Chart of Accounts: navigating here again with a
+        // different ?accountId while already on this page only re-runs this, not OnInitialized.
+        if (QueryAccountId != _lastQueryAccountId)
+        {
+            _lastQueryAccountId = QueryAccountId;
+            _accountId = QueryAccountId;
+            await Load();
+        }
+    }
 
     private async Task Load()
     {
-        if (_periodId > 0)
-            _view = await Ledger.GetGeneralLedgerAsync(_periodId, _accountId, _costCenterId, _type);
+        if (_fromDate is null || _toDate is null) return;
+        var from = DateOnly.FromDateTime(_fromDate.Value);
+        var to = DateOnly.FromDateTime(_toDate.Value);
+        _view = await Ledger.GetGeneralLedgerAsync(from, to, _accountId, _costCenterId, _type);
+    }
+
+    // Clears the account filter (so both legs of the entry are visible, whichever accounts they
+    // hit) and searches for this voucher — a same-page drill-down rather than a separate viewer.
+    private async Task DrillVoucher(string voucherNo)
+    {
+        _accountId = null;
+        _search = voucherNo;
+        await Load();
+    }
+
+    // Clicking an account within the ledger's own rows narrows the filter in place — a direct
+    // state change rather than a URL round-trip, since we're already on this page.
+    private async Task FilterToAccount(int accountId)
+    {
+        _accountId = accountId;
+        _search = "";
+        await Load();
     }
 
     private IEnumerable<GeneralLedgerRow> FilteredRows()
@@ -149,6 +199,29 @@
     // because "All Accounts" mixes accounts that don't share the same normal balance.
     private static string BalanceText(decimal bal) => (bal >= 0 ? "Dr " : "Cr ") + Math.Abs(bal).ToString("N2");
 
+    private async Task ExportExcel()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Date,Voucher,Type,Narration,Account No,Account Name,Cost Center,Debit,Credit,Balance,Posted By");
+        foreach (var r in FilteredRows())
+            sb.AppendLine(string.Join(",",
+                r.Date.ToString("yyyy-MM-dd"), Csv(r.VoucherNo), Csv(r.Type), Csv(r.Narration),
+                Csv(r.AccountCode), Csv(r.AccountName), Csv(r.CostCenter),
+                r.Debit.ToString("F2"), r.Credit.ToString("F2"), r.RunningBalance.ToString("F2"), Csv(r.PostedBy)));
+        await JS.InvokeVoidAsync("aegisDownload", "general-ledger.csv", sb.ToString(), "text/csv");
+    }
+
+    private async Task ExportPdf() => await JS.InvokeVoidAsync("print");
+
+    private static string Csv(string? s)
+    {
+        s ??= "";
+        // Neutralize formula triggers (=, +, -, @, tab, CR) so Excel/LibreOffice/Sheets can't
+        // execute an attacker-controlled narration/account name as a formula on open.
+        if (s.Length > 0 && "=+-@\t\r".Contains(s[0])) s = "'" + s;
+        return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+    }
+
     private RenderFragment SummaryCard(string Label, string Value, bool Bold = false) => __builder =>
     {
         <MudPaper Class="pa-3" Elevation="0" Style="min-width:150px;border:1px solid var(--mud-palette-lines-default)">
@@ -157,3 +230,10 @@
         </MudPaper>
     };
 }
+
+<style>
+    @@media print {
+        .mud-appbar, .mud-drawer, #gl-print-hide { display:none !important; }
+        .mud-main-content { padding:0 !important; }
+    }
+</style>

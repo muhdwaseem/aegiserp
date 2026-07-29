@@ -1,0 +1,21 @@
+@* Clickable account reference — drills into that account's General Ledger. Used anywhere an
+   account code/name is displayed (Chart of Accounts, Trial Balance, P&L, Balance Sheet, etc.)
+   so every account reference in the app leads to the same place. When the page itself is the
+   General Ledger, pass OnClick to filter in place instead of round-tripping through the URL. *@
+@inject NavigationManager Nav
+
+<span class="gl-link" @onclick="Go" @onclick:stopPropagation="true">@ChildContent</span>
+
+@code {
+    [Parameter, EditorRequired] public int AccountId { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<int> OnClick { get; set; }
+
+    private async Task Go()
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(AccountId);
+        else
+            Nav.NavigateTo($"/general-ledger?accountId={AccountId}");
+    }
+}

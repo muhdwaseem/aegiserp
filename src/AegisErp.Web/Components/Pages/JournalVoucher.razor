@@ -109,9 +109,17 @@
                Disabled="@(!IsBalanced || _posting)" OnClick="Post">Post Voucher</MudButton>
 </MudStack>
 
-@if (_recent is not null && _recent.Count > 0)
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <MudText Typo="Typo.subtitle1">@(_showAllPostings ? "Recent postings (all types)" : "Recent journal vouchers")</MudText>
+    <MudSpacer />
+    <MudButton Size="Size.Small" Variant="Variant.Text"
+               StartIcon="@(_showAllPostings ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+               OnClick="ToggleShowAll">
+        @(_showAllPostings ? "Journal vouchers only" : "Show all postings")
+    </MudButton>
+</MudStack>
+@if (_recent is not null)
 {
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent vouchers</MudText>
     <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true">
         <HeaderContent>
             <MudTh>Voucher</MudTh>
@@ -129,6 +137,11 @@
             <MudTd Style="text-align:right">@context.TotalDebit.ToString("N2")</MudTd>
             <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">@context.Status</MudChip></MudTd>
         </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4 mud-text-secondary">
+                @(_showAllPostings ? "No postings yet." : "No journal vouchers yet. Invoices, receipts and payments post here too — click \"Show all postings\" to see them.")
+            </MudText>
+        </NoRecordsContent>
     </MudTable>
 }
 
@@ -137,6 +150,7 @@
     private List<CostCenter>? _costCenters;
     private List<FiscalPeriod>? _periods;
     private List<AegisErp.Domain.Entities.JournalVoucher>? _recent;
+    private bool _showAllPostings;
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
@@ -162,9 +176,15 @@
         _periods = await Ledger.GetPeriodsAsync();
         _date = DateTime.Today;
         SyncPeriodToDate();
-        _recent = await Journal.GetRecentAsync(8);
+        _recent = await Journal.GetRecentAsync(8, VoucherType.Journal);
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
+    }
+
+    private async Task ToggleShowAll()
+    {
+        _showAllPostings = !_showAllPostings;
+        _recent = await Journal.GetRecentAsync(8, _showAllPostings ? null : VoucherType.Journal);
     }
 
     // Keep the period aligned with the chosen date (posting validates date ∈ period).
@@ -201,7 +221,7 @@
             Snackbar.Add($"Posted {v.VoucherNo}.", Severity.Success);
             _lines.Clear(); _lines.Add(new()); _lines.Add(new());
             _narration = _reference = null;
-            _recent = await Journal.GetRecentAsync(8);
+            _recent = await Journal.GetRecentAsync(8, _showAllPostings ? null : VoucherType.Journal);
         }
         catch (PostingException ex)
         {

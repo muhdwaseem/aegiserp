@@ -9,12 +9,17 @@ public class JournalService
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     public JournalService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
 
-    public async Task<List<JournalVoucher>> GetRecentAsync(int take = 50)
+    /// <summary>
+    /// Recent postings to the GL. Every posted document creates a row here — invoices, receipts,
+    /// payments, credit/debit notes and journal entries alike — so pass <paramref name="type"/>
+    /// to narrow to just one kind (e.g. the Journal Voucher page's own entries).
+    /// </summary>
+    public async Task<List<JournalVoucher>> GetRecentAsync(int take = 50, VoucherType? type = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        return await db.JournalVouchers.AsNoTracking()
-            .Include(v => v.Lines)
-            .OrderByDescending(v => v.Date).ThenByDescending(v => v.Id)
+        var q = db.JournalVouchers.AsNoTracking().Include(v => v.Lines).AsQueryable();
+        if (type is VoucherType t) q = q.Where(v => v.Type == t);
+        return await q.OrderByDescending(v => v.Date).ThenByDescending(v => v.Id)
             .Take(take).ToListAsync();
     }
 

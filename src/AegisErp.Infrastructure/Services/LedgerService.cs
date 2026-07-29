@@ -50,10 +50,9 @@ public class LedgerService
     /// scoped to the account the row belongs to.
     /// </summary>
     public async Task<GeneralLedgerView> GetGeneralLedgerAsync(
-        int periodId, int? accountId = null, int? costCenterId = null, VoucherType? type = null)
+        DateOnly fromDate, DateOnly toDate, int? accountId = null, int? costCenterId = null, VoucherType? type = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
         var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
 
         var lines = await PostedLinesAsync(db);
@@ -61,21 +60,21 @@ public class LedgerService
         if (costCenterId is int ccId) lines = lines.Where(l => l.CostCenterId == ccId).ToList();
         if (type is VoucherType t) lines = lines.Where(l => l.Type == t.ToString()).ToList();
 
-        // Opening = each account's net position (debit-positive) before the period starts.
+        // Opening = each account's net position (debit-positive) before the range starts.
         var running = lines
-            .Where(l => l.Date < period.StartDate)
+            .Where(l => l.Date < fromDate)
             .GroupBy(l => l.AccountId)
             .ToDictionary(g => g.Key, g => g.Sum(l => l.Debit - l.Credit));
         var opening = running.Values.Sum();
 
-        var inPeriod = lines
-            .Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate)
+        var inRange = lines
+            .Where(l => l.Date >= fromDate && l.Date <= toDate)
             .OrderBy(l => l.Date).ThenBy(l => l.VoucherNo)
             .ToList();
 
         var rows = new List<GeneralLedgerRow>();
         decimal totDr = 0, totCr = 0;
-        foreach (var l in inPeriod)
+        foreach (var l in inRange)
         {
             running.TryGetValue(l.AccountId, out var bal);
             bal += l.Debit - l.Credit;
@@ -83,11 +82,12 @@ public class LedgerService
             totDr += l.Debit;
             totCr += l.Credit;
             var acc = accounts[l.AccountId];
-            rows.Add(new GeneralLedgerRow(l.Date, l.VoucherNo, l.Type, l.Narration ?? "",
+            rows.Add(new GeneralLedgerRow(l.Date, l.VoucherNo, l.Type, l.Narration ?? "", acc.Id,
                 acc.Code, acc.Name, l.CostCenter ?? "", l.PostedBy, l.Debit, l.Credit, bal));
         }
 
-        return new GeneralLedgerView(period.Name, opening, totDr, totCr, opening + totDr - totCr, rows);
+        var rangeLabel = $"{fromDate:dd MMM yyyy} – {toDate:dd MMM yyyy}";
+        return new GeneralLedgerView(rangeLabel, opening, totDr, totCr, opening + totDr - totCr, rows);
     }
 
     public async Task<AccountLedger> GetAccountLedgerAsync(int accountId, int periodId)
@@ -137,7 +137,7 @@ public class LedgerService
             {
                 var acc = accounts[g.Key];
                 var net = g.Sum(l => l.Debit - l.Credit); // signed, debit-positive
-                return new TrialBalanceRow(acc.Code, acc.Name,
+                return new TrialBalanceRow(acc.Id, acc.Code, acc.Name,
                     net > 0 ? net : 0m, net < 0 ? -net : 0m);
             })
             .Where(r => r.Debit != 0 || r.Credit != 0)
@@ -212,7 +212,7 @@ public class LedgerService
         var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= end).ToList();
 
         return accounts
-            .Select(a => new CashBalance(a.Code, a.Name, lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)))
+            .Select(a => new CashBalance(a.Id, a.Code, a.Name, lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)))
             .OrderByDescending(c => c.Balance)
             .ToList();
     }
@@ -233,7 +233,7 @@ public class LedgerService
                     var forAcct = lines.Where(l => l.AccountId == a.Id);
                     var period_ = sign * forAcct.Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate).Sum(l => l.Debit - l.Credit);
                     var ytd = sign * forAcct.Where(l => l.Date <= period.EndDate).Sum(l => l.Debit - l.Credit);
-                    return new PnlLine(a.Code, a.Name, period_, ytd);
+                    return new PnlLine(a.Id, a.Code, a.Name, period_, ytd);
                 })
                 .Where(l => l.Period != 0 || l.Ytd != 0)
                 .OrderBy(l => l.Code)
@@ -257,7 +257,7 @@ public class LedgerService
 
         List<BsLine> Build(AccountType type, decimal sign) =>
             accounts.Values.Where(a => a.Type == type)
-                .Select(a => new BsLine(a.Code, a.Name,
+                .Select(a => new BsLine(a.Id, a.Code, a.Name,
                     sign * lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)))
                 .Where(l => l.Amount != 0)
                 .OrderBy(l => l.Code)

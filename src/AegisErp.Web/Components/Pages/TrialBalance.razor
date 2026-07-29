@@ -37,8 +37,8 @@
             <MudTh Style="text-align:right">Credit</MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd Style="font-family:monospace">@context.Code</MudTd>
-            <MudTd>@context.Name</MudTd>
+            <MudTd Style="font-family:monospace"><AccountLink AccountId="context.AccountId">@context.Code</AccountLink></MudTd>
+            <MudTd><AccountLink AccountId="context.AccountId">@context.Name</AccountLink></MudTd>
             <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
             <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
         </RowTemplate>

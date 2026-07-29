@@ -72,8 +72,11 @@ else
                     </MudItem>
                     <MudItem xs="12" sm="4">@DateField("Registration Date", () => _c.RegistrationDate, v => _c.RegistrationDate = v)</MudItem>
                     <MudItem xs="12" sm="4">@DateField("License Expiry Date", () => _c.LicenseExpiryDate, v => _c.LicenseExpiryDate = v)</MudItem>
-                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.Country" Label="Country" /></MudItem>
-                    <MudItem xs="12" sm="4">@EmirateSelect("Emirate", () => _c.Emirate, v => _c.Emirate = v)</MudItem>
+                    <MudItem xs="12" sm="4">@CountrySelect("Country", () => _c.Country, SetCountry)</MudItem>
+                    @if (IsUae(_c.Country))
+                    {
+                        <MudItem xs="12" sm="4">@EmirateSelect("Emirate", () => _c.Emirate, v => _c.Emirate = v)</MudItem>
+                    }
                     <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.PlaceOfIncorporation" Label="Place of Incorporation" /></MudItem>
                     <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.IsFreeZone" Label="Free Zone Entity" Color="Color.Primary" /></MudItem>
                     @if (_c.IsFreeZone)
@@ -131,9 +134,12 @@ else
                     <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.AddressLine1" Label="Address Line 1" /></MudItem>
                     <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.AddressLine2" Label="Address Line 2" /></MudItem>
                     <MudItem xs="12" sm="3"><MudTextField @bind-Value="_c.City" Label="City" /></MudItem>
-                    <MudItem xs="12" sm="3">@EmirateSelect("Emirate", () => _c.AddressEmirate, v => _c.AddressEmirate = v)</MudItem>
+                    @if (IsUae(_c.AddressCountry))
+                    {
+                        <MudItem xs="12" sm="3">@EmirateSelect("Emirate", () => _c.AddressEmirate, v => _c.AddressEmirate = v)</MudItem>
+                    }
                     <MudItem xs="12" sm="2"><MudTextField @bind-Value="_c.POBox" Label="PO Box" /></MudItem>
-                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.AddressCountry" Label="Country" /></MudItem>
+                    <MudItem xs="12" sm="4">@CountrySelect("Country", () => _c.AddressCountry, SetAddressCountry)</MudItem>
                     <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.Phone" Label="Phone Number" /></MudItem>
                     <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.Fax" Label="Fax Number" /></MudItem>
                 </MudGrid>
@@ -145,9 +151,12 @@ else
                         <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.BillingAddressLine1" Label="Billing Address Line 1" /></MudItem>
                         <MudItem xs="12" sm="6"><MudTextField @bind-Value="_c.BillingAddressLine2" Label="Billing Address Line 2" /></MudItem>
                         <MudItem xs="12" sm="3"><MudTextField @bind-Value="_c.BillingCity" Label="City" /></MudItem>
-                        <MudItem xs="12" sm="3">@EmirateSelect("Emirate", () => _c.BillingEmirate, v => _c.BillingEmirate = v)</MudItem>
+                        @if (IsUae(_c.BillingCountry))
+                        {
+                            <MudItem xs="12" sm="3">@EmirateSelect("Emirate", () => _c.BillingEmirate, v => _c.BillingEmirate = v)</MudItem>
+                        }
                         <MudItem xs="12" sm="2"><MudTextField @bind-Value="_c.BillingPOBox" Label="PO Box" /></MudItem>
-                        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.BillingCountry" Label="Country" /></MudItem>
+                        <MudItem xs="12" sm="4">@CountrySelect("Country", () => _c.BillingCountry, SetBillingCountry)</MudItem>
                     </MudGrid>
                 }
             </MudTabPanel>
@@ -294,8 +303,8 @@ else
         var yearStart = new DateOnly(DateTime.Today.Year, 1, 1);
         return new CompanySetup
         {
-            Country = "UAE",
-            AddressCountry = "UAE",
+            Country = "United Arab Emirates",
+            AddressCountry = "United Arab Emirates",
             AccountingMethod = "Accrual",
             FiscalYear = "Jan–Dec",
             BaseCurrency = "AED",
@@ -374,6 +383,31 @@ else
             }
         </MudSelect>
     };
+
+    // Autocomplete rather than a plain dropdown — 190+ countries is too long a list to scroll.
+    private RenderFragment CountrySelect(string label, Func<string?> get, Action<string?> set) => __builder =>
+    {
+        <MudAutocomplete T="string" Label="@label" Value="get()" ValueChanged="set"
+                         SearchFunc="SearchCountries" ToStringFunc="@(c => c ?? "")"
+                         Clearable="true" ResetValueOnEmptyText="true" CoerceText="false" />
+    };
+
+    private static Task<IEnumerable<string>> SearchCountries(string? value, CancellationToken ct)
+    {
+        var q = value?.Trim() ?? "";
+        var matches = string.IsNullOrEmpty(q)
+            ? Countries.All
+            : Countries.All.Where(c => c.Contains(q, StringComparison.OrdinalIgnoreCase)).ToArray();
+        return Task.FromResult<IEnumerable<string>>(matches);
+    }
+
+    // Emirates only make sense for a UAE address, so the Emirate field is hidden — and cleared —
+    // for any other country. "UAE" also matches records saved before the country list existed.
+    private static bool IsUae(string? country) => country is "United Arab Emirates" or "UAE";
+
+    private void SetCountry(string? v) { _c!.Country = v; if (!IsUae(v)) _c.Emirate = null; }
+    private void SetAddressCountry(string? v) { _c!.AddressCountry = v; if (!IsUae(v)) _c.AddressEmirate = null; }
+    private void SetBillingCountry(string? v) { _c!.BillingCountry = v; if (!IsUae(v)) _c.BillingEmirate = null; }
 
     private RenderFragment CurrencySelect(string label, Func<string?> get, Action<string?> set) => __builder =>
     {

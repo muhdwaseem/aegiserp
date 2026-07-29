@@ -28,7 +28,7 @@
                 <MudTh Style="text-align:right">YTD</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</MudTd>
+                <MudTd><AccountLink AccountId="context.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</AccountLink></MudTd>
                 <MudTd Style="text-align:right" Class="mud-success-text">@context.Period.ToString("N2")</MudTd>
                 <MudTd Style="text-align:right" Class="mud-success-text">@context.Ytd.ToString("N2")</MudTd>
             </RowTemplate>
@@ -48,7 +48,7 @@
                 <MudTh Style="text-align:right">YTD</MudTh>
             </HeaderContent>
             <RowTemplate>
-                <MudTd><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</MudTd>
+                <MudTd><AccountLink AccountId="context.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</AccountLink></MudTd>
                 <MudTd Style="text-align:right" Class="mud-error-text">@context.Period.ToString("N2")</MudTd>
                 <MudTd Style="text-align:right" Class="mud-error-text">@context.Ytd.ToString("N2")</MudTd>
             </RowTemplate>

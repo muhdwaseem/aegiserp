@@ -18,7 +18,7 @@ public class CompanySetup
     public string? LicenseType { get; set; }                   // LLC / FZE / Sole Establishment
     public DateOnly? RegistrationDate { get; set; }            // *
     public DateOnly? LicenseExpiryDate { get; set; }
-    public string Country { get; set; } = "UAE";
+    public string? Country { get; set; } = "United Arab Emirates";
     public string? Emirate { get; set; }
     public string? PlaceOfIncorporation { get; set; }
     public bool IsFreeZone { get; set; }
@@ -46,7 +46,7 @@ public class CompanySetup
     public string? City { get; set; }
     public string? AddressEmirate { get; set; }
     public string? POBox { get; set; }
-    public string? AddressCountry { get; set; } = "UAE";
+    public string? AddressCountry { get; set; } = "United Arab Emirates";
     public string? Phone { get; set; }
     public string? Fax { get; set; }
 

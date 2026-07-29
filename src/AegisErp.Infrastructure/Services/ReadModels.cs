@@ -34,6 +34,7 @@ public record GeneralLedgerRow(
     string VoucherNo,
     string Type,
     string Narration,
+    int AccountId,
     string AccountCode,
     string AccountName,
     string CostCenter,
@@ -51,7 +52,7 @@ public record GeneralLedgerView(
     IReadOnlyList<GeneralLedgerRow> Rows);
 
 /// <summary>One line of a trial balance: an account with its net debit/credit position.</summary>
-public record TrialBalanceRow(string Code, string Name, decimal Debit, decimal Credit);
+public record TrialBalanceRow(int AccountId, string Code, string Name, decimal Debit, decimal Credit);
 
 public record TrialBalance(
     string Period,
@@ -63,7 +64,7 @@ public record TrialBalance(
 }
 
 /// <summary>One revenue or expense line on the P&amp;L, with period and year-to-date figures.</summary>
-public record PnlLine(string Code, string Name, decimal Period, decimal Ytd);
+public record PnlLine(int AccountId, string Code, string Name, decimal Period, decimal Ytd);
 
 public record ProfitAndLoss(
     string PeriodName,
@@ -77,7 +78,7 @@ public record ProfitAndLoss(
 }
 
 /// <summary>One line on the balance sheet (account balance in its natural positive sense).</summary>
-public record BsLine(string Code, string Name, decimal Amount);
+public record BsLine(int AccountId, string Code, string Name, decimal Amount);
 
 public record BalanceSheet(
     string AsOf,
@@ -107,7 +108,7 @@ public record DashboardKpis(
 public record PeriodSeries(string[] Labels, double[] Revenue, double[] Expense);
 
 /// <summary>A cash/bank account with its current balance, for the dashboard.</summary>
-public record CashBalance(string Code, string Name, decimal Balance);
+public record CashBalance(int AccountId, string Code, string Name, decimal Balance);
 
 /// <summary>Input line used when creating/posting a voucher from the UI.</summary>
 public record VoucherLineInput(int AccountId, int? CostCenterId, string? Description, decimal Debit, decimal Credit);

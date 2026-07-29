@@ -43,8 +43,8 @@ public class JournalVoucher : ICompanyScoped
     {
         if (Status == VoucherStatus.Posted)
             throw new PostingException("Voucher is already posted.");
-        if (Status == VoucherStatus.Rejected)
-            throw new PostingException("A rejected voucher cannot be posted.");
+        if (Status == VoucherStatus.Void)
+            throw new PostingException("A void voucher cannot be posted.");
         if (Lines.Count < 2)
             throw new PostingException("A voucher needs at least two lines.");
 
