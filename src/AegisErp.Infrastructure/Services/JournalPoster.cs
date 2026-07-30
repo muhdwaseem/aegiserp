@@ -22,6 +22,7 @@ internal static class JournalPoster
         [VoucherType.Opening] = "OB",
         [VoucherType.CreditNote] = "CN",
         [VoucherType.DebitNote] = "DN",
+        [VoucherType.Expense] = "EXP",
     };
 
     /// <summary>

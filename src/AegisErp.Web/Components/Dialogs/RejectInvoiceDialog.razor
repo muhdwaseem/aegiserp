@@ -1,0 +1,19 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Reject @InvoiceNo</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_note" Label="Reason" Lines="3" Placeholder="Why is this being rejected?" AutoFocus="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => MudDialog.Close(DialogResult.Ok(_note)))">Reject</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public string InvoiceNo { get; set; } = "";
+
+    private string _note = "";
+}

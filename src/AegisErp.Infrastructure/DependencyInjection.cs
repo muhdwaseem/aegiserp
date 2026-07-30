@@ -1,6 +1,7 @@
 using AegisErp.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AegisErp.Infrastructure;
 
@@ -42,10 +43,13 @@ public static class DependencyInjection
         services.AddScoped<PurchaseInvoiceService>();
         services.AddScoped<VendorPaymentService>();
         services.AddScoped<DebitNoteService>();
+        services.AddScoped<DirectExpenseService>();
         services.AddScoped<CompanyService>();
         services.AddScoped<CurrencyService>();
         services.AddScoped<TaxCodeService>();
         services.AddScoped<ItemService>();
+        services.Configure<SmtpOptions>(config.GetSection("Smtp"));
+        services.AddScoped<EmailService>();
         return services;
     }
 }

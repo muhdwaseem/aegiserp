@@ -33,7 +33,8 @@
     </MudButton>
 </MudStack>
 
-<MudTable Items="FilteredRows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null">
+<MudTable Items="FilteredRows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null"
+          T="SalesInvoiceRow" OnRowClick="@((TableRowClickEventArgs<SalesInvoiceRow> e) => { if (e.Item is not null) OpenView(e.Item); })" RowStyle="cursor:pointer">
     <HeaderContent>
         <MudTh>Invoice</MudTh>
         <MudTh>Date</MudTh>
@@ -54,14 +55,15 @@
         <MudTd Style="text-align:right">@context.Balance.ToString("N2")</MudTd>
         <MudTd Style="font-family:monospace;font-size:11.5px">@context.Invoice.JournalVoucher?.VoucherNo</MudTd>
         <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-        <MudTd>
-            @if (context.Status == ArStatus.Draft)
-            {
-                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+        <MudTd @onclick:stopPropagation="true">
+            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenView(context))">View</MudMenuItem>
+                @if (context.Status == ArStatus.Draft)
+                {
                     <MudMenuItem Icon="@Icons.Material.Filled.PostAdd" OnClick="@(() => PostDraft(context.Invoice.Id))">Post Invoice</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="@(() => VoidDraft(context.Invoice.Id))">Void</MudMenuItem>
-                </MudMenu>
-            }
+                }
+            </MudMenu>
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
@@ -108,6 +110,8 @@
         if ((await dialog.Result) is { Canceled: false }) await Load();
     }
 
+    private void OpenView(SalesInvoiceRow row) => Nav.NavigateTo($"/sales-invoice/{row.Invoice.Id}");
+
     private async Task PostDraft(int invoiceId)
     {
         try
@@ -127,7 +131,8 @@
     {
         try
         {
-            await InvoiceSvc.VoidDraftAsync(invoiceId);
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            await InvoiceSvc.VoidDraftAsync(invoiceId, userName, DateTime.UtcNow);
             Snackbar.Add("Invoice voided.", Severity.Success);
             await Load();
         }

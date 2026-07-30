@@ -107,6 +107,14 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
 
+    [SupplyParameterFromQuery(Name = "vendorId")]
+    [Parameter]
+    public int? QueryVendorId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "invoiceId")]
+    [Parameter]
+    public int? QueryInvoiceId { get; set; }
+
     private int _vendorId;
     private int _invoiceId;
     private int _bankAccountId;
@@ -128,6 +136,15 @@
         _recent = await PaymentSvc.GetRecentAsync(8);
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
+
+        // Pre-fill from a Purchase Invoice detail page's "Record Payment" action
+        // (?vendorId=...&invoiceId=...) — pays that invoice in full by default, still editable.
+        if (QueryVendorId is int vId)
+        {
+            await OnVendorChanged(vId);
+            if (QueryInvoiceId is int invId && _openInvoices.Any(i => i.Id == invId))
+                OnInvoiceChanged(invId);
+        }
     }
 
     private async Task OnVendorChanged(int id)

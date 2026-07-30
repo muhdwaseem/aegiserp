@@ -24,7 +24,8 @@
     </MudButton>
 </MudStack>
 
-<MudTable Items="_invoices" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_invoices is null">
+<MudTable Items="_invoices" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_invoices is null"
+          T="PurchaseInvoice" OnRowClick="@((TableRowClickEventArgs<PurchaseInvoice> e) => { if (e.Item is not null) Nav.NavigateTo($"/purchase-invoice/{e.Item.Id}"); })" RowStyle="cursor:pointer">
     <HeaderContent>
         <MudTh>Invoice</MudTh>
         <MudTh>Vendor Ref</MudTh>

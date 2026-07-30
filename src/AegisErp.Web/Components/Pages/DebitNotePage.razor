@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = AppRoles.Posters)]
 @inject DebitNoteService DebitNoteSvc
 @inject VendorService VendorSvc
+@inject PurchaseInvoiceService InvoiceSvc
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
 @inject ISnackbar Snackbar
@@ -161,6 +162,10 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
 
+    [SupplyParameterFromQuery(Name = "invoiceId")]
+    [Parameter]
+    public int? QueryInvoiceId { get; set; }
+
     private int _vendorId;
     private int _invoiceId;
     private DateTime? _date = DateTime.Today;
@@ -188,6 +193,18 @@
         _recent = await DebitNoteSvc.GetRecentAsync(8);
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
+
+        // Pre-select the vendor/invoice when arriving via a Purchase Invoice detail page's
+        // "Create Debit Note" action (?invoiceId=...).
+        if (QueryInvoiceId is int invId)
+        {
+            var invoice = await InvoiceSvc.GetByIdAsync(invId);
+            if (invoice is not null)
+            {
+                await OnVendorChanged(invoice.VendorId);
+                _invoiceId = invId;
+            }
+        }
     }
 
     private async Task OnVendorChanged(int id)

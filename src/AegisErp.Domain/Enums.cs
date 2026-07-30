@@ -27,7 +27,8 @@ public enum VoucherType
     PurchaseInvoice = 5,
     Opening = 6,
     CreditNote = 7,
-    DebitNote = 8
+    DebitNote = 8,
+    Expense = 9
 }
 
 /// <summary>Lifecycle of a voucher. Only <see cref="Posted"/> entries hit the ledger.</summary>
@@ -80,6 +81,27 @@ public enum ItemKind
 {
     Goods = 1,
     Service = 2
+}
+
+/// <summary>How a customer receipt (or vendor payment) physically arrived — informational only.</summary>
+public enum PaymentMode
+{
+    Cash = 1,
+    BankTransfer = 2,
+    Cheque = 3,
+    Card = 4,
+    Other = 5,
+    PostDatedCheque = 6
+}
+
+/// <summary>Approval workflow state for a document, independent of its posting <see cref="VoucherStatus"/>.
+/// None means the workflow was never used — the document can be posted directly.</summary>
+public enum ApprovalStatus
+{
+    None = 1,
+    PendingApproval = 2,
+    Approved = 3,
+    Rejected = 4
 }
 
 public static class AccountTypeExtensions

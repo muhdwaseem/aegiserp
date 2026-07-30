@@ -121,6 +121,9 @@
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
+    /// <summary>Clone mode: seed a brand-new invoice's initial Vendor/Narration/Lines from this one. No vendor ref carried over.</summary>
+    [Parameter] public PurchaseInvoice? CloneFrom { get; set; }
+
     private List<Vendor>? _vendors;
     private List<Account>? _expenseAccounts;
     private List<CostCenter>? _costCenters;
@@ -150,6 +153,25 @@
         _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense || a.Type == AccountType.Asset).ToList();
         _costCenters = await Coa.GetCostCentersAsync();
         _periods = await Ledger.GetPeriodsAsync();
+
+        if (CloneFrom is not null)
+        {
+            _vendorId = CloneFrom.VendorId;
+            _narration = CloneFrom.Narration;
+            _lines.Clear();
+            foreach (var l in CloneFrom.Lines.OrderBy(l => l.LineNo))
+                _lines.Add(new LineVm
+                {
+                    Description = l.Description,
+                    ExpenseAccountId = l.ExpenseAccountId,
+                    CostCenterId = l.CostCenterId,
+                    Quantity = l.Quantity,
+                    UnitPrice = l.UnitPrice,
+                    VatRate = l.VatRate,
+                });
+            UpdateDueLabel();
+        }
+
         SyncPeriodToDate();
     }
 

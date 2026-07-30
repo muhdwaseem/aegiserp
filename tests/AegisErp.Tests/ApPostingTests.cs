@@ -164,4 +164,37 @@ public class ApPostingTests : IDisposable
         Assert.Equal(1050m, stmt[0].RunningBalance); // we owe 1050
         Assert.Equal(650m, stmt[1].RunningBalance);  // after paying 400
     }
+
+    // --- Purchase Invoice Detail View support: GetByIdAsync / GetOutstandingAsync ---
+
+    [Fact]
+    public async Task GetByIdAsync_returns_the_invoice_with_full_detail_and_null_for_a_missing_id()
+    {
+        var inv = await PostInvoice();
+
+        var found = await _invoices.GetByIdAsync(inv.Id);
+        Assert.NotNull(found);
+        Assert.Equal(inv.InvoiceNo, found!.InvoiceNo);
+        Assert.NotNull(found.Vendor);
+        Assert.Single(found.Lines);
+        Assert.NotNull(found.JournalVoucher);
+
+        Assert.Null(await _invoices.GetByIdAsync(-1));
+    }
+
+    [Fact]
+    public async Task GetOutstandingAsync_matches_the_payment_services_own_outstanding_calc()
+    {
+        var inv = await PostInvoice(); // gross 1050
+        Assert.Equal(1050m, await _invoices.GetOutstandingAsync(inv.Id));
+
+        await _payments.CreateAndPostAsync(_db.Vendor.Id, inv.Id, new(2026, 5, 15), _db.May.Id,
+            _db.Bank.Id, 400, null, "tester", Now);
+        Assert.Equal(650m, await _invoices.GetOutstandingAsync(inv.Id));
+
+        await _debitNotes.CreateAndPostAsync(_db.Vendor.Id, inv.Id, new(2026, 5, 16), _db.May.Id,
+            "Return", null, "tester",
+            new[] { new DebitNoteLineInput("Returned goods", _db.Expense.Id, null, 1, 200, 0.05m) }, Now); // gross 210
+        Assert.Equal(440m, await _invoices.GetOutstandingAsync(inv.Id)); // 1050 - 400 - 210
+    }
 }

@@ -125,6 +125,7 @@ public class CustomerService
         var invoices = (await PostedInvoicesAsync(db)).Where(i => i.Date <= asOf).ToList();
         var receipts = (await PostedReceiptsAsync(db)).Where(r => r.Date <= asOf).ToList();
         var credits = (await PostedCreditNotesAsync(db)).Where(n => n.Date <= asOf).ToList();
+        var (allocatedByInvoice, receiptIdsWithAllocations) = await AllocationsForAsync(db, receipts.Select(r => r.Id).ToList());
 
         var rows = new List<AgingRow>();
         foreach (var c in customers)
@@ -132,7 +133,7 @@ public class CustomerService
             decimal current = 0, b30 = 0, b60 = 0, b90 = 0, over = 0;
             foreach (var inv in invoices.Where(i => i.CustomerId == c.Id))
             {
-                var allocated = receipts.Where(r => r.SalesInvoiceId == inv.Id).Sum(r => r.Amount)
+                var allocated = allocatedByInvoice.GetValueOrDefault(inv.Id)
                                 + credits.Where(n => n.SalesInvoiceId == inv.Id).Sum(n => n.TotalGross);
                 var outstanding = inv.TotalGross - allocated;
                 if (outstanding <= 0) continue;
@@ -145,8 +146,12 @@ public class CustomerService
                 else over += outstanding;
             }
 
+            // A receipt is either 100% on-account (no allocations at all) or 100% applied (its
+            // allocations sum to exactly its Amount — no partial/overpayment state is allowed),
+            // so "unallocated" is simply "has zero allocation rows", not merely SalesInvoiceId == null
+            // (a receipt spanning multiple invoices also has SalesInvoiceId == null but is fully applied).
             var unallocated = receipts
-                .Where(r => r.CustomerId == c.Id && r.SalesInvoiceId == null)
+                .Where(r => r.CustomerId == c.Id && !receiptIdsWithAllocations.Contains(r.Id))
                 .Sum(r => r.Amount)
                 + credits.Where(n => n.CustomerId == c.Id && n.SalesInvoiceId == null).Sum(n => n.TotalGross);
 
@@ -163,13 +168,15 @@ public class CustomerService
         var invoices = (await PostedInvoicesAsync(db)).Where(i => i.CustomerId == customerId).ToList();
         var receipts = (await PostedReceiptsAsync(db)).Where(r => r.CustomerId == customerId).ToList();
         var credits = (await PostedCreditNotesAsync(db)).Where(n => n.CustomerId == customerId).ToList();
+        var (allocatedByInvoice, _) = await AllocationsForAsync(db, receipts.Select(r => r.Id).ToList());
 
         return invoices
             .Select(i =>
             {
-                var allocated = receipts.Where(r => r.SalesInvoiceId == i.Id).Sum(r => r.Amount)
+                var allocated = allocatedByInvoice.GetValueOrDefault(i.Id)
                                 + credits.Where(n => n.SalesInvoiceId == i.Id).Sum(n => n.TotalGross);
-                return new OpenInvoice(i.Id, i.InvoiceNo, i.Date, i.DueDate, i.TotalGross, i.TotalGross - allocated);
+                var billableLineCount = i.Lines.Count(l => l.Net > 0);
+                return new OpenInvoice(i.Id, i.InvoiceNo, i.Date, i.DueDate, i.TotalGross, i.TotalGross - allocated, billableLineCount);
             })
             .Where(o => o.Outstanding > 0)
             .OrderBy(o => o.Date)
@@ -187,4 +194,24 @@ public class CustomerService
     private static Task<List<CreditNote>> PostedCreditNotesAsync(AegisDbContext db) =>
         db.CreditNotes.AsNoTracking().Include(n => n.Lines)
             .Where(n => n.Status == VoucherStatus.Posted).ToListAsync();
+
+    /// <summary>
+    /// For a set of (already Posted-filtered) receipt ids: how much is allocated to each invoice
+    /// they touch, and which of those receipt ids have any allocation at all (vs. purely on account).
+    /// A receipt's <see cref="CustomerReceipt.SalesInvoiceId"/> is never used here — it can't
+    /// represent a receipt spanning multiple invoices, so <see cref="ReceiptAllocation"/> (joined
+    /// through the line it targets) is the only correct source of truth.
+    /// </summary>
+    private static async Task<(Dictionary<int, decimal> AllocatedByInvoice, HashSet<int> ReceiptIdsWithAllocations)>
+        AllocationsForAsync(AegisDbContext db, List<int> receiptIds)
+    {
+        var allocations = await db.ReceiptAllocations.AsNoTracking()
+            .Where(a => receiptIds.Contains(a.CustomerReceiptId))
+            .Select(a => new { a.CustomerReceiptId, InvoiceId = a.SalesInvoiceLine.SalesInvoiceId, a.Amount })
+            .ToListAsync();
+
+        var byInvoice = allocations.GroupBy(a => a.InvoiceId).ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
+        var receiptsWithAllocations = allocations.Select(a => a.CustomerReceiptId).ToHashSet();
+        return (byInvoice, receiptsWithAllocations);
+    }
 }

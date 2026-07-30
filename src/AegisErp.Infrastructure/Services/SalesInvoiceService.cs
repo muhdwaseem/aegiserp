@@ -6,10 +6,14 @@ namespace AegisErp.Infrastructure.Services;
 
 /// <summary>Input line for creating a sales invoice from the UI.</summary>
 public record InvoiceLineInput(string Description, int RevenueAccountId, int? CostCenterId,
-    decimal Quantity, decimal UnitPrice, decimal VatRate, int? ItemId = null);
+    decimal Quantity, decimal UnitPrice, decimal VatRate, int? ItemId = null,
+    decimal DiscountPercent = 0, string? Uom = null);
 
 public class SalesInvoiceService
 {
+    /// <summary>Hard cap on an attached document's size (5 MB) — stored inline in the database.</summary>
+    public const int MaxAttachmentBytes = 5 * 1024 * 1024;
+
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     public SalesInvoiceService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
 
@@ -35,9 +39,15 @@ public class SalesInvoiceService
             .OrderByDescending(i => i.Date).ThenByDescending(i => i.Id)
             .ToListAsync();
 
-        var receipts = await db.CustomerReceipts.AsNoTracking()
-            .Where(r => r.Status == VoucherStatus.Posted && r.SalesInvoiceId != null)
-            .ToListAsync();
+        // Derived from ReceiptAllocation (joined through the invoice line it targets), never from
+        // CustomerReceipt.SalesInvoiceId — that FK can't represent a receipt spanning multiple
+        // invoices (it's null in that case even though the receipt did settle part of this one).
+        var allocatedByInvoice = (await db.ReceiptAllocations.AsNoTracking()
+            .Where(a => a.CustomerReceipt.Status == VoucherStatus.Posted)
+            .Select(a => new { InvoiceId = a.SalesInvoiceLine.SalesInvoiceId, a.Amount })
+            .ToListAsync())
+            .GroupBy(a => a.InvoiceId)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
         var credits = await db.CreditNotes.AsNoTracking().Include(n => n.Lines)
             .Where(n => n.Status == VoucherStatus.Posted && n.SalesInvoiceId != null)
             .ToListAsync();
@@ -45,7 +55,7 @@ public class SalesInvoiceService
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         return invoices.Select(i =>
         {
-            var allocated = receipts.Where(r => r.SalesInvoiceId == i.Id).Sum(r => r.Amount)
+            var allocated = allocatedByInvoice.GetValueOrDefault(i.Id)
                           + credits.Where(n => n.SalesInvoiceId == i.Id).Sum(n => n.TotalGross);
             var balance = i.TotalGross - allocated;
             var status = i.Status switch
@@ -56,6 +66,53 @@ public class SalesInvoiceService
             };
             return new SalesInvoiceRow(i, balance, status);
         }).ToList();
+    }
+
+    /// <summary>One invoice with full detail (Customer, Lines with Item, JournalVoucher) for the detail page.</summary>
+    public async Task<SalesInvoice?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.SalesInvoices.AsNoTracking()
+            .Include(i => i.Customer).Include(i => i.Lines).ThenInclude(l => l.Item).Include(i => i.JournalVoucher)
+            .FirstOrDefaultAsync(i => i.Id == id);
+    }
+
+    /// <summary>
+    /// Per-line paid/balance breakdown for one invoice, from posted receipt allocations — so
+    /// staff can see which specific service on a multi-line invoice is settled vs still owing.
+    /// </summary>
+    public async Task<List<SalesInvoiceLineBalance>> GetLineBalancesAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var lines = await db.SalesInvoiceLines.AsNoTracking().Include(l => l.Item)
+            .Where(l => l.SalesInvoiceId == invoiceId)
+            .OrderBy(l => l.LineNo)
+            .ToListAsync();
+
+        var lineIds = lines.Select(l => l.Id).ToList();
+        var allocated = (await db.ReceiptAllocations.AsNoTracking()
+            .Where(a => lineIds.Contains(a.SalesInvoiceLineId) && a.CustomerReceipt.Status == VoucherStatus.Posted)
+            .Select(a => new { a.SalesInvoiceLineId, a.Amount })
+            .ToListAsync())
+            .GroupBy(a => a.SalesInvoiceLineId)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
+
+        return lines.Select(l => new SalesInvoiceLineBalance(
+            l.Id, l.Description, l.Item?.Name, l.Gross, allocated.GetValueOrDefault(l.Id))).ToList();
+    }
+
+    /// <summary>
+    /// Total posted credit notes against this invoice — credit notes reduce the invoice-level
+    /// balance but, unlike receipts, aren't yet attributed to a specific line (see
+    /// <see cref="GetLineBalancesAsync"/>'s doc comment), so callers use this to show a
+    /// disclaimer rather than silently showing per-line totals that don't reconcile to the header.
+    /// </summary>
+    public async Task<decimal> GetCreditedTotalAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return (await db.CreditNotes.AsNoTracking().Include(n => n.Lines)
+            .Where(n => n.SalesInvoiceId == invoiceId && n.Status == VoucherStatus.Posted)
+            .ToListAsync()).Sum(n => n.TotalGross);
     }
 
     /// <summary>
@@ -90,7 +147,9 @@ public class SalesInvoiceService
     /// </summary>
     public async Task<SalesInvoice> CreateDraftAsync(
         int customerId, DateOnly date, int fiscalPeriodId, string? narration,
-        string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc)
+        string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
+        string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
+        string? notes = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -105,6 +164,10 @@ public class SalesInvoiceService
             DueDate = date.AddDays(customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
             Narration = string.IsNullOrWhiteSpace(narration) ? $"Sales invoice — {customer.Name}" : narration,
+            CustomerPoNo = string.IsNullOrWhiteSpace(customerPoNo) ? null : customerPoNo.Trim(),
+            DeliveryNoteRef = string.IsNullOrWhiteSpace(deliveryNoteRef) ? null : deliveryNoteRef.Trim(),
+            SalesOrderRef = string.IsNullOrWhiteSpace(salesOrderRef) ? null : salesOrderRef.Trim(),
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
             Status = VoucherStatus.Draft,
@@ -122,11 +185,68 @@ public class SalesInvoiceService
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
+                DiscountPercent = l.DiscountPercent,
+                Uom = l.Uom,
             });
         if (invoice.Lines.Count == 0)
             throw new PostingException("Invoice needs at least one line.");
 
         db.SalesInvoices.Add(invoice);
+        await JournalPoster.SaveChangesTranslatedAsync(db);
+        return invoice;
+    }
+
+    /// <summary>
+    /// Replaces a draft's header fields and lines in place — the invoice number and Draft status
+    /// are untouched. Only ever valid while the invoice is still Draft; once posted, an invoice
+    /// is immutable and must be reversed with a Credit Note instead of edited.
+    /// </summary>
+    public async Task<SalesInvoice> UpdateDraftAsync(
+        int invoiceId, int customerId, DateOnly date, int fiscalPeriodId, string? narration,
+        IEnumerable<InvoiceLineInput> lines,
+        string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
+        string? notes = null)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+
+        var invoice = await db.SalesInvoices.Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+        if (invoice.Status != VoucherStatus.Draft)
+            throw new PostingException("Only draft invoices can be edited — a posted invoice already hit the ledger; reverse it with a Credit Note instead.");
+
+        var customer = await db.Customers.FindAsync(customerId)
+            ?? throw new PostingException("Customer not found.");
+
+        invoice.CustomerId = customerId;
+        invoice.Date = date;
+        invoice.DueDate = date.AddDays(customer.PaymentTermsDays);
+        invoice.FiscalPeriodId = fiscalPeriodId;
+        invoice.Narration = string.IsNullOrWhiteSpace(narration) ? $"Sales invoice — {customer.Name}" : narration;
+        invoice.CustomerPoNo = string.IsNullOrWhiteSpace(customerPoNo) ? null : customerPoNo.Trim();
+        invoice.DeliveryNoteRef = string.IsNullOrWhiteSpace(deliveryNoteRef) ? null : deliveryNoteRef.Trim();
+        invoice.SalesOrderRef = string.IsNullOrWhiteSpace(salesOrderRef) ? null : salesOrderRef.Trim();
+        invoice.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+
+        invoice.Lines.Clear();
+        var no = 1;
+        foreach (var l in lines)
+            invoice.Lines.Add(new SalesInvoiceLine
+            {
+                LineNo = no++,
+                Description = l.Description,
+                ItemId = l.ItemId,
+                RevenueAccountId = l.RevenueAccountId,
+                CostCenterId = l.CostCenterId,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                VatRate = l.VatRate,
+                DiscountPercent = l.DiscountPercent,
+                Uom = l.Uom,
+            });
+        if (invoice.Lines.Count == 0)
+            throw new PostingException("Invoice needs at least one line.");
+
         await JournalPoster.SaveChangesTranslatedAsync(db);
         return invoice;
     }
@@ -143,7 +263,7 @@ public class SalesInvoiceService
         if (invoice.Status != VoucherStatus.Draft)
             throw new PostingException("Only draft invoices can be posted.");
 
-        invoice.Post(nowUtc); // domain validation (positive totals, valid lines, due date)
+        invoice.Post(postedBy, nowUtc); // domain validation (positive totals, valid lines, due date, approval gate)
 
         var ar = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.AccountsReceivable);
         var vat = invoice.TotalVat > 0 ? await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.VatPayable) : null;
@@ -157,16 +277,86 @@ public class SalesInvoiceService
     }
 
     /// <summary>Voids a draft invoice. Posted invoices already hit the ledger — reverse those with a Credit Note instead.</summary>
-    public async Task VoidDraftAsync(int invoiceId)
+    public async Task VoidDraftAsync(int invoiceId, string voidedBy, DateTime nowUtc)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
             ?? throw new PostingException("Invoice not found.");
-        if (invoice.Status != VoucherStatus.Draft)
-            throw new PostingException("Only draft invoices can be voided — a posted invoice already hit the ledger; reverse it with a Credit Note instead.");
 
-        invoice.Status = VoucherStatus.Void;
+        invoice.Void(voidedBy, nowUtc);
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>Submits a draft invoice for approval. Posting is blocked while pending.</summary>
+    public async Task SubmitForApprovalAsync(int invoiceId, string submittedBy, DateTime nowUtc)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.SubmitForApproval(submittedBy, nowUtc);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Approves a pending invoice, clearing the block on posting.</summary>
+    public async Task ApproveAsync(int invoiceId, string approvedBy, DateTime nowUtc)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.Approve(approvedBy, nowUtc);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Rejects a pending invoice. It stays a Draft, editable and re-submittable.</summary>
+    public async Task RejectAsync(int invoiceId, string rejectedBy, DateTime nowUtc, string? note)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.Reject(rejectedBy, nowUtc, note);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Attaches (or replaces) the invoice's single supporting document. Allowed regardless of the
+    /// invoice's posting status — attaching a document doesn't touch financial data.
+    /// </summary>
+    public async Task SetAttachmentAsync(int invoiceId, string fileName, string contentType, byte[] data)
+    {
+        if (data.Length > MaxAttachmentBytes)
+            throw new PostingException($"Attachment is too large — the limit is {MaxAttachmentBytes / (1024 * 1024)} MB.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.AttachmentFileName = fileName;
+        invoice.AttachmentContentType = contentType;
+        invoice.AttachmentData = data;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task RemoveAttachmentAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.AttachmentFileName = null;
+        invoice.AttachmentContentType = null;
+        invoice.AttachmentData = null;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)?> GetAttachmentAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId);
+        if (invoice?.AttachmentData is null || invoice.AttachmentFileName is null) return null;
+        return (invoice.AttachmentFileName, invoice.AttachmentContentType ?? "application/octet-stream", invoice.AttachmentData);
     }
 
     /// <summary>Dr AR for the gross, Cr revenue per line, Cr VAT for the total tax.</summary>
@@ -192,7 +382,9 @@ public class SalesInvoiceService
     /// </summary>
     public async Task<SalesInvoice> CreateAndPostAsync(
         int customerId, DateOnly date, int fiscalPeriodId, string? narration,
-        string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc)
+        string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
+        string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
+        string? notes = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -210,6 +402,10 @@ public class SalesInvoiceService
             DueDate = date.AddDays(customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
             Narration = string.IsNullOrWhiteSpace(narration) ? $"Sales invoice — {customer.Name}" : narration,
+            CustomerPoNo = string.IsNullOrWhiteSpace(customerPoNo) ? null : customerPoNo.Trim(),
+            DeliveryNoteRef = string.IsNullOrWhiteSpace(deliveryNoteRef) ? null : deliveryNoteRef.Trim(),
+            SalesOrderRef = string.IsNullOrWhiteSpace(salesOrderRef) ? null : salesOrderRef.Trim(),
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
             Customer = customer,
@@ -227,9 +423,11 @@ public class SalesInvoiceService
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
+                DiscountPercent = l.DiscountPercent,
+                Uom = l.Uom,
             });
 
-        invoice.Post(nowUtc); // domain validation (positive totals, valid lines, due date)
+        invoice.Post(createdBy, nowUtc); // domain validation (positive totals, valid lines, due date)
 
         var ar = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.AccountsReceivable);
         var vat = invoice.TotalVat > 0 ? await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.VatPayable) : null;

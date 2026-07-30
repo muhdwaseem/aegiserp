@@ -1,0 +1,57 @@
+@inject SalesInvoiceService InvoiceSvc
+@inject EmailService EmailSvc
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Send @Invoice.InvoiceNo by Email</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_to" Label="Recipient email" InputType="InputType.Email" Required="true" />
+        <MudTextField @bind-Value="_subject" Label="Subject" Class="mt-3" />
+        <MudTextField @bind-Value="_body" Label="Message" Lines="6" Class="mt-3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_sending || string.IsNullOrWhiteSpace(_to))" OnClick="Send">Send</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public SalesInvoice Invoice { get; set; } = null!;
+
+    private string _to = "";
+    private string _subject = "";
+    private string _body = "";
+    private bool _sending;
+
+    protected override void OnInitialized()
+    {
+        _to = Invoice.Customer.Email ?? "";
+        _subject = $"Invoice {Invoice.InvoiceNo} from your supplier";
+        _body = $"Dear {Invoice.Customer.Name},\n\n" +
+                $"Please find your invoice {Invoice.InvoiceNo} dated {Invoice.Date:dd MMM yyyy} for AED {Invoice.TotalGross:N2}, due {Invoice.DueDate:dd MMM yyyy}.\n\n" +
+                "Thank you for your business.";
+    }
+
+    private async Task Send()
+    {
+        _sending = true;
+        try
+        {
+            await EmailSvc.SendAsync(_to, _subject, _body);
+            Snackbar.Add($"Emailed {Invoice.InvoiceNo} to {_to}.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not send email: {ex.Message}", Severity.Error);
+        }
+        finally { _sending = false; }
+    }
+}

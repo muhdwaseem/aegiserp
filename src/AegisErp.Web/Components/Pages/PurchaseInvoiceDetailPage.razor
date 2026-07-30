@@ -1,0 +1,153 @@
+@page "/purchase-invoice/{Id:int}"
+@attribute [Authorize(Roles = AppRoles.Posters)]
+@using AegisErp.Web.Components.Dialogs
+@inject PurchaseInvoiceService InvoiceSvc
+@inject CompanyService CompanySvc
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_invoice?.InvoiceNo ?? "Invoice") · Aegis ERP</PageTitle>
+
+@if (_loaded && _invoice is null)
+{
+    <MudAlert Severity="Severity.Error">Invoice not found.</MudAlert>
+    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="@(() => Nav.NavigateTo("purchase-invoice"))">Back to Purchase Invoices</MudButton>
+}
+else if (_invoice is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3 invoice-print-hide" Wrap="Wrap.Wrap">
+        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("purchase-invoice"))" />
+        <MudText Typo="Typo.h5">@_invoice.InvoiceNo</MudText>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_status)" Variant="Variant.Text">@_status</MudChip>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print" OnClick="Print">PDF/Print</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Payments" OnClick="RecordPayment">Record Payment</MudButton>
+        <MudMenu Icon="@Icons.Material.Filled.MoreVert">
+            <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy" OnClick="Clone">Clone</MudMenuItem>
+            @if (_invoice.JournalVoucher is not null)
+            {
+                <MudMenuItem Icon="@Icons.Material.Filled.MenuBook" OnClick="ViewJournal">View Journal</MudMenuItem>
+            }
+            <MudMenuItem Icon="@Icons.Material.Filled.Undo" OnClick="CreateDebitNote">Create Debit Note</MudMenuItem>
+        </MudMenu>
+    </MudStack>
+
+    @if (_status is ArStatus.Overdue or ArStatus.Pending)
+    {
+        <MudAlert Severity="@(_status == ArStatus.Overdue ? Severity.Warning : Severity.Info)" Class="mb-3 invoice-print-hide">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudText>@(_status == ArStatus.Overdue ? "Payment is overdue." : "Payment is not yet due.") Balance due: AED @_balance.ToString("N2").</MudText>
+                <MudSpacer />
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="RecordPayment">Record Payment</MudButton>
+            </MudStack>
+        </MudAlert>
+    }
+
+    <MudPaper Class="pa-6 mb-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle2">Bill From</MudText>
+                <MudText Typo="Typo.h6">@_invoice.Vendor.Name</MudText>
+                @if (!string.IsNullOrWhiteSpace(_invoice.VendorRef))
+                {
+                    <MudText Typo="Typo.body2">Vendor Ref: @_invoice.VendorRef</MudText>
+                }
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="text-right">
+                <MudText Typo="Typo.h4">PURCHASE INVOICE</MudText>
+                <MudText Typo="Typo.body1"># @_invoice.InvoiceNo</MudText>
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.subtitle2">Billed To</MudText>
+                <MudText Typo="Typo.body1">@_company?.LegalName</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="text-right">
+                <MudText Typo="Typo.body2">Invoice Date: @_invoice.Date.ToString("dd MMM yyyy")</MudText>
+                <MudText Typo="Typo.body2">Due Date: @_invoice.DueDate.ToString("dd MMM yyyy")</MudText>
+                <MudText Typo="Typo.h6" Class="mt-2">Balance Due: AED @_balance.ToString("N2")</MudText>
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="_invoice.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0" Class="mt-4">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="text-align:right">Qty</MudTh>
+                <MudTh Style="text-align:right">Rate</MudTh>
+                <MudTh Style="text-align:right">Amount</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.LineNo</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <MudStack Class="mt-3" AlignItems="AlignItems.End">
+            <MudText>Net: @_invoice.TotalNet.ToString("N2")</MudText>
+            <MudText>VAT: @_invoice.TotalVat.ToString("N2")</MudText>
+            <MudText Typo="Typo.h6">Total: AED @_invoice.TotalGross.ToString("N2")</MudText>
+        </MudStack>
+    </MudPaper>
+}
+
+<style>
+    @@media print {
+        .mud-appbar, .mud-drawer, .invoice-print-hide { display: none !important; }
+    }
+</style>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private PurchaseInvoice? _invoice;
+    private bool _loaded;
+    private CompanySetup? _company;
+    private decimal _balance;
+    private ArStatus _status;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _invoice = await InvoiceSvc.GetByIdAsync(Id);
+        _loaded = true;
+        if (_invoice is null) return;
+
+        _balance = await InvoiceSvc.GetOutstandingAsync(Id);
+        try { _company = await CompanySvc.GetAsync(); }
+        catch (PostingException) { _company = null; }
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _status = _balance <= 0 ? ArStatus.Paid : _invoice.DueDate < today ? ArStatus.Overdue : ArStatus.Pending;
+    }
+
+    private async Task Clone()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var parameters = new DialogParameters<NewPurchaseInvoiceDialog> { { x => x.CloneFrom, _invoice } };
+        var dialog = await DialogService.ShowAsync<NewPurchaseInvoiceDialog>("New Purchase Invoice", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false } && result.Data is int newId)
+            Nav.NavigateTo($"/purchase-invoice/{newId}");
+    }
+
+    private void RecordPayment() => Nav.NavigateTo($"/payment-voucher?vendorId={_invoice!.VendorId}&invoiceId={Id}");
+    private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_invoice!.JournalVoucher!.VoucherNo)}");
+    private void CreateDebitNote() => Nav.NavigateTo($"/debit-note?invoiceId={Id}");
+
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+
+    private static Color StatusColor(ArStatus status) => status switch
+    {
+        ArStatus.Pending => Color.Info,
+        ArStatus.Overdue => Color.Error,
+        ArStatus.Paid => Color.Success,
+        _ => Color.Default,
+    };
+}

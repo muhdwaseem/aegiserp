@@ -1,9 +1,13 @@
 @page "/receipt-voucher"
 @attribute [Authorize(Roles = AppRoles.Posters)]
+@using AegisErp.Web.Components.Dialogs
 @inject ReceiptService ReceiptSvc
 @inject CustomerService CustomerSvc
+@inject SalesInvoiceService InvoiceSvc
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
+@inject IDialogService DialogService
+@inject IJSRuntime JS
 @inject ISnackbar Snackbar
 
 <PageTitle>Receipt Voucher · Aegis ERP</PageTitle>
@@ -25,15 +29,6 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudSelect T="int" Value="_invoiceId" ValueChanged="OnInvoiceChanged" Label="Allocate to invoice (optional)" Dense="true">
-                <MudSelectItem Value="0">On account</MudSelectItem>
-                @foreach (var inv in _openInvoices)
-                {
-                    <MudSelectItem Value="inv.Id">@inv.InvoiceNo — outstanding @inv.Outstanding.ToString("N2")</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4">
             <MudSelect T="int" @bind-Value="_bankAccountId" Label="Deposit to" Dense="true">
                 <MudSelectItem Value="0">— select bank —</MudSelectItem>
                 @if (_bankAccounts is not null)
@@ -45,10 +40,21 @@
                 }
             </MudSelect>
         </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="PaymentMode" @bind-Value="_paymentMode" Label="Payment Mode" Dense="true">
+                <MudSelectItem Value="PaymentMode.Cash">Cash</MudSelectItem>
+                <MudSelectItem Value="PaymentMode.BankTransfer">Bank Transfer</MudSelectItem>
+                <MudSelectItem Value="PaymentMode.Cheque">Cheque</MudSelectItem>
+                <MudSelectItem Value="PaymentMode.PostDatedCheque">PDC (Post-Dated Cheque)</MudSelectItem>
+                <MudSelectItem Value="PaymentMode.Card">Card</MudSelectItem>
+                <MudSelectItem Value="PaymentMode.Other">Other</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+
         <MudItem xs="12" sm="3">
             <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Date" />
         </MudItem>
-        <MudItem xs="12" sm="3">
+        <MudItem xs="12" sm="2">
             <MudSelect T="int" @bind-Value="_periodId" Label="Period" Dense="true">
                 @if (_periods is not null)
                 {
@@ -60,17 +66,161 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="3">
-            <MudNumericField T="decimal" @bind-Value="_amount" Label="Amount (AED)" Min="0" HideSpinButtons="true" />
+            <MudNumericField T="decimal" @bind-Value="_amount" Label="Amount Received (AED)" Min="0" HideSpinButtons="true" ReadOnly="@HasAnyApplied" />
         </MudItem>
-        <MudItem xs="12" sm="3" Class="d-flex align-center">
+        <MudItem xs="12" sm="4" Class="d-flex align-center" Style="gap:8px">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Drafts" FullWidth="true"
+                       Disabled="@(!CanSaveDraft || _posting)" OnClick="SaveDraft">Save as Draft</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PostAdd" FullWidth="true"
                        Disabled="@(!CanPost || _posting)" OnClick="Post">Post Receipt</MudButton>
         </MudItem>
-        <MudItem xs="12">
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_referenceNo" Label="Cheque / Ref. No." Placeholder="Optional" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker Date="_chequeDate" DateChanged="@(d => _chequeDate = d)" Label="Cheque Date" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
             <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Defaults to 'Customer receipt — customer'" />
         </MudItem>
     </MudGrid>
 </MudPaper>
+
+<MudExpansionPanels Elevation="1" Class="mb-4">
+    <MudExpansionPanel Expanded="true">
+        <TitleContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.subtitle1">Invoice Matching</MudText>
+                @if (_openInvoices.Count > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@_openInvoices.Count(i => _paymentInputs.GetValueOrDefault(i.Id) > 0) matched</MudChip>
+                }
+            </MudStack>
+        </TitleContent>
+        <ChildContent>
+            @if (_customerId == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">Pick a customer to see their outstanding invoices.</MudText>
+            }
+            else if (_openInvoices.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">No open invoices for this customer — this receipt will be recorded on account.</MudText>
+            }
+            else
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Outstanding Invoices — @(_customers?.FirstOrDefault(c => c.Id == _customerId)?.Name)</MudText>
+                    <MudSpacer />
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ClearApplied" Disabled="@(!HasAnyApplied)">Clear Applied Amount</MudButton>
+                </MudStack>
+
+                <MudTable Items="_openInvoices" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Invoice #</MudTh>
+                        <MudTh Style="text-align:right">Invoice Amount</MudTh>
+                        <MudTh Style="text-align:right">Amount Due</MudTh>
+                        <MudTh Style="width:140px;text-align:right">Payment</MudTh>
+                        <MudTh Style="width:110px"></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
+                        <MudTd Style="font-family:monospace">@context.InvoiceNo</MudTd>
+                        <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.Outstanding.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">
+                            <MudNumericField T="decimal" Value="@_paymentInputs.GetValueOrDefault(context.Id)"
+                                             ValueChanged="@(v => SetInvoicePayment(context, v))"
+                                             Min="0" Max="@context.Outstanding" HideSpinButtons="true" Margin="Margin.Dense" />
+                        </MudTd>
+                        <MudTd>
+                            <MudStack Row="true" Spacing="0" AlignItems="AlignItems.Center">
+                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => PayInFull(context))">Pay in Full</MudButton>
+                                @if (context.BillableLineCount > 1)
+                                {
+                                    <MudIconButton Icon="@(_splitInvoiceId == context.Id ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                                   Size="Size.Small" title="Split across services" OnClick="@(() => ToggleSplit(context.Id))" />
+                                }
+                            </MudStack>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+
+                @if (_splitInvoiceId is int splitId && _lineBalancesByInvoice.TryGetValue(splitId, out var splitLines))
+                {
+                    <MudPaper Class="pa-2 mt-1" Elevation="0" Style="border:1px dashed var(--mud-palette-lines-default)">
+                        <MudText Typo="Typo.caption" Class="mb-1">Split @SplitInvoiceLabel across its services</MudText>
+                        <MudTable Items="splitLines" Dense="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Service / Description</MudTh>
+                                <MudTh Style="text-align:right">Amount</MudTh>
+                                <MudTh Style="text-align:right">Already Paid</MudTh>
+                                <MudTh Style="text-align:right">Remaining</MudTh>
+                                <MudTh Style="width:140px;text-align:right">Allocate</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@(context.ItemName is null ? context.Description : $"{context.ItemName} — {context.Description}")</MudTd>
+                                <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                                <MudTd Style="text-align:right">@context.Allocated.ToString("N2")</MudTd>
+                                <MudTd Style="text-align:right">@context.Balance.ToString("N2")</MudTd>
+                                <MudTd Style="text-align:right">
+                                    <MudNumericField T="decimal" Value="@_lineAllocationInputs.GetValueOrDefault(context.LineId)"
+                                                     ValueChanged="@(v => OnLineAllocationChanged(splitId, context.LineId, v))"
+                                                     Min="0" Max="@context.Balance" HideSpinButtons="true" Margin="Margin.Dense"
+                                                     Disabled="@(context.Balance <= 0)" />
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudPaper>
+                }
+            }
+        </ChildContent>
+    </MudExpansionPanel>
+
+    <MudExpansionPanel Text="GL Distribution Lines">
+        @if (_bankAccountId == 0 || _amount <= 0)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">Pick a bank account and enter an amount to preview the GL impact.</MudText>
+        }
+        else
+        {
+            <MudTable Items="@GlPreviewLines()" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Account</MudTh>
+                    <MudTh Style="text-align:right">Debit</MudTh>
+                    <MudTh Style="text-align:right">Credit</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Account</MudTd>
+                    <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudExpansionPanel>
+
+    <MudExpansionPanel>
+        <TitleContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudText Typo="Typo.subtitle1">Attachments &amp; Notes</MudText>
+                <MudChip T="string" Size="Size.Small" Color="Color.Default">@(_attachmentFileName is null ? "0 files" : "1 file")</MudChip>
+            </MudStack>
+        </TitleContent>
+        <ChildContent>
+            <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile">
+                        @(_attachmentFileName is null ? "Attach document (e.g. scanned cheque)" : $"Replace: {_attachmentFileName}")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+            @if (_attachmentFileName is not null)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">@_attachmentFileName selected (PDF, JPG, PNG — max 5 MB)</MudText>
+            }
+        </ChildContent>
+    </MudExpansionPanel>
+</MudExpansionPanels>
 
 @if (_recent is not null && _recent.Count > 0)
 {
@@ -84,15 +234,36 @@
             <MudTh>Bank</MudTh>
             <MudTh Style="text-align:right">Amount</MudTh>
             <MudTh>Status</MudTh>
+            <MudTh Style="width:48px"></MudTh>
         </HeaderContent>
         <RowTemplate>
-            <MudTd Style="font-family:monospace">@context.ReceiptNo</MudTd>
+            <MudTd Style="font-family:monospace">
+                @context.ReceiptNo
+                @if (!string.IsNullOrWhiteSpace(context.AttachmentFileName))
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="ml-1" title="@context.AttachmentFileName" />
+                }
+            </MudTd>
             <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
             <MudTd>@context.Customer.Name</MudTd>
-            <MudTd Style="font-family:monospace;font-size:11.5px">@(context.SalesInvoice?.InvoiceNo ?? "On account")</MudTd>
+            <MudTd Style="font-family:monospace;font-size:11.5px">@AllocatedToLabel(context)</MudTd>
             <MudTd>@context.BankAccount.Name</MudTd>
             <MudTd Style="text-align:right;font-weight:600">@context.Amount.ToString("N2")</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">@context.Status</MudChip></MudTd>
+            <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
+            <MudTd>
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                    @if (context.Status == VoucherStatus.Draft)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.PostAdd" OnClick="@(() => PostDraft(context.Id))">Post Receipt</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="@(() => VoidDraft(context.Id))">Void</MudMenuItem>
+                    }
+                    <MudMenuItem Icon="@Icons.Material.Filled.Email" OnClick="@(() => SendByEmail(context))">Send Receipt</MudMenuItem>
+                    @if (!string.IsNullOrWhiteSpace(context.AttachmentFileName))
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Download" OnClick="@(() => DownloadAttachment(context.Id))">Download Attachment</MudMenuItem>
+                    }
+                </MudMenu>
+            </MudTd>
         </RowTemplate>
     </MudTable>
 }
@@ -104,19 +275,60 @@
     private List<CustomerReceipt>? _recent;
     private List<OpenInvoice> _openInvoices = new();
 
+    // invoiceId -> amount applied to that invoice (drives the top-level Payment box per row).
+    private readonly Dictionary<int, decimal> _paymentInputs = new();
+    // lineId -> amount, spans every invoice touched (a line id maps to exactly one invoice) —
+    // this is the flat list submitted to ReceiptService regardless of how many invoices it covers.
+    private readonly Dictionary<int, decimal> _lineAllocationInputs = new();
+    private readonly Dictionary<int, List<SalesInvoiceLineBalance>> _lineBalancesByInvoice = new();
+    private int? _splitInvoiceId;
+
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
 
+    [SupplyParameterFromQuery(Name = "customerId")]
+    [Parameter]
+    public int? QueryCustomerId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "invoiceId")]
+    [Parameter]
+    public int? QueryInvoiceId { get; set; }
+
     private int _customerId;
-    private int _invoiceId;
     private int _bankAccountId;
     private DateTime? _date = DateTime.Today;
     private int _periodId;
     private decimal _amount;
     private string? _narration;
+    private string? _referenceNo;
+    private DateTime? _chequeDate;
+    private PaymentMode _paymentMode = PaymentMode.Cash;
     private bool _posting;
 
-    private bool CanPost => _customerId > 0 && _bankAccountId > 0 && _periodId > 0 && _amount > 0;
+    private string? _attachmentFileName;
+    private string? _attachmentContentType;
+    private byte[]? _attachmentBytes;
+
+    private record GlPreviewLine(string Account, decimal Debit, decimal Credit);
+
+    private List<GlPreviewLine> GlPreviewLines()
+    {
+        var bankName = _bankAccounts?.FirstOrDefault(a => a.Id == _bankAccountId)?.Name ?? "Bank";
+        return new List<GlPreviewLine>
+        {
+            new(bankName, _amount, 0),
+            new("Accounts Receivable", 0, _amount),
+        };
+    }
+
+    private decimal AppliedSum => _paymentInputs.Values.Sum();
+    private bool HasAnyApplied => _paymentInputs.Values.Any(v => v > 0);
+    private string? SplitInvoiceLabel => _splitInvoiceId is int id ? _openInvoices.FirstOrDefault(i => i.Id == id)?.InvoiceNo : null;
+
+    // Never a partial state: either nothing's applied (on account) or it fully reconciles.
+    private bool CanPost => _customerId > 0 && _bankAccountId > 0 && _periodId > 0 && _amount > 0
+                            && (AppliedSum == 0 || AppliedSum == _amount);
+    private bool CanSaveDraft => _customerId > 0 && _bankAccountId > 0 && _periodId > 0;
 
     protected override async Task OnInitializedAsync()
     {
@@ -129,20 +341,115 @@
         _recent = await ReceiptSvc.GetRecentAsync(8);
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
+
+        // Pre-fill from a Sales Invoice detail page's "Record Payment" action
+        // (?customerId=...&invoiceId=...) — pays that invoice in full by default, still editable.
+        if (QueryCustomerId is int custId)
+        {
+            await OnCustomerChanged(custId);
+            if (QueryInvoiceId is int invId)
+            {
+                var inv = _openInvoices.FirstOrDefault(i => i.Id == invId);
+                if (inv is not null) await PayInFull(inv);
+            }
+        }
     }
 
     private async Task OnCustomerChanged(int id)
     {
         _customerId = id;
-        _invoiceId = 0;
+        ClearApplied();
         _openInvoices = id > 0 ? await CustomerSvc.GetOpenInvoicesAsync(id) : new();
     }
 
-    private void OnInvoiceChanged(int id)
+    private async Task EnsureLineBalancesAsync(int invoiceId)
     {
-        _invoiceId = id;
-        var inv = _openInvoices.FirstOrDefault(i => i.Id == id);
-        if (inv is not null) _amount = inv.Outstanding; // prefill with the outstanding balance
+        if (!_lineBalancesByInvoice.ContainsKey(invoiceId))
+            _lineBalancesByInvoice[invoiceId] = await InvoiceSvc.GetLineBalancesAsync(invoiceId);
+    }
+
+    /// <summary>Sets one invoice row's Payment amount and FIFO-fills its own lines behind the
+    /// scenes (even single-line invoices need an explicit line entry — the multi-invoice posting
+    /// path has no server-side auto-allocate), so submission always has full line-level detail.</summary>
+    private async Task SetInvoicePayment(OpenInvoice inv, decimal value)
+    {
+        _paymentInputs[inv.Id] = value;
+        await EnsureLineBalancesAsync(inv.Id);
+        var lines = _lineBalancesByInvoice[inv.Id];
+
+        foreach (var l in lines) _lineAllocationInputs.Remove(l.LineId);
+        var remaining = value;
+        foreach (var l in lines.Where(l => l.Balance > 0))
+        {
+            if (remaining <= 0) break;
+            var take = Math.Min(l.Balance, remaining);
+            _lineAllocationInputs[l.LineId] = take;
+            remaining -= take;
+        }
+        RecalcAmountReceived();
+    }
+
+    private async Task PayInFull(OpenInvoice inv) => await SetInvoicePayment(inv, inv.Outstanding);
+
+    private async Task ToggleSplit(int invoiceId)
+    {
+        if (_splitInvoiceId == invoiceId) { _splitInvoiceId = null; return; }
+        await EnsureLineBalancesAsync(invoiceId);
+        _splitInvoiceId = invoiceId;
+    }
+
+    private void OnLineAllocationChanged(int invoiceId, int lineId, decimal value)
+    {
+        _lineAllocationInputs[lineId] = value;
+        var lines = _lineBalancesByInvoice.GetValueOrDefault(invoiceId) ?? new();
+        _paymentInputs[invoiceId] = lines.Sum(l => _lineAllocationInputs.GetValueOrDefault(l.LineId));
+        RecalcAmountReceived();
+    }
+
+    private void RecalcAmountReceived()
+    {
+        if (HasAnyApplied) _amount = AppliedSum;
+    }
+
+    private void ClearApplied()
+    {
+        _paymentInputs.Clear();
+        _lineAllocationInputs.Clear();
+        _lineBalancesByInvoice.Clear();
+        _splitInvoiceId = null;
+        _amount = 0;
+    }
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file.Size > ReceiptService.MaxAttachmentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {ReceiptService.MaxAttachmentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(ReceiptService.MaxAttachmentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _attachmentBytes = ms.ToArray();
+        _attachmentFileName = file.Name;
+        _attachmentContentType = file.ContentType;
+    }
+
+    private async Task SendByEmail(CustomerReceipt row)
+    {
+        var full = await ReceiptSvc.GetByIdAsync(row.Id);
+        if (full is null) return;
+        var parameters = new DialogParameters<SendReceiptEmailDialog> { { x => x.Receipt, full } };
+        await DialogService.ShowAsync<SendReceiptEmailDialog>("Send Receipt", parameters);
+    }
+
+    private async Task DownloadAttachment(int receiptId)
+    {
+        var att = await ReceiptSvc.GetAttachmentAsync(receiptId);
+        if (att is null) return;
+        var base64 = Convert.ToBase64String(att.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", att.Value.FileName, att.Value.ContentType, base64);
     }
 
     private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
@@ -156,20 +463,26 @@
         else if (_periodId == 0) _periodId = _periods.LastOrDefault()?.Id ?? 0;
     }
 
+    private List<ReceiptLineAllocationInput> BuildAllocations() =>
+        _lineAllocationInputs.Where(kv => kv.Value > 0)
+            .Select(kv => new ReceiptLineAllocationInput(kv.Key, kv.Value)).ToList();
+
     private async Task Post()
     {
         _posting = true;
         try
         {
+            var allocations = BuildAllocations();
             var r = await ReceiptSvc.CreateAndPostAsync(
-                _customerId, _invoiceId > 0 ? _invoiceId : null,
-                DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
-                _bankAccountId, _amount, _narration, _userName, DateTime.UtcNow);
+                _customerId, null, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
+                _bankAccountId, _amount, _narration, _userName, DateTime.UtcNow,
+                allocations.Count > 0 ? allocations : null, _paymentMode,
+                _referenceNo, _chequeDate is DateTime cd ? DateOnly.FromDateTime(cd) : null);
+            if (_attachmentBytes is not null)
+                await ReceiptSvc.SetAttachmentAsync(r.Id, _attachmentFileName!, _attachmentContentType ?? "application/octet-stream", _attachmentBytes);
 
             Snackbar.Add($"Posted {r.ReceiptNo} — GL voucher generated.", Severity.Success);
-            _amount = 0; _narration = null; _invoiceId = 0;
-            _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
-            _recent = await ReceiptSvc.GetRecentAsync(8);
+            await ResetAfterSaveAsync();
         }
         catch (PostingException ex)
         {
@@ -177,4 +490,85 @@
         }
         finally { _posting = false; }
     }
+
+    private async Task SaveDraft()
+    {
+        _posting = true;
+        try
+        {
+            var allocations = BuildAllocations();
+            var r = await ReceiptSvc.CreateDraftAsync(
+                _customerId, null, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
+                _bankAccountId, _amount, _narration, _userName, DateTime.UtcNow,
+                allocations.Count > 0 ? allocations : null, _paymentMode,
+                _referenceNo, _chequeDate is DateTime cd ? DateOnly.FromDateTime(cd) : null);
+            if (_attachmentBytes is not null)
+                await ReceiptSvc.SetAttachmentAsync(r.Id, _attachmentFileName!, _attachmentContentType ?? "application/octet-stream", _attachmentBytes);
+
+            Snackbar.Add($"Saved {r.ReceiptNo} as a draft.", Severity.Success);
+            await ResetAfterSaveAsync();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _posting = false; }
+    }
+
+    private async Task ResetAfterSaveAsync()
+    {
+        _narration = null;
+        _referenceNo = null;
+        _chequeDate = null;
+        _attachmentFileName = null;
+        _attachmentContentType = null;
+        _attachmentBytes = null;
+        ClearApplied();
+        _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
+        _recent = await ReceiptSvc.GetRecentAsync(8);
+    }
+
+    private async Task PostDraft(int receiptId)
+    {
+        try
+        {
+            var r = await ReceiptSvc.PostDraftAsync(receiptId, _userName, DateTime.UtcNow);
+            Snackbar.Add($"Posted {r.ReceiptNo}.", Severity.Success);
+            _recent = await ReceiptSvc.GetRecentAsync(8);
+            _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task VoidDraft(int receiptId)
+    {
+        try
+        {
+            await ReceiptSvc.VoidDraftAsync(receiptId);
+            Snackbar.Add("Receipt voided.", Severity.Success);
+            _recent = await ReceiptSvc.GetRecentAsync(8);
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private static string AllocatedToLabel(CustomerReceipt r)
+    {
+        if (r.Allocations.Count == 0) return "On account";
+        var invoiceNos = r.Allocations.Select(a => a.SalesInvoiceLine.SalesInvoice.InvoiceNo).Distinct().ToList();
+        return invoiceNos.Count == 1 ? invoiceNos[0] : $"{invoiceNos.Count} invoices";
+    }
+
+    private static Color StatusColor(VoucherStatus status) => status switch
+    {
+        VoucherStatus.Draft => Color.Default,
+        VoucherStatus.Posted => Color.Success,
+        VoucherStatus.Void => Color.Dark,
+        _ => Color.Default,
+    };
 }

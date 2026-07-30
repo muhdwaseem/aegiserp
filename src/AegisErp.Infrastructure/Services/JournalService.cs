@@ -23,6 +23,17 @@ public class JournalService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>One voucher with full detail (lines, their accounts and cost centers) — for the
+    /// "view voucher" popup opened from a General Ledger row's voucher link.</summary>
+    public async Task<JournalVoucher?> GetByVoucherNoAsync(string voucherNo)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.JournalVouchers.AsNoTracking()
+            .Include(v => v.Lines).ThenInclude(l => l.Account)
+            .Include(v => v.Lines).ThenInclude(l => l.CostCenter)
+            .FirstOrDefaultAsync(v => v.VoucherNo == voucherNo);
+    }
+
     /// <summary>Next document number for a type within a year, e.g. "JV-2026-0007".</summary>
     public async Task<string> PeekNextVoucherNoAsync(VoucherType type, int year)
     {

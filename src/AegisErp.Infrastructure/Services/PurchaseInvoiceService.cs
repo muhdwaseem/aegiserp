@@ -32,6 +32,37 @@ public class PurchaseInvoiceService
             .ToListAsync();
     }
 
+    /// <summary>One invoice with full detail (Vendor, Lines, JournalVoucher) for the detail page.</summary>
+    public async Task<PurchaseInvoice?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.PurchaseInvoices.AsNoTracking()
+            .Include(i => i.Vendor).Include(i => i.Lines).Include(i => i.JournalVoucher)
+            .FirstOrDefaultAsync(i => i.Id == id);
+    }
+
+    /// <summary>
+    /// This invoice's remaining balance — its gross total minus posted vendor payments and debit
+    /// notes applied against it. Mirrors the same calc <see cref="VendorPaymentService"/>'s own
+    /// outstanding check already does inline; exposed here purely for display on the detail page.
+    /// </summary>
+    public async Task<decimal> GetOutstandingAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.PurchaseInvoices.AsNoTracking().Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        var paid = (await db.VendorPayments.AsNoTracking()
+            .Where(p => p.PurchaseInvoiceId == invoiceId && p.Status == VoucherStatus.Posted)
+            .Select(p => p.Amount).ToListAsync()).Sum();
+        var debited = (await db.DebitNotes.AsNoTracking().Include(d => d.Lines)
+            .Where(d => d.PurchaseInvoiceId == invoiceId && d.Status == VoucherStatus.Posted)
+            .ToListAsync()).Sum(d => d.TotalGross);
+
+        return invoice.TotalGross - paid - debited;
+    }
+
     /// <summary>
     /// Creates and posts a purchase invoice in one transaction: the invoice, its lines and the
     /// generated GL voucher (Dr expense/asset net per line / Dr VAT input / Cr AP gross) are

@@ -356,7 +356,7 @@ public static class SeedData
                 UnitPrice = l.Price,
                 VatRate = l.VatRate,
             });
-        invoice.Post(now);
+        invoice.Post(createdBy, now);
 
         // Same voucher shape the SalesInvoiceService generates.
         var jLines = new List<JournalLine>

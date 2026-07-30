@@ -1,0 +1,89 @@
+@inject JournalService Journal
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@VoucherNo</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_voucher is null)
+        {
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">Voucher not found.</MudText>
+        }
+        else
+        {
+            <MudGrid Class="mb-3">
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Type</MudText>
+                    <MudText Typo="Typo.body1">@_voucher.Type</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Date</MudText>
+                    <MudText Typo="Typo.body1">@_voucher.Date.ToString("dd MMM yyyy")</MudText>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Status</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="@(_voucher.Status == VoucherStatus.Posted ? Color.Success : _voucher.Status == VoucherStatus.Void ? Color.Dark : Color.Default)" Variant="Variant.Text">@_voucher.Status</MudChip>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">Posted By</MudText>
+                    <MudText Typo="Typo.body1">@_voucher.CreatedBy</MudText>
+                </MudItem>
+                @if (!string.IsNullOrWhiteSpace(_voucher.Narration))
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Narration</MudText>
+                        <MudText Typo="Typo.body1">@_voucher.Narration</MudText>
+                    </MudItem>
+                }
+                @if (!string.IsNullOrWhiteSpace(_voucher.Reference))
+                {
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Reference</MudText>
+                        <MudText Typo="Typo.body1">@_voucher.Reference</MudText>
+                    </MudItem>
+                }
+            </MudGrid>
+
+            <MudTable Items="_voucher.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>#</MudTh>
+                    <MudTh>Account</MudTh>
+                    <MudTh>Cost Center</MudTh>
+                    <MudTh>Description</MudTh>
+                    <MudTh Style="text-align:right">Debit</MudTh>
+                    <MudTh Style="text-align:right">Credit</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.LineNo</MudTd>
+                    <MudTd Style="font-family:monospace">@context.Account.Code — @context.Account.Name</MudTd>
+                    <MudTd>@context.CostCenter?.Name</MudTd>
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                    <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+                </RowTemplate>
+            </MudTable>
+
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-3">
+                <MudSpacer />
+                <MudText Class="mr-4">Total Dr: <b>@_voucher.TotalDebit.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Total Cr: <b>@_voucher.TotalCredit.ToString("N2")</b></MudText>
+                @if (_voucher.IsBalanced)
+                {
+                    <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Filled.CheckCircle">Balanced</MudChip>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Close())">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public string VoucherNo { get; set; } = "";
+
+    private JournalVoucher? _voucher;
+
+    protected override async Task OnInitializedAsync() => _voucher = await Journal.GetByVoucherNoAsync(VoucherNo);
+}

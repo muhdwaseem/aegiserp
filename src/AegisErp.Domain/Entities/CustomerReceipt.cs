@@ -18,7 +18,12 @@ public class CustomerReceipt : ICompanyScoped
     public int CustomerId { get; set; }
     public Customer Customer { get; set; } = null!;
 
-    /// <summary>Invoice this receipt settles (null = on-account receipt).</summary>
+    /// <summary>
+    /// Display convenience only: set when this receipt's <see cref="Allocations"/> resolve to
+    /// exactly one invoice (null for a pure on-account receipt, or when it spans multiple
+    /// invoices — a single FK can't represent that). Balance/aging/outstanding calculations must
+    /// always derive invoice attribution from <see cref="Allocations"/>, never from this field.
+    /// </summary>
     public int? SalesInvoiceId { get; set; }
     public SalesInvoice? SalesInvoice { get; set; }
 
@@ -32,6 +37,17 @@ public class CustomerReceipt : ICompanyScoped
     public Account BankAccount { get; set; } = null!;
 
     public decimal Amount { get; set; }
+    public PaymentMode PaymentMode { get; set; } = PaymentMode.Cash;
+
+    /// <summary>Cheque or other payment reference number, if any.</summary>
+    public string? ReferenceNo { get; set; }
+    /// <summary>Cheque date, relevant for Cheque/PostDatedCheque modes.</summary>
+    public DateOnly? ChequeDate { get; set; }
+
+    /// <summary>One supporting document attached to the receipt (e.g. a scanned cheque).</summary>
+    public string? AttachmentFileName { get; set; }
+    public string? AttachmentContentType { get; set; }
+    public byte[]? AttachmentData { get; set; }
 
     public VoucherStatus Status { get; set; } = VoucherStatus.Draft;
     public string? Narration { get; set; }
@@ -42,6 +58,9 @@ public class CustomerReceipt : ICompanyScoped
     public string CreatedBy { get; set; } = "System Admin";
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? PostedAtUtc { get; set; }
+
+    /// <summary>How this receipt's amount is split across the invoice's individual lines/services.</summary>
+    public List<ReceiptAllocation> Allocations { get; set; } = new();
 
     /// <summary>Validates the receipt and transitions it to Posted. The caller generates the GL voucher.</summary>
     public void Post(DateTime nowUtc)
@@ -58,4 +77,22 @@ public class CustomerReceipt : ICompanyScoped
         Status = VoucherStatus.Posted;
         PostedAtUtc = nowUtc;
     }
+}
+
+/// <summary>
+/// Records how much of a <see cref="CustomerReceipt"/> was applied against one specific
+/// <see cref="SalesInvoiceLine"/> — so, on a multi-service invoice, staff can see exactly which
+/// service was paid instead of only a single lump-sum balance for the whole invoice.
+/// </summary>
+public class ReceiptAllocation
+{
+    public int Id { get; set; }
+
+    public int CustomerReceiptId { get; set; }
+    public CustomerReceipt CustomerReceipt { get; set; } = null!;
+
+    public int SalesInvoiceLineId { get; set; }
+    public SalesInvoiceLine SalesInvoiceLine { get; set; } = null!;
+
+    public decimal Amount { get; set; }
 }
