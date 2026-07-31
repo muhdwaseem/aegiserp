@@ -142,6 +142,17 @@ public class SalesInvoiceService
     }
 
     /// <summary>
+    /// Previews the invoice number that will be assigned to a new invoice raised in
+    /// <paramref name="year"/>, so the create-invoice form can display it before saving.
+    /// The number isn't reserved — it's only actually assigned when the invoice is created.
+    /// </summary>
+    public async Task<string> PeekNextInvoiceNoAsync(int year)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await NextInvoiceNoAsync(db, year);
+    }
+
+    /// <summary>
     /// Saves a sales invoice as a Draft: no GL voucher is generated and nothing touches the
     /// ledger. The invoice number is reserved up front so it stays the same when later posted.
     /// </summary>
@@ -149,7 +160,7 @@ public class SalesInvoiceService
         int customerId, DateOnly date, int fiscalPeriodId, string? narration,
         string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
-        string? notes = null)
+        string? notes = null, int? paymentTermsDays = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -161,7 +172,7 @@ public class SalesInvoiceService
             InvoiceNo = await NextInvoiceNoAsync(db, date.Year),
             CustomerId = customerId,
             Date = date,
-            DueDate = date.AddDays(customer.PaymentTermsDays),
+            DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
             Narration = string.IsNullOrWhiteSpace(narration) ? $"Sales invoice — {customer.Name}" : narration,
             CustomerPoNo = string.IsNullOrWhiteSpace(customerPoNo) ? null : customerPoNo.Trim(),
@@ -205,7 +216,7 @@ public class SalesInvoiceService
         int invoiceId, int customerId, DateOnly date, int fiscalPeriodId, string? narration,
         IEnumerable<InvoiceLineInput> lines,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
-        string? notes = null)
+        string? notes = null, int? paymentTermsDays = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -220,7 +231,7 @@ public class SalesInvoiceService
 
         invoice.CustomerId = customerId;
         invoice.Date = date;
-        invoice.DueDate = date.AddDays(customer.PaymentTermsDays);
+        invoice.DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays);
         invoice.FiscalPeriodId = fiscalPeriodId;
         invoice.Narration = string.IsNullOrWhiteSpace(narration) ? $"Sales invoice — {customer.Name}" : narration;
         invoice.CustomerPoNo = string.IsNullOrWhiteSpace(customerPoNo) ? null : customerPoNo.Trim();
@@ -359,6 +370,45 @@ public class SalesInvoiceService
         return (invoice.AttachmentFileName, invoice.AttachmentContentType ?? "application/octet-stream", invoice.AttachmentData);
     }
 
+    /// <summary>
+    /// Attaches (or replaces) one invoice line's own supporting document — e.g. a spec sheet or
+    /// delivery note for that specific item, distinct from the invoice-level attachment.
+    /// </summary>
+    public async Task SetLineAttachmentAsync(int lineId, string fileName, string contentType, byte[] data)
+    {
+        if (data.Length > MaxAttachmentBytes)
+            throw new PostingException($"Attachment is too large — the limit is {MaxAttachmentBytes / (1024 * 1024)} MB.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        var line = await db.SalesInvoiceLines.FirstOrDefaultAsync(l => l.Id == lineId)
+            ?? throw new PostingException("Invoice line not found.");
+
+        line.AttachmentFileName = fileName;
+        line.AttachmentContentType = contentType;
+        line.AttachmentData = data;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task RemoveLineAttachmentAsync(int lineId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var line = await db.SalesInvoiceLines.FirstOrDefaultAsync(l => l.Id == lineId)
+            ?? throw new PostingException("Invoice line not found.");
+
+        line.AttachmentFileName = null;
+        line.AttachmentContentType = null;
+        line.AttachmentData = null;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)?> GetLineAttachmentAsync(int lineId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var line = await db.SalesInvoiceLines.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lineId);
+        if (line?.AttachmentData is null || line.AttachmentFileName is null) return null;
+        return (line.AttachmentFileName, line.AttachmentContentType ?? "application/octet-stream", line.AttachmentData);
+    }
+
     /// <summary>Dr AR for the gross, Cr revenue per line, Cr VAT for the total tax.</summary>
     private static List<VoucherLineInput> BuildVoucherLines(SalesInvoice invoice, int arAccountId, int? vatAccountId)
     {
@@ -384,7 +434,7 @@ public class SalesInvoiceService
         int customerId, DateOnly date, int fiscalPeriodId, string? narration,
         string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
-        string? notes = null)
+        string? notes = null, int? paymentTermsDays = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -399,7 +449,7 @@ public class SalesInvoiceService
             InvoiceNo = invoiceNo,
             CustomerId = customerId,
             Date = date,
-            DueDate = date.AddDays(customer.PaymentTermsDays),
+            DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
             Narration = string.IsNullOrWhiteSpace(narration) ? $"Sales invoice — {customer.Name}" : narration,
             CustomerPoNo = string.IsNullOrWhiteSpace(customerPoNo) ? null : customerPoNo.Trim(),

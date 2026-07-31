@@ -33,6 +33,14 @@ public class CreditNote : ICompanyScoped
     public string? Reason { get; set; }
     public string? Narration { get; set; }
 
+    /// <summary>How this credit settles — reduce the invoice's balance, leave a credit on
+    /// account, or refund the customer in cash immediately.</summary>
+    public CreditNoteSettlementMethod SettlementMethod { get; set; } = CreditNoteSettlementMethod.CreditOnAccount;
+
+    /// <summary>Bank/cash GL account the refund was paid from. Only set for <see cref="CreditNoteSettlementMethod.CashRefund"/>.</summary>
+    public int? BankAccountId { get; set; }
+    public Account? BankAccount { get; set; }
+
     public int? JournalVoucherId { get; set; }
     public JournalVoucher? JournalVoucher { get; set; }
 

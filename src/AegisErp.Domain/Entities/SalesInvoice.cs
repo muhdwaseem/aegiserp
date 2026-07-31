@@ -193,6 +193,11 @@ public class SalesInvoiceLine
     /// <summary>Unit of measure, e.g. "pcs", "hrs" — free text, defaults from the item's own Unit.</summary>
     public string? Uom { get; set; }
 
+    /// <summary>Supporting document for this specific line (e.g. a delivery note or spec sheet for that item).</summary>
+    public string? AttachmentFileName { get; set; }
+    public string? AttachmentContentType { get; set; }
+    public byte[]? AttachmentData { get; set; }
+
     public decimal Net => Math.Round(Quantity * UnitPrice * (1 - DiscountPercent / 100m), 2, MidpointRounding.AwayFromZero);
     public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;

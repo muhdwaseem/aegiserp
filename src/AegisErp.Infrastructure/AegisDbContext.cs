@@ -170,6 +170,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.VatRate).HasPrecision(5, 4);
             e.Property(l => l.DiscountPercent).HasPrecision(5, 2);
             e.Property(l => l.Uom).HasMaxLength(20);
+            e.Property(l => l.AttachmentFileName).HasMaxLength(260);
+            e.Property(l => l.AttachmentContentType).HasMaxLength(100);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);
@@ -212,6 +214,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(n => n.Reason).HasMaxLength(120);
             e.Property(n => n.Narration).HasMaxLength(400);
             e.Property(n => n.CreatedBy).HasMaxLength(80);
+            e.Property(n => n.SettlementMethod).HasConversion<string>().HasMaxLength(20);
             e.Ignore(n => n.TotalNet);
             e.Ignore(n => n.TotalVat);
             e.Ignore(n => n.TotalGross);
@@ -219,6 +222,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasOne(n => n.SalesInvoice).WithMany().HasForeignKey(n => n.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(n => n.FiscalPeriod).WithMany().HasForeignKey(n => n.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(n => n.JournalVoucher).WithMany().HasForeignKey(n => n.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(n => n.BankAccount).WithMany().HasForeignKey(n => n.BankAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(n => n.Lines).WithOne(l => l.CreditNote).HasForeignKey(l => l.CreditNoteId).OnDelete(DeleteBehavior.Cascade);
         });
 

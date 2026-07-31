@@ -11,7 +11,9 @@
 
 <MudText Typo="Typo.h5" Class="mb-3">Credit Note</MudText>
 <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
-    A credit issued to a customer (return, discount, correction). Posts Dr revenue / Dr VAT payable / Cr Accounts Receivable — the mirror of a sales invoice.
+    A credit issued to a customer (return, discount, correction). Picking an invoice pulls its lines
+    in automatically to edit/adjust. Settlement method controls where the credit lands: reduce the
+    invoice's balance, leave it on account, or refund the customer in cash straight away.
 </MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
@@ -29,7 +31,7 @@
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="4">
-            <MudSelect T="int" @bind-Value="_invoiceId" Label="Against invoice (optional)" Dense="true">
+            <MudSelect T="int" Value="_invoiceId" ValueChanged="OnInvoiceChanged" Label="Against invoice (optional)" Dense="true">
                 <MudSelectItem Value="0">On account</MudSelectItem>
                 @foreach (var inv in _openInvoices)
                 {
@@ -37,6 +39,28 @@
                 }
             </MudSelect>
         </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudSelect T="CreditNoteSettlementMethod" @bind-Value="_settlementMethod" Label="Settlement Method" Dense="true">
+                <MudSelectItem Value="CreditNoteSettlementMethod.ApplyToInvoice" Disabled="_invoiceId == 0">Apply to open invoice</MudSelectItem>
+                <MudSelectItem Value="CreditNoteSettlementMethod.CreditOnAccount">Credit on account</MudSelectItem>
+                <MudSelectItem Value="CreditNoteSettlementMethod.CashRefund">Cash refund</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+        @if (_settlementMethod == CreditNoteSettlementMethod.CashRefund)
+        {
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_bankAccountId" Label="Refund From" Dense="true">
+                    <MudSelectItem Value="0">— select —</MudSelectItem>
+                    @if (_bankAccounts is not null)
+                    {
+                        @foreach (var a in _bankAccounts)
+                        {
+                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+        }
         <MudItem xs="12" sm="4">
             <MudTextField @bind-Value="_reason" Label="Reason" Placeholder="Return / discount / correction" />
         </MudItem>
@@ -133,6 +157,7 @@
             <MudTh>Date</MudTh>
             <MudTh>Customer</MudTh>
             <MudTh>Against</MudTh>
+            <MudTh>Settlement</MudTh>
             <MudTh>Reason</MudTh>
             <MudTh Style="text-align:right">Total</MudTh>
             <MudTh>GL Voucher</MudTh>
@@ -143,6 +168,7 @@
             <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
             <MudTd>@context.Customer.Name</MudTd>
             <MudTd Style="font-family:monospace;font-size:11.5px">@(context.SalesInvoice?.InvoiceNo ?? "On account")</MudTd>
+            <MudTd>@SettlementLabel(context)</MudTd>
             <MudTd>@context.Reason</MudTd>
             <MudTd Style="text-align:right;font-weight:600">@context.TotalGross.ToString("N2")</MudTd>
             <MudTd Style="font-family:monospace;font-size:11.5px">@context.JournalVoucher?.VoucherNo</MudTd>
@@ -168,6 +194,9 @@
 
     private int _customerId;
     private int _invoiceId;
+    private CreditNoteSettlementMethod _settlementMethod = CreditNoteSettlementMethod.CreditOnAccount;
+    private int _bankAccountId;
+    private List<Account>? _bankAccounts;
     private DateTime? _date = DateTime.Today;
     private int _periodId;
     private string? _reason;
@@ -180,13 +209,16 @@
     private decimal TotalVat => _lines.Sum(l => l.Vat);
     private decimal TotalGross => _lines.Sum(l => l.Gross);
     private bool CanPost => _customerId > 0 && _periodId > 0 && TotalGross > 0
-                            && _lines.All(l => l.RevenueAccountId > 0 && !string.IsNullOrWhiteSpace(l.Description));
+                            && _lines.All(l => l.RevenueAccountId > 0 && !string.IsNullOrWhiteSpace(l.Description))
+                            && (_settlementMethod != CreditNoteSettlementMethod.ApplyToInvoice || _invoiceId > 0)
+                            && (_settlementMethod != CreditNoteSettlementMethod.CashRefund || _bankAccountId > 0);
 
     protected override async Task OnInitializedAsync()
     {
         _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
         var accounts = await Coa.GetAllAsync(postableOnly: true);
         _revenueAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
+        _bankAccounts = accounts.Where(a => a.Type == AccountType.Asset && a.Code.StartsWith("110")).ToList();
         _costCenters = await Coa.GetCostCentersAsync();
         _periods = await Ledger.GetPeriodsAsync();
         SyncPeriodToDate();
@@ -202,7 +234,7 @@
             if (invoice is not null)
             {
                 await OnCustomerChanged(invoice.CustomerId);
-                _invoiceId = invId;
+                await OnInvoiceChanged(invId);
             }
         }
     }
@@ -210,8 +242,44 @@
     private async Task OnCustomerChanged(int id)
     {
         _customerId = id;
-        _invoiceId = 0;
         _openInvoices = id > 0 ? await CustomerSvc.GetOpenInvoicesAsync(id) : new();
+        await OnInvoiceChanged(0);
+    }
+
+    /// <summary>
+    /// Picking an invoice pulls its lines in as a starting point (still fully editable/adjustable)
+    /// instead of asking the user to re-type them, and defaults the settlement method to "apply to
+    /// invoice" since that's the common case. Clearing the invoice resets to a single blank line.
+    /// </summary>
+    private async Task OnInvoiceChanged(int id)
+    {
+        _invoiceId = id;
+        if (id == 0)
+        {
+            if (_settlementMethod == CreditNoteSettlementMethod.ApplyToInvoice)
+                _settlementMethod = CreditNoteSettlementMethod.CreditOnAccount;
+            _lines.Clear();
+            _lines.Add(new());
+            return;
+        }
+
+        var invoice = await InvoiceSvc.GetByIdAsync(id);
+        if (invoice is null) return;
+
+        if (_settlementMethod == CreditNoteSettlementMethod.CreditOnAccount)
+            _settlementMethod = CreditNoteSettlementMethod.ApplyToInvoice;
+
+        _lines.Clear();
+        foreach (var l in invoice.Lines.OrderBy(l => l.LineNo))
+            _lines.Add(new LineVm
+            {
+                Description = l.Description,
+                RevenueAccountId = l.RevenueAccountId,
+                CostCenterId = l.CostCenterId,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                VatRate = l.VatRate,
+            });
     }
 
     private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
@@ -239,11 +307,14 @@
             var note = await CreditNoteSvc.CreateAndPostAsync(
                 _customerId, _invoiceId > 0 ? _invoiceId : null,
                 DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
-                _reason, _narration, _userName, inputs, DateTime.UtcNow);
+                _reason, _narration, _userName, inputs, DateTime.UtcNow,
+                _settlementMethod, _settlementMethod == CreditNoteSettlementMethod.CashRefund ? _bankAccountId : null);
 
             Snackbar.Add($"Posted {note.CreditNoteNo} — GL voucher {note.JournalVoucher?.VoucherNo} generated.", Severity.Success);
             _lines.Clear(); _lines.Add(new());
             _narration = null; _reason = null; _invoiceId = 0;
+            _settlementMethod = CreditNoteSettlementMethod.CreditOnAccount;
+            _bankAccountId = 0;
             _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
             _recent = await CreditNoteSvc.GetRecentAsync(8);
         }
@@ -253,6 +324,13 @@
         }
         finally { _posting = false; }
     }
+
+    private static string SettlementLabel(CreditNote n) => n.SettlementMethod switch
+    {
+        CreditNoteSettlementMethod.ApplyToInvoice => "Applied to invoice",
+        CreditNoteSettlementMethod.CashRefund => n.BankAccount is not null ? $"Cash refund — {n.BankAccount.Name}" : "Cash refund",
+        _ => "On account",
+    };
 
     private class LineVm
     {

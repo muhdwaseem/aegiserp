@@ -79,4 +79,79 @@ public class CreditNotePostingTests : IDisposable
             _db.Customer.Id, inv.Id, new(2026, 5, 16), _db.May.Id, "Return", null, "tester",
             new[] { new CreditNoteLineInput("Return", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now));
     }
+
+    [Fact]
+    public async Task Cash_refund_credits_the_bank_account_instead_of_AR()
+    {
+        var note = await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 12), _db.May.Id,
+            "Refund", null, "tester",
+            new[] { new CreditNoteLineInput("Refund", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now, // gross 210
+            CreditNoteSettlementMethod.CashRefund, _db.Bank.Id);
+
+        Assert.Equal(CreditNoteSettlementMethod.CashRefund, note.SettlementMethod);
+        Assert.Equal(_db.Bank.Id, note.BankAccountId);
+
+        await using var db = _db.CreateDbContext();
+        var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == note.JournalVoucherId);
+        Assert.Equal(210m, voucher.Lines.Single(l => l.AccountId == _db.Bank.Id).Credit); // Cr Bank, not AR
+        Assert.DoesNotContain(voucher.Lines, l => l.AccountId == _db.Ar.Id);
+    }
+
+    [Fact]
+    public async Task Cash_refund_can_exceed_a_fully_paid_invoices_outstanding_balance()
+    {
+        var inv = await PostInvoice(); // gross 1050
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 15), _db.May.Id,
+            _db.Bank.Id, 1050, null, "tester", Now); // fully paid, 0 outstanding
+
+        // A cash refund pays out of the bank, not off AR, so it isn't capped by the (now zero)
+        // outstanding balance — this must succeed rather than throw.
+        var note = await _creditNotes.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 16), _db.May.Id,
+            "Return", null, "tester",
+            new[] { new CreditNoteLineInput("Return", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now,
+            CreditNoteSettlementMethod.CashRefund, _db.Bank.Id);
+
+        Assert.Equal(VoucherStatus.Posted, note.Status);
+    }
+
+    [Fact]
+    public async Task Cash_refund_still_cannot_exceed_the_invoices_original_total()
+    {
+        // Regression guard: a cash refund isn't capped by "outstanding" (since it doesn't touch
+        // AR), but it must still never let an invoice be credited, in total, for more than it was
+        // originally billed — otherwise a refund tied to a real invoice could drain an arbitrary
+        // amount from the bank with only a cosmetic link to that invoice.
+        var inv = await PostInvoice(); // gross 1050
+        await Assert.ThrowsAsync<PostingException>(() => _creditNotes.CreateAndPostAsync(
+            _db.Customer.Id, inv.Id, new(2026, 5, 16), _db.May.Id, "Return", null, "tester",
+            new[] { new CreditNoteLineInput("Way too much", _db.Revenue.Id, null, 1, 20000, 0.05m) }, Now,
+            CreditNoteSettlementMethod.CashRefund, _db.Bank.Id));
+    }
+
+    [Fact]
+    public async Task Cash_refund_to_a_non_bank_account_is_rejected()
+    {
+        await Assert.ThrowsAsync<PostingException>(() => _creditNotes.CreateAndPostAsync(
+            _db.Customer.Id, null, new(2026, 5, 12), _db.May.Id, "Refund", null, "tester",
+            new[] { new CreditNoteLineInput("Refund", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now,
+            CreditNoteSettlementMethod.CashRefund, _db.Revenue.Id)); // Revenue is Income, not Asset
+    }
+
+    [Fact]
+    public async Task Cash_refund_without_a_bank_account_is_rejected()
+    {
+        await Assert.ThrowsAsync<PostingException>(() => _creditNotes.CreateAndPostAsync(
+            _db.Customer.Id, null, new(2026, 5, 12), _db.May.Id, "Refund", null, "tester",
+            new[] { new CreditNoteLineInput("Refund", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now,
+            CreditNoteSettlementMethod.CashRefund));
+    }
+
+    [Fact]
+    public async Task Apply_to_invoice_without_an_invoice_is_rejected()
+    {
+        await Assert.ThrowsAsync<PostingException>(() => _creditNotes.CreateAndPostAsync(
+            _db.Customer.Id, null, new(2026, 5, 12), _db.May.Id, "Return", null, "tester",
+            new[] { new CreditNoteLineInput("Return", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now,
+            CreditNoteSettlementMethod.ApplyToInvoice));
+    }
 }

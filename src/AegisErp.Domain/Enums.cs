@@ -104,6 +104,15 @@ public enum ApprovalStatus
     Rejected = 4
 }
 
+/// <summary>How a credit note settles: reduce a specific invoice's balance, leave a general
+/// credit balance on the customer's account, or pay the customer back in cash immediately.</summary>
+public enum CreditNoteSettlementMethod
+{
+    ApplyToInvoice = 1,
+    CreditOnAccount = 2,
+    CashRefund = 3
+}
+
 public static class AccountTypeExtensions
 {
     /// <summary>Assets and expenses are debit-normal; liabilities, equity and income are credit-normal.</summary>
