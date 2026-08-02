@@ -177,9 +177,20 @@
     {
         await Session.EnsureInitialisedAsync();
 
-        // Several companies and none chosen yet → make the user pick, so it is never ambiguous
-        // whose books are open. (Skip the redirect when already on the picker.)
-        if (Session.NeedsSelection && !Navigation.Uri.Contains("/select-company", StringComparison.OrdinalIgnoreCase))
+        // No company exists/granted yet: a FirmAdmin goes straight to creating the first one; any
+        // other user goes to the picker, which shows a friendly "ask an admin" message instead of
+        // every company-scoped page failing with an unhandled exception under the error boundary.
+        if (Session.HasNoCompanies && Session.IsFirmAdmin
+            && !Navigation.Uri.Contains("/company-setup", StringComparison.OrdinalIgnoreCase))
+        {
+            Navigation.NavigateTo("company-setup/new");
+            return;
+        }
+
+        // Several companies and none chosen yet (or none at all) → make the user pick/see why not,
+        // so it is never ambiguous whose books are open. (Skip the redirect when already there.)
+        if ((Session.NeedsSelection || Session.HasNoCompanies)
+            && !Navigation.Uri.Contains("/select-company", StringComparison.OrdinalIgnoreCase))
         {
             Navigation.NavigateTo("select-company");
             return;
