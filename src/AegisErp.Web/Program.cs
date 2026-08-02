@@ -114,6 +114,21 @@ forwardedOptions.KnownNetworks.Clear();
 forwardedOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedOptions);
 
+// TEMPORARY diagnostic: log every redirect response (method, path, resulting status, Location,
+// and whether the request carried an auth cookie) so a redirect-loop report shows the actual
+// chain in the deploy logs instead of guessing blind. Remove once the loop is diagnosed.
+app.Use(async (context, next) =>
+{
+    var hadAuthCookie = context.Request.Cookies.Keys.Any(k => k.Contains("Identity", StringComparison.OrdinalIgnoreCase));
+    await next();
+    if (context.Response.StatusCode is >= 300 and < 400)
+    {
+        Console.WriteLine(
+            $"[Redirect] {context.Request.Scheme} {context.Request.Method} {context.Request.Path}{context.Request.QueryString} " +
+            $"authCookiePresent={hadAuthCookie} -> {context.Response.StatusCode} Location={context.Response.Headers.Location}");
+    }
+});
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
