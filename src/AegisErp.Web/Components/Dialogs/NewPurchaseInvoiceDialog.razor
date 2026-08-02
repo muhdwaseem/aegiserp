@@ -27,6 +27,9 @@
                 <MudTextField @bind-Value="_vendorRef" Label="Vendor Ref" Placeholder="Bill no." />
             </MudItem>
             <MudItem xs="12" sm="2">
+                <MudTextField @bind-Value="_lpoNo" Label="LPO No." Placeholder="Optional" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
                 <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Invoice date" />
             </MudItem>
             <MudItem xs="12" sm="2">
@@ -120,6 +123,7 @@
 
     private int _vendorId;
     private string? _vendorRef;
+    private string? _lpoNo;
     private DateTime? _date = DateTime.Today;
     private int _periodId;
     private string? _narration;
@@ -198,7 +202,7 @@
 
             var inv = await InvoiceSvc.CreateAndPostAsync(
                 _vendorId, _vendorRef, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
-                _narration, userName, inputs, DateTime.UtcNow);
+                _narration, userName, inputs, DateTime.UtcNow, _lpoNo);
 
             Snackbar.Add($"Posted {inv.InvoiceNo} — GL voucher {inv.JournalVoucher?.VoucherNo} generated.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(inv.Id));

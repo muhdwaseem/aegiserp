@@ -17,6 +17,9 @@ public class PurchaseInvoice : ICompanyScoped
     /// <summary>The vendor's own invoice/bill reference (optional).</summary>
     public string? VendorRef { get; set; }
 
+    /// <summary>Our own Local Purchase Order number this invoice bills against, if any.</summary>
+    public string? LpoNo { get; set; }
+
     public int VendorId { get; set; }
     public Vendor Vendor { get; set; } = null!;
 

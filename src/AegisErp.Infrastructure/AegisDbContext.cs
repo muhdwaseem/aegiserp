@@ -309,6 +309,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasIndex(i => new { i.CompanyId, i.InvoiceNo }).IsUnique();
             e.Property(i => i.InvoiceNo).HasMaxLength(30).IsRequired();
             e.Property(i => i.VendorRef).HasMaxLength(60);
+            e.Property(i => i.LpoNo).HasMaxLength(60);
             e.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(i => i.Narration).HasMaxLength(400);
             e.Property(i => i.CreatedBy).HasMaxLength(80);

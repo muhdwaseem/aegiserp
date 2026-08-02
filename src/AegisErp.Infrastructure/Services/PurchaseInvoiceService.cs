@@ -70,7 +70,7 @@ public class PurchaseInvoiceService
     /// </summary>
     public async Task<PurchaseInvoice> CreateAndPostAsync(
         int vendorId, string? vendorRef, DateOnly date, int fiscalPeriodId, string? narration,
-        string createdBy, IEnumerable<PurchaseLineInput> lines, DateTime nowUtc)
+        string createdBy, IEnumerable<PurchaseLineInput> lines, DateTime nowUtc, string? lpoNo = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -84,6 +84,7 @@ public class PurchaseInvoiceService
         {
             InvoiceNo = invoiceNo,
             VendorRef = string.IsNullOrWhiteSpace(vendorRef) ? null : vendorRef.Trim(),
+            LpoNo = string.IsNullOrWhiteSpace(lpoNo) ? null : lpoNo.Trim(),
             VendorId = vendorId,
             Date = date,
             DueDate = date.AddDays(vendor.PaymentTermsDays),

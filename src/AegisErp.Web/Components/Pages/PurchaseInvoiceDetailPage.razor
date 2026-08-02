@@ -54,6 +54,10 @@ else if (_invoice is not null)
                 {
                     <MudText Typo="Typo.body2">Vendor Ref: @_invoice.VendorRef</MudText>
                 }
+                @if (!string.IsNullOrWhiteSpace(_invoice.LpoNo))
+                {
+                    <MudText Typo="Typo.body2">LPO No.: @_invoice.LpoNo</MudText>
+                }
             </MudItem>
             <MudItem xs="12" sm="6" Class="text-right">
                 <MudText Typo="Typo.h4">PURCHASE INVOICE</MudText>
