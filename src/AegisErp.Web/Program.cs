@@ -75,11 +75,33 @@ using (var scope = app.Services.CreateScope())
     // providers would just error, so gate it on the configured provider.
     var provider = builder.Configuration["Database:Provider"] ?? DatabaseProvider.Sqlite;
     if (provider == DatabaseProvider.Sqlite)
+    {
         await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+        // EnsureCreated is fine here: local dev owns this file and can delete it after a schema
+        // change (see README). Never use EnsureCreated against Postgres — see below.
+        await db.Database.EnsureCreatedAsync();
+    }
+    else
+    {
+        // Real deployments apply versioned migrations instead of EnsureCreated, so a schema
+        // change ships as an upgrade instead of requiring the client's database to be wiped.
+        await db.Database.MigrateAsync();
+    }
+
+    // A real client deployment sets Seed:DemoData=false (see render.yaml) so its database gets
+    // roles + one bootstrap FirmAdmin (Seed:AdminEmail/AdminPassword) instead of the demo
+    // companies/users/sample documents used for local dev and trials.
+    var seedDemoData = builder.Configuration.GetValue<bool?>("Seed:DemoData") ?? true;
+    var adminEmail = builder.Configuration["Seed:AdminEmail"];
+    var adminPassword = builder.Configuration["Seed:AdminPassword"];
+    (string, string, string)? bootstrapAdmin = !seedDemoData && !string.IsNullOrWhiteSpace(adminEmail) && !string.IsNullOrWhiteSpace(adminPassword)
+        ? (adminEmail, adminPassword, "System Admin")
+        : null;
 
     await SeedData.EnsureSeededAsync(db,
         sp.GetRequiredService<UserManager<AppUser>>(),
-        sp.GetRequiredService<RoleManager<IdentityRole>>());
+        sp.GetRequiredService<RoleManager<IdentityRole>>(),
+        seedDemoData, bootstrapAdmin);
 }
 
 // Behind a reverse proxy (Fly.io / Azure) honour X-Forwarded-Proto so HTTPS redirect and

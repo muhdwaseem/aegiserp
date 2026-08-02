@@ -32,11 +32,29 @@ internal static class JournalPoster
     public static async Task<string> NextDocNoAsync(AegisDbContext db, string prefix, int year)
     {
         var stem = $"{prefix}-{year}-";
+        await AcquireDocNoLockAsync(db, stem);
         var existing = await db.JournalVouchers
             .Where(v => v.VoucherNo.StartsWith(stem))
             .Select(v => v.VoucherNo)
             .ToListAsync();
         return NextDocNo(existing, prefix, year);
+    }
+
+    /// <summary>
+    /// Serializes concurrent number allocation for one (prefix, year) stem on Postgres so two
+    /// simultaneous posts can't both compute the same "next" number (the "Concurrent document
+    /// numbering" gap noted in the README). <c>hashtext</c> runs server-side so every connection —
+    /// including other app instances — derives the same lock key for the same stem. No-op on
+    /// Sqlite (a single writer at a time already serializes this) or outside an ambient
+    /// transaction (e.g. a non-allocating number preview): <c>pg_advisory_xact_lock</c> requires
+    /// one and auto-releases at commit/rollback, so there is never an explicit unlock to forget.
+    /// NOT yet exercised against a live Postgres server — verify with a real concurrency test
+    /// before relying on it in production.
+    /// </summary>
+    private static async Task AcquireDocNoLockAsync(AegisDbContext db, string stem)
+    {
+        if (!db.Database.IsNpgsql() || db.Database.CurrentTransaction is null) return;
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({stem})::bigint)");
     }
 
     /// <summary>

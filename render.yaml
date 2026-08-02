@@ -1,5 +1,25 @@
 # Render Blueprint — deploys Aegis ERP (Blazor Server) from the Dockerfile.
 # On render.com: New → Blueprint → connect this repo → Apply.
+#
+# This blueprint (Sqlite, free tier, no persistent disk) is the DEMO/TRIAL configuration only —
+# the database resets to the seeded demo data on every restart/redeploy. Do NOT point a real
+# client at this as-is: their data would be wiped the next time the service restarts or sleeps.
+#
+# For a real client (persistent data), replace the envVars block below with:
+#
+#   - key: Database__Provider
+#     value: Postgres
+#   - key: ConnectionStrings__Postgres
+#     value: <Supabase/managed Postgres connection string — set via Render's dashboard as a
+#             secret, not committed here>
+#   - key: Seed__DemoData
+#     value: "false"          # skip the demo companies/users — see SeedData.EnsureSeededAsync
+#   - key: Seed__AdminEmail
+#     value: <the client's real admin email>
+#   - key: Seed__AdminPassword
+#     value: <a real password — set via Render's dashboard as a secret, not committed here>
+#
+# and switch off the free `plan` (no persistent disk / cold-sleep) to a paid one.
 services:
   - type: web
     name: aegiserp

@@ -128,37 +128,59 @@ Edit `src/AegisErp.Web/appsettings.json` — no code changes needed:
 }
 ```
 
-## Migrations (recommended before production)
+## Migrations
 
-The app uses `EnsureCreated()` for a friction-free start — note that schema changes
-require deleting the dev `aegis_erp.db`. Before production, switch to EF migrations
-(`dotnet-ef` is pinned in `.config/dotnet-tools.json`):
+Local Sqlite dev still uses `EnsureCreated()` for a friction-free start — schema changes there
+require deleting the dev `aegis_erp.db`. **Postgres (production) uses real EF migrations
+instead**: `Program.cs` calls `db.Database.MigrateAsync()` whenever `Database:Provider` is
+`Postgres`, so a schema change ships as a normal upgrade — the client's database is never wiped.
+
+Migrations live in `src/AegisErp.Infrastructure/Migrations` and are authored against Npgsql via
+`AegisDbContextFactory` (a design-time-only factory — it never opens a real connection, so `dotnet
+ef migrations add` doesn't need a live Postgres server). After changing the model:
 
 ```bash
-dotnet tool restore
-$env:AEGIS_PROVIDER="Postgres"
-dotnet ef migrations add InitialCreate -p src/AegisErp.Infrastructure -s src/AegisErp.Web
-dotnet ef database update            -p src/AegisErp.Infrastructure -s src/AegisErp.Web
+dotnet tool restore   # dotnet-ef is pinned in .config/dotnet-tools.json
+dotnet ef migrations add <Name> -p src/AegisErp.Infrastructure -s src/AegisErp.Web
 ```
 
-Then replace `EnsureCreatedAsync()` in `SeedData` with `db.Database.MigrateAsync()`.
+`dotnet ef database update` is optional — the app applies pending migrations itself on startup.
+
+## Going live for a real client
+
+1. **Postgres, not Sqlite.** Point `Database:Provider` at `Postgres` with a real connection
+   string (a managed instance with persistent storage/backups — e.g. Supabase's free tier, or
+   Render/Azure managed Postgres). Sqlite on Render's free tier has no persistent disk — the
+   database resets on every restart/redeploy, which is fine for a demo but destroys real data.
+   * If using Supabase specifically: free projects auto-pause after ~1 week of no activity
+     (needs a manual "restore" click to wake back up), and the pooled connection string defaults
+     to pgbouncer "transaction" mode, which doesn't fully support EF Core's prepared-statement
+     caching — use the "Session" pooler port, or the direct connection string.
+2. **Skip the demo data.** Set `Seed__DemoData=false` plus `Seed__AdminEmail` /
+   `Seed__AdminPassword` (see `render.yaml`) so the client's database gets roles and one real
+   FirmAdmin account instead of the seeded demo companies/users/sample invoices. Create the
+   client's actual company and remaining users afterwards from `/companies` and `/users`.
+3. **Off the free hosting tier** — persistent disk/managed DB, no cold-sleep, a custom domain
+   with HTTPS, and connection strings/secrets set via the host's env vars rather than committed
+   to `appsettings.json`.
+4. Address the concurrency items below if the client will have multiple people posting
+   concurrently against Postgres.
 
 ## Known production-hardening items
 
-These are deliberately deferred (they don't affect single-user SQLite dev, and the full
-fix is PostgreSQL-specific):
-
-- **Concurrent document numbering.** `JournalPoster.NextDocNoAsync` computes the next number
-  as `max(existing) + 1`. Under Postgres' default isolation, two simultaneous posts can
-  compute the same number. The losing writer now fails cleanly with a recoverable
-  `PostingException` (unique index + `SaveAndCommitAsync` translation) rather than crashing,
-  but the proper fix is a per-(prefix, year) advisory lock or a Serializable transaction with
-  retry around number allocation.
-- **Concurrent receipt allocation.** `ReceiptService` checks an invoice's outstanding balance
-  before inserting. Two simultaneous receipts against the same invoice could both pass on
-  Postgres (there's no DB constraint backing the invariant). Fix: lock the invoice row
-  (`FOR UPDATE`) inside the transaction, or persist an `AllocatedTotal` column with a
-  `CHECK (AllocatedTotal <= gross)`.
+- **Concurrent document numbering** — fixed. `JournalPoster.NextDocNoAsync` takes a per-(prefix,
+  year) Postgres advisory lock (`pg_advisory_xact_lock`, transaction-scoped, auto-released) before
+  computing `max(existing) + 1`, so two simultaneous posts can no longer compute the same number.
+  No-op on Sqlite (a single writer already serializes this). **Not yet exercised against a live
+  Postgres server — run a real concurrent-post test once the client's Postgres is wired up.**
+- **Concurrent receipt allocation** — fixed. `ReceiptService` takes a `SELECT ... FOR UPDATE` row
+  lock on the target invoice (transaction-scoped) before checking its outstanding balance, so two
+  simultaneous receipts against the same invoice serialize instead of both reading the same
+  balance and both passing. No-op on Sqlite. **Same caveat: not yet verified against a live
+  Postgres server.**
+- **Credit notes / payment vouchers** aren't locked the same way yet — they have the identical
+  read-then-check-then-insert shape as receipts. Worth the same treatment if a client will have
+  multiple people posting concurrently against those flows.
 
 ## Roadmap (next slices, same pattern)
 

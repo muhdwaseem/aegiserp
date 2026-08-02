@@ -15,10 +15,25 @@ namespace AegisErp.Infrastructure;
 public static class SeedData
 {
     public static async Task EnsureSeededAsync(
-        AegisDbContext db, UserManager<AppUser> userManager, RoleManager<IdentityRole> roleManager)
+        AegisDbContext db, UserManager<AppUser> userManager, RoleManager<IdentityRole> roleManager,
+        bool seedDemoData = true, (string Email, string Password, string DisplayName)? bootstrapAdmin = null)
     {
-        await db.Database.EnsureCreatedAsync();
-        await SeedIdentityAsync(userManager, roleManager);
+        // Schema creation/upgrade is the caller's job (EnsureCreated for Sqlite dev, MigrateAsync
+        // for Postgres/production — see Program.cs) so this can run against either provider.
+        await SeedRolesAsync(roleManager);
+        if (!seedDemoData)
+        {
+            // A real client's database: no demo users/company/sample data. Still needs at least
+            // one FirmAdmin so someone can sign in and create the client's real company/users
+            // from /companies and /users — supplied via config (Seed:AdminEmail/AdminPassword),
+            // not hardcoded, since this account has full access to every company.
+            if (bootstrapAdmin is { } b)
+                await EnsureUserAsync(userManager, b.Email, b.Password, b.DisplayName,
+                    AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
+            return;
+        }
+
+        await SeedDemoUsersAsync(userManager);
 
         if (await db.Accounts.AnyAsync()) return; // business data already seeded
 
@@ -279,12 +294,15 @@ public static class SeedData
         await db.SaveChangesAsync();
     }
 
-    private static async Task SeedIdentityAsync(UserManager<AppUser> users, RoleManager<IdentityRole> roles)
+    private static async Task SeedRolesAsync(RoleManager<IdentityRole> roles)
     {
         foreach (var role in new[] { AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant, AppRoles.Viewer })
             if (!await roles.RoleExistsAsync(role))
                 await roles.CreateAsync(new IdentityRole(role));
+    }
 
+    private static async Task SeedDemoUsersAsync(UserManager<AppUser> users)
+    {
         await EnsureUserAsync(users, "admin@aegisfze.com", "Admin@123!", "System Admin", AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
         await EnsureUserAsync(users, "finance@aegisfze.com", "Finance@123!", "Fatima Al Rashidi", AppRoles.Accountant);
         await EnsureUserAsync(users, "viewer@aegisfze.com", "Viewer@123!", "Ahmed Al Mansoori", AppRoles.Viewer);

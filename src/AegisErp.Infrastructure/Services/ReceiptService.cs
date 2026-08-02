@@ -229,6 +229,7 @@ public class ReceiptService
 
     private static async Task<SalesInvoice> LoadInvoiceAsync(AegisDbContext db, int invoiceId, int customerId)
     {
+        await LockInvoiceRowAsync(db, invoiceId);
         var invoice = await db.SalesInvoices.AsNoTracking().Include(i => i.Lines)
             .FirstOrDefaultAsync(i => i.Id == invoiceId)
             ?? throw new PostingException("Invoice not found.");
@@ -294,6 +295,7 @@ public class ReceiptService
         var result = new List<ReceiptAllocation>();
         foreach (var group in byInvoice)
         {
+            await LockInvoiceRowAsync(db, group.Key);
             var invoice = group.First().SalesInvoice;
             if (invoice.CustomerId != customerId)
                 throw new PostingException($"Invoice {invoice.InvoiceNo} belongs to a different customer.");
@@ -318,6 +320,20 @@ public class ReceiptService
 
         var distinctInvoiceIds = byInvoice.Select(g => g.Key).ToList();
         return (distinctInvoiceIds.Count == 1 ? distinctInvoiceIds[0] : null, result);
+    }
+
+    /// <summary>
+    /// Locks the invoice's row on Postgres (transaction-scoped, auto-released at commit/rollback)
+    /// so two simultaneous receipts against the same invoice serialize instead of both reading the
+    /// same outstanding balance and both passing (the "Concurrent receipt allocation" gap noted in
+    /// the README). No-op on Sqlite or outside an ambient transaction. NOT yet exercised against a
+    /// live Postgres server — verify with a real concurrency test before relying on it in production.
+    /// </summary>
+    private static async Task LockInvoiceRowAsync(AegisDbContext db, int invoiceId)
+    {
+        if (!db.Database.IsNpgsql() || db.Database.CurrentTransaction is null) return;
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM \"SalesInvoices\" WHERE \"Id\" = {invoiceId} FOR UPDATE");
     }
 
     /// <summary>
