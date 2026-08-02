@@ -1,0 +1,113 @@
+@* Zoho-style "Apply Credit": lists the customer's available on-account credit notes (oldest
+   first) with an editable amount per row, defaulting to auto-filling the invoice's balance from
+   the oldest credits first — the user can adjust any amount down or clear it. No new GL entry is
+   posted; this only records which invoice each credit note's balance was matched against. *@
+@inject CreditNoteService CreditNoteSvc
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Apply Credit</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@InvoiceNo &nbsp;·&nbsp; Balance Due: AED @Balance.ToString("N2")</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_credits is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_credits.Count == 0)
+        {
+            <MudText Class="pa-4 mud-text-secondary">No credits available for this customer.</MudText>
+        }
+        else
+        {
+            <MudSimpleTable Dense="true" Bordered="true" Striped="true" Style="overflow-x:auto">
+                <thead>
+                    <tr>
+                        <th>Credit Note#</th>
+                        <th>Date</th>
+                        <th style="text-align:right">Credits Available</th>
+                        <th style="text-align:right;width:160px">Amount to Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in _credits)
+                    {
+                        <tr>
+                            <td style="font-family:monospace">@c.CreditNoteNo</td>
+                            <td>@c.Date.ToString("dd MMM yyyy")</td>
+                            <td style="text-align:right">@c.Available.ToString("N2")</td>
+                            <td style="text-align:right">
+                                <MudNumericField T="decimal" Value="_amounts[c.CreditNoteId]" ValueChanged="@(v => OnAmountChanged(c, v))"
+                                                  Min="0" Max="@c.Available" HideSpinButtons="true" Margin="Margin.Dense" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+
+            <MudStack Row="true" Justify="Justify.FlexEnd" Class="mt-4" Spacing="6">
+                <MudText>Amount to be Credited: <b>AED @_totalToApply.ToString("N2")</b></MudText>
+                <MudText>Balance Due After Credit: <b>AED @(Balance - _totalToApply).ToString("N2")</b></MudText>
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(_totalToApply <= 0 || _saving)" OnClick="Save">Apply</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Parameter, EditorRequired] public int InvoiceId { get; set; }
+    [Parameter, EditorRequired] public int CustomerId { get; set; }
+    [Parameter, EditorRequired] public string InvoiceNo { get; set; } = "";
+    [Parameter, EditorRequired] public decimal Balance { get; set; }
+
+    private List<AvailableCredit>? _credits;
+    private readonly Dictionary<int, decimal> _amounts = new();
+    private bool _saving;
+
+    private decimal _totalToApply => _amounts.Values.Sum();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _credits = await CreditNoteSvc.GetAvailableCreditAsync(CustomerId);
+
+        // Auto-suggest, oldest credit first, up to the balance due — same as Zoho's default.
+        // Fully editable afterwards: the user can reduce or zero out any row.
+        var remaining = Balance;
+        foreach (var c in _credits)
+        {
+            var take = Math.Max(0, Math.Min(c.Available, remaining));
+            _amounts[c.CreditNoteId] = take;
+            remaining -= take;
+        }
+    }
+
+    private void OnAmountChanged(AvailableCredit c, decimal v) =>
+        _amounts[c.CreditNoteId] = Math.Max(0, Math.Min(v, c.Available));
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            var allocations = _amounts.Where(kv => kv.Value > 0).Select(kv => (kv.Key, kv.Value));
+            await CreditNoteSvc.ApplyToInvoiceAsync(InvoiceId, allocations, userName, DateTime.UtcNow);
+            Snackbar.Add("Credit applied.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

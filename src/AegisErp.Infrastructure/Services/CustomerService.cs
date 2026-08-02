@@ -128,6 +128,7 @@ public class CustomerService
         var receipts = (await PostedReceiptsAsync(db)).Where(r => r.Date <= asOf).ToList();
         var credits = (await PostedCreditNotesAsync(db)).Where(n => n.Date <= asOf).ToList();
         var (allocatedByInvoice, receiptIdsWithAllocations) = await AllocationsForAsync(db, receipts.Select(r => r.Id).ToList());
+        var appliedCreditByInvoice = AppliedCreditByInvoice(credits);
 
         var rows = new List<AgingRow>();
         foreach (var c in customers)
@@ -136,7 +137,8 @@ public class CustomerService
             foreach (var inv in invoices.Where(i => i.CustomerId == c.Id))
             {
                 var allocated = allocatedByInvoice.GetValueOrDefault(inv.Id)
-                                + credits.Where(n => n.SalesInvoiceId == inv.Id).Sum(n => n.TotalGross);
+                                + credits.Where(n => n.SalesInvoiceId == inv.Id).Sum(n => n.TotalGross)
+                                + appliedCreditByInvoice.GetValueOrDefault(inv.Id);
                 var outstanding = inv.TotalGross - allocated;
                 if (outstanding <= 0) continue;
 
@@ -152,10 +154,13 @@ public class CustomerService
             // allocations sum to exactly its Amount — no partial/overpayment state is allowed),
             // so "unallocated" is simply "has zero allocation rows", not merely SalesInvoiceId == null
             // (a receipt spanning multiple invoices also has SalesInvoiceId == null but is fully applied).
+            // A credit note's remaining available balance is its own TotalGross minus whatever's
+            // already been applied to an invoice (directly or via CreditNoteService.ApplyToInvoiceAsync).
             var unallocated = receipts
                 .Where(r => r.CustomerId == c.Id && !receiptIdsWithAllocations.Contains(r.Id))
                 .Sum(r => r.Amount)
-                + credits.Where(n => n.CustomerId == c.Id && n.SalesInvoiceId == null).Sum(n => n.TotalGross);
+                + credits.Where(n => n.CustomerId == c.Id && n.SettlementMethod == CreditNoteSettlementMethod.CreditOnAccount)
+                    .Sum(n => n.TotalGross - n.Allocations.Sum(a => a.Amount));
 
             if (current + b30 + b60 + b90 + over > 0 || unallocated > 0)
                 rows.Add(new AgingRow(c.Code, c.Name, current, b30, b60, b90, over, unallocated));
@@ -171,12 +176,14 @@ public class CustomerService
         var receipts = (await PostedReceiptsAsync(db)).Where(r => r.CustomerId == customerId).ToList();
         var credits = (await PostedCreditNotesAsync(db)).Where(n => n.CustomerId == customerId).ToList();
         var (allocatedByInvoice, _) = await AllocationsForAsync(db, receipts.Select(r => r.Id).ToList());
+        var appliedCreditByInvoice = AppliedCreditByInvoice(credits);
 
         return invoices
             .Select(i =>
             {
                 var allocated = allocatedByInvoice.GetValueOrDefault(i.Id)
-                                + credits.Where(n => n.SalesInvoiceId == i.Id).Sum(n => n.TotalGross);
+                                + credits.Where(n => n.SalesInvoiceId == i.Id).Sum(n => n.TotalGross)
+                                + appliedCreditByInvoice.GetValueOrDefault(i.Id);
                 var billableLineCount = i.Lines.Count(l => l.Net > 0);
                 return new OpenInvoice(i.Id, i.InvoiceNo, i.Date, i.DueDate, i.TotalGross, i.TotalGross - allocated, billableLineCount);
             })
@@ -194,8 +201,16 @@ public class CustomerService
             .Where(r => r.Status == VoucherStatus.Posted).ToListAsync();
 
     private static Task<List<CreditNote>> PostedCreditNotesAsync(AegisDbContext db) =>
-        db.CreditNotes.AsNoTracking().Include(n => n.Lines)
+        db.CreditNotes.AsNoTracking().Include(n => n.Lines).Include(n => n.Allocations)
             .Where(n => n.Status == VoucherStatus.Posted).ToListAsync();
+
+    /// <summary>How much of each already-loaded (Posted) credit note's balance has been applied to
+    /// which invoice — direct (<see cref="CreditNote.SalesInvoiceId"/>) plus on-account notes since
+    /// applied via <see cref="CreditNoteService.ApplyToInvoiceAsync"/>.</summary>
+    private static Dictionary<int, decimal> AppliedCreditByInvoice(List<CreditNote> credits) =>
+        credits.SelectMany(n => n.Allocations)
+            .GroupBy(a => a.SalesInvoiceId)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
 
     /// <summary>
     /// For a set of (already Posted-filtered) receipt ids: how much is allocated to each invoice

@@ -351,7 +351,11 @@ public class ReceiptService
         var credited = (await db.CreditNotes.Include(n => n.Lines)
             .Where(n => n.SalesInvoiceId == invoice.Id && n.Status == VoucherStatus.Posted)
             .ToListAsync()).Sum(n => n.TotalGross);
-        var outstanding = invoice.TotalGross - allocated - credited;
+        // Plus any on-account credit note balance since applied here via CreditNoteService.ApplyToInvoiceAsync.
+        var appliedCredit = (await db.CreditNoteAllocations
+            .Where(a => a.SalesInvoiceId == invoice.Id && a.CreditNote.Status == VoucherStatus.Posted)
+            .Select(a => a.Amount).ToListAsync()).Sum();
+        var outstanding = invoice.TotalGross - allocated - credited - appliedCredit;
         if (amountBeingApplied > outstanding)
             throw new PostingException(
                 $"Amount {amountBeingApplied:N2} exceeds the outstanding {outstanding:N2} on {invoice.InvoiceNo}.");

@@ -52,12 +52,20 @@ public class SalesInvoiceService
         var credits = await db.CreditNotes.AsNoTracking().Include(n => n.Lines)
             .Where(n => n.Status == VoucherStatus.Posted && n.SalesInvoiceId != null)
             .ToListAsync();
+        // On-account credit notes applied after the fact via CreditNoteService.ApplyToInvoiceAsync.
+        var appliedCreditByInvoice = (await db.CreditNoteAllocations.AsNoTracking()
+            .Where(a => a.CreditNote.Status == VoucherStatus.Posted)
+            .Select(a => new { a.SalesInvoiceId, a.Amount })
+            .ToListAsync())
+            .GroupBy(a => a.SalesInvoiceId)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         return invoices.Select(i =>
         {
             var allocated = allocatedByInvoice.GetValueOrDefault(i.Id)
-                          + credits.Where(n => n.SalesInvoiceId == i.Id).Sum(n => n.TotalGross);
+                          + credits.Where(n => n.SalesInvoiceId == i.Id).Sum(n => n.TotalGross)
+                          + appliedCreditByInvoice.GetValueOrDefault(i.Id);
             var balance = i.TotalGross - allocated;
             var status = i.Status switch
             {
@@ -111,9 +119,13 @@ public class SalesInvoiceService
     public async Task<decimal> GetCreditedTotalAsync(int invoiceId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        return (await db.CreditNotes.AsNoTracking().Include(n => n.Lines)
+        var direct = (await db.CreditNotes.AsNoTracking().Include(n => n.Lines)
             .Where(n => n.SalesInvoiceId == invoiceId && n.Status == VoucherStatus.Posted)
             .ToListAsync()).Sum(n => n.TotalGross);
+        var applied = (await db.CreditNoteAllocations.AsNoTracking()
+            .Where(a => a.SalesInvoiceId == invoiceId && a.CreditNote.Status == VoucherStatus.Posted)
+            .Select(a => a.Amount).ToListAsync()).Sum();
+        return direct + applied;
     }
 
     /// <summary>

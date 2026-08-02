@@ -3,6 +3,7 @@
 @using AegisErp.Web.Components.Dialogs
 @inject SalesInvoiceService InvoiceSvc
 @inject CompanyService CompanySvc
+@inject CreditNoteService CreditNoteSvc
 @inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -40,6 +41,10 @@ else if (_invoice is not null)
         {
             <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check" OnClick="Approve">Approve</MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Close" OnClick="Reject">Reject</MudButton>
+        }
+        @if (_availableCredit > 0 && _status is not (ArStatus.Paid or ArStatus.Void))
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Success" StartIcon="@Icons.Material.Filled.AccountBalanceWallet" OnClick="ApplyCredit">Apply Credit</MudButton>
         }
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Payments" OnClick="RecordPayment">Record Payment</MudButton>
         <MudMenu Icon="@Icons.Material.Filled.MoreVert">
@@ -84,6 +89,17 @@ else if (_invoice is not null)
     {
         <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3 invoice-print-hide">
             This invoice also has @_creditedTotal.ToString("N2") credited via Credit Note(s) — reflected in the Balance Due below, not in the per-service breakdown.
+        </MudAlert>
+    }
+
+    @if (_availableCredit > 0 && _status is not (ArStatus.Paid or ArStatus.Void))
+    {
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3 invoice-print-hide">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudText>@_invoice.Customer.Name has <b>AED @_availableCredit.ToString("N2")</b> in credits available.</MudText>
+                <MudSpacer />
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="ApplyCredit">Apply Credit</MudButton>
+            </MudStack>
         </MudAlert>
     }
 
@@ -278,6 +294,7 @@ else if (_invoice is not null)
     private bool _loaded;
     private List<SalesInvoiceLineBalance>? _lineBalances;
     private decimal _creditedTotal;
+    private decimal _availableCredit;
     private CompanySetup? _company;
     private decimal _balance;
     private ArStatus _status;
@@ -293,6 +310,7 @@ else if (_invoice is not null)
 
         _lineBalances = await InvoiceSvc.GetLineBalancesAsync(Id);
         _creditedTotal = await InvoiceSvc.GetCreditedTotalAsync(Id);
+        _availableCredit = (await CreditNoteSvc.GetAvailableCreditAsync(_invoice.CustomerId)).Sum(c => c.Available);
         try { _company = await CompanySvc.GetAsync(); }
         catch (PostingException) { _company = null; }
 
@@ -460,6 +478,19 @@ else if (_invoice is not null)
         if (_invoice.VoidedAtUtc is DateTime voidedAt)
             entries.Add(new($"Voided by {_invoice.VoidedBy}", voidedAt));
         return entries.OrderBy(e => e.At).ToList();
+    }
+
+    private async Task ApplyCredit()
+    {
+        var parameters = new DialogParameters<ApplyCreditDialog>
+        {
+            { x => x.InvoiceId, Id },
+            { x => x.CustomerId, _invoice!.CustomerId },
+            { x => x.InvoiceNo, _invoice!.InvoiceNo },
+            { x => x.Balance, _balance },
+        };
+        var dialog = await DialogService.ShowAsync<ApplyCreditDialog>("Apply Credit", parameters);
+        if ((await dialog.Result) is { Canceled: false }) await Load();
     }
 
     private void RecordPayment() => Nav.NavigateTo($"/receipt-voucher?customerId={_invoice!.CustomerId}&invoiceId={Id}");

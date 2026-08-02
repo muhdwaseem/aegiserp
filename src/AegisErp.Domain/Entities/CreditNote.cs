@@ -50,6 +50,15 @@ public class CreditNote : ICompanyScoped
 
     public List<CreditNoteLine> Lines { get; set; } = new();
 
+    /// <summary>
+    /// How this on-account credit note's balance has been applied to invoices after the fact —
+    /// see <see cref="CreditNoteAllocation"/>. Only ever populated for
+    /// <see cref="CreditNoteSettlementMethod.CreditOnAccount"/> notes; one created directly
+    /// against an invoice (<see cref="CreditNoteSettlementMethod.ApplyToInvoice"/>) already fully
+    /// consumed itself via <see cref="SalesInvoiceId"/> at posting time and never gets allocations.
+    /// </summary>
+    public List<CreditNoteAllocation> Allocations { get; set; } = new();
+
     public decimal TotalNet => Lines.Sum(l => l.Net);
     public decimal TotalVat => Lines.Sum(l => l.Vat);
     public decimal TotalGross => Lines.Sum(l => l.Gross);
@@ -82,6 +91,28 @@ public class CreditNote : ICompanyScoped
         Status = VoucherStatus.Posted;
         PostedAtUtc = nowUtc;
     }
+}
+
+/// <summary>
+/// One application of an on-account credit note's balance against a specific invoice — the
+/// Zoho-style "Apply Credit" action. A credit note can be split across several invoices over
+/// time (unlike <see cref="CreditNote.SalesInvoiceId"/>, which only ever links one invoice, fixed
+/// at posting). No new GL entry is posted here — the credit already hit Accounts Receivable when
+/// the note itself was posted; this only records which invoice(s) it's been matched against.
+/// </summary>
+public class CreditNoteAllocation
+{
+    public int Id { get; set; }
+
+    public int CreditNoteId { get; set; }
+    public CreditNote CreditNote { get; set; } = null!;
+
+    public int SalesInvoiceId { get; set; }
+    public SalesInvoice SalesInvoice { get; set; } = null!;
+
+    public decimal Amount { get; set; }
+    public DateTime AllocatedAtUtc { get; set; }
+    public string AllocatedBy { get; set; } = "System Admin";
 }
 
 /// <summary>A credit note line: quantity × unit price with a VAT rate, credited back off a revenue account.</summary>

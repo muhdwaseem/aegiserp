@@ -44,6 +44,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<ReceiptAllocation> ReceiptAllocations => Set<ReceiptAllocation>();
     public DbSet<CreditNote> CreditNotes => Set<CreditNote>();
     public DbSet<CreditNoteLine> CreditNoteLines => Set<CreditNoteLine>();
+    public DbSet<CreditNoteAllocation> CreditNoteAllocations => Set<CreditNoteAllocation>();
     public DbSet<Estimate> Estimates => Set<Estimate>();
     public DbSet<EstimateLine> EstimateLines => Set<EstimateLine>();
     public DbSet<DeliveryNote> DeliveryNotes => Set<DeliveryNote>();
@@ -227,6 +228,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasOne(n => n.JournalVoucher).WithMany().HasForeignKey(n => n.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(n => n.BankAccount).WithMany().HasForeignKey(n => n.BankAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(n => n.Lines).WithOne(l => l.CreditNote).HasForeignKey(l => l.CreditNoteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(n => n.Allocations).WithOne(a => a.CreditNote).HasForeignKey(a => a.CreditNoteId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<CreditNoteLine>(e =>
@@ -240,6 +242,13 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Ignore(l => l.Gross);
             e.HasOne(l => l.RevenueAccount).WithMany().HasForeignKey(l => l.RevenueAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.CostCenter).WithMany().HasForeignKey(l => l.CostCenterId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CreditNoteAllocation>(e =>
+        {
+            e.Property(a => a.Amount).HasPrecision(18, 2);
+            e.Property(a => a.AllocatedBy).HasMaxLength(80);
+            e.HasOne(a => a.SalesInvoice).WithMany().HasForeignKey(a => a.SalesInvoiceId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<Estimate>(e =>

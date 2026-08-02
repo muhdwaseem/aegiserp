@@ -8,6 +8,13 @@ namespace AegisErp.Infrastructure.Services;
 public record CreditNoteLineInput(string Description, int RevenueAccountId, int? CostCenterId,
     decimal Quantity, decimal UnitPrice, decimal VatRate);
 
+/// <summary>One posted, on-account credit note that still has an unapplied balance — a row in the
+/// "Credits Available" list offered on an invoice's Apply Credit action.</summary>
+public record AvailableCredit(int CreditNoteId, string CreditNoteNo, DateOnly Date, decimal TotalGross, decimal Allocated)
+{
+    public decimal Available => TotalGross - Allocated;
+}
+
 public class CreditNoteService
 {
     private readonly IDbContextFactory<AegisDbContext> _dbf;
@@ -92,9 +99,7 @@ public class CreditNoteService
             if (invoice.Status != VoucherStatus.Posted)
                 throw new PostingException("Only posted invoices can be credited.");
 
-            var priorCredited = (await db.CreditNotes.Include(n => n.Lines)
-                .Where(n => n.SalesInvoiceId == invId && n.Status == VoucherStatus.Posted)
-                .ToListAsync()).Sum(n => n.TotalGross);
+            var priorCredited = await GetCreditedAgainstInvoiceAsync(db, invId);
 
             // Hard ceiling regardless of settlement method: an invoice can never be credited, in
             // total across every credit note against it, for more than it was originally billed.
@@ -151,5 +156,98 @@ public class CreditNoteService
         db.CreditNotes.Add(note);
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return note;
+    }
+
+    /// <summary>Total credited against one invoice: credit notes created directly against it, plus
+    /// any on-account credit note balance since applied to it via <see cref="ApplyToInvoiceAsync"/>.</summary>
+    private static async Task<decimal> GetCreditedAgainstInvoiceAsync(AegisDbContext db, int invoiceId)
+    {
+        var direct = (await db.CreditNotes.Include(n => n.Lines)
+            .Where(n => n.SalesInvoiceId == invoiceId && n.Status == VoucherStatus.Posted)
+            .ToListAsync()).Sum(n => n.TotalGross);
+        var allocated = (await db.CreditNoteAllocations
+            .Where(a => a.SalesInvoiceId == invoiceId && a.CreditNote.Status == VoucherStatus.Posted)
+            .Select(a => a.Amount).ToListAsync()).Sum();
+        return direct + allocated;
+    }
+
+    /// <summary>A customer's posted, on-account credit notes that still have an unapplied balance —
+    /// the "Credits Available" list offered on an invoice's Apply Credit action.</summary>
+    public async Task<List<AvailableCredit>> GetAvailableCreditAsync(int customerId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var notes = await db.CreditNotes.AsNoTracking().Include(n => n.Lines).Include(n => n.Allocations)
+            .Where(n => n.CustomerId == customerId && n.Status == VoucherStatus.Posted
+                && n.SettlementMethod == CreditNoteSettlementMethod.CreditOnAccount)
+            .OrderBy(n => n.Date).ThenBy(n => n.Id)
+            .ToListAsync();
+
+        return notes
+            .Select(n => new AvailableCredit(n.Id, n.CreditNoteNo, n.Date, n.TotalGross, n.Allocations.Sum(a => a.Amount)))
+            .Where(c => c.Available > 0)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Applies one or more on-account credit notes' available balance to a specific invoice — the
+    /// "Apply Credit" action. A credit note can be split across several invoices over time (unlike
+    /// <see cref="CreditNote.SalesInvoiceId"/>, fixed to one invoice at posting), and this call can
+    /// apply several credit notes to one invoice at once. No new GL voucher is posted — the credit
+    /// already hit Accounts Receivable when the note itself was posted; this only records the match.
+    /// </summary>
+    public async Task ApplyToInvoiceAsync(
+        int invoiceId, IEnumerable<(int CreditNoteId, decimal Amount)> allocations, string appliedBy, DateTime nowUtc)
+    {
+        var requested = allocations.Where(a => a.Amount > 0).ToList();
+        if (requested.Count == 0)
+            throw new PostingException("Enter an amount to apply.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var invoice = await db.SalesInvoices.AsNoTracking().Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+        if (invoice.Status != VoucherStatus.Posted)
+            throw new PostingException("Only posted invoices can have credit applied.");
+
+        var priorCredited = await GetCreditedAgainstInvoiceAsync(db, invoiceId);
+        var receipts = (await db.CustomerReceipts
+            .Where(r => r.SalesInvoiceId == invoiceId && r.Status == VoucherStatus.Posted)
+            .Select(r => r.Amount).ToListAsync()).Sum();
+        var outstanding = invoice.TotalGross - receipts - priorCredited;
+
+        var totalRequested = requested.Sum(a => a.Amount);
+        if (totalRequested > outstanding)
+            throw new PostingException(
+                $"Applying {totalRequested:N2} would exceed the outstanding {outstanding:N2} on {invoice.InvoiceNo}.");
+
+        foreach (var (creditNoteId, amount) in requested)
+        {
+            var note = await db.CreditNotes.Include(n => n.Lines).Include(n => n.Allocations)
+                .FirstOrDefaultAsync(n => n.Id == creditNoteId)
+                ?? throw new PostingException("Credit note not found.");
+            if (note.CustomerId != invoice.CustomerId)
+                throw new PostingException($"{note.CreditNoteNo} belongs to a different customer.");
+            if (note.Status != VoucherStatus.Posted)
+                throw new PostingException($"{note.CreditNoteNo} is not posted.");
+            if (note.SettlementMethod != CreditNoteSettlementMethod.CreditOnAccount)
+                throw new PostingException($"{note.CreditNoteNo} is not an on-account credit note.");
+
+            var available = note.TotalGross - note.Allocations.Sum(a => a.Amount);
+            if (amount > available)
+                throw new PostingException($"{note.CreditNoteNo} only has {available:N2} available.");
+
+            db.CreditNoteAllocations.Add(new CreditNoteAllocation
+            {
+                CreditNoteId = creditNoteId,
+                SalesInvoiceId = invoiceId,
+                Amount = amount,
+                AllocatedAtUtc = nowUtc,
+                AllocatedBy = appliedBy,
+            });
+        }
+
+        await JournalPoster.SaveAndCommitAsync(db, tx);
     }
 }

@@ -154,4 +154,97 @@ public class CreditNotePostingTests : IDisposable
             new[] { new CreditNoteLineInput("Return", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now,
             CreditNoteSettlementMethod.ApplyToInvoice));
     }
+
+    // ── Apply Credit (post-hoc allocation of an on-account credit note) ──
+
+    [Fact]
+    public async Task An_on_account_credit_note_shows_up_as_available_credit()
+    {
+        await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 12), _db.May.Id,
+            "Goodwill", null, "tester",
+            new[] { new CreditNoteLineInput("Goodwill credit", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now); // gross 210
+
+        var available = await _creditNotes.GetAvailableCreditAsync(_db.Customer.Id);
+
+        var row = Assert.Single(available);
+        Assert.Equal(210m, row.TotalGross);
+        Assert.Equal(0m, row.Allocated);
+        Assert.Equal(210m, row.Available);
+    }
+
+    [Fact]
+    public async Task Applying_credit_to_an_invoice_reduces_its_outstanding_and_the_credits_available()
+    {
+        var inv = await PostInvoice(); // gross 1050
+        var note = await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 12), _db.May.Id,
+            "Goodwill", null, "tester",
+            new[] { new CreditNoteLineInput("Goodwill credit", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now); // gross 210
+
+        await _creditNotes.ApplyToInvoiceAsync(inv.Id, new[] { (note.Id, 210m) }, "tester", Now);
+
+        var open = await _customers.GetOpenInvoicesAsync(_db.Customer.Id);
+        Assert.Equal(840m, open.Single(o => o.Id == inv.Id).Outstanding); // 1050 - 210
+
+        var available = await _creditNotes.GetAvailableCreditAsync(_db.Customer.Id);
+        Assert.Empty(available); // fully applied, nothing left
+    }
+
+    [Fact]
+    public async Task A_credit_note_can_be_split_across_two_invoices()
+    {
+        var inv1 = await PostInvoice(price: 100, vat: 0.05m); // gross 105
+        var inv2 = await PostInvoice(price: 100, vat: 0.05m); // gross 105
+        var note = await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 12), _db.May.Id,
+            "Goodwill", null, "tester",
+            new[] { new CreditNoteLineInput("Goodwill credit", _db.Revenue.Id, null, 1, 250, 0) }, Now); // gross 250
+
+        await _creditNotes.ApplyToInvoiceAsync(inv1.Id, new[] { (note.Id, 100m) }, "tester", Now);
+        await _creditNotes.ApplyToInvoiceAsync(inv2.Id, new[] { (note.Id, 100m) }, "tester", Now);
+
+        var open = await _customers.GetOpenInvoicesAsync(_db.Customer.Id);
+        Assert.Equal(5m, open.Single(o => o.Id == inv1.Id).Outstanding);
+        Assert.Equal(5m, open.Single(o => o.Id == inv2.Id).Outstanding);
+
+        var available = await _creditNotes.GetAvailableCreditAsync(_db.Customer.Id);
+        var remaining = Assert.Single(available);
+        Assert.Equal(50m, remaining.Available); // 250 - 100 - 100
+    }
+
+    [Fact]
+    public async Task Applying_more_than_a_credit_notes_available_balance_is_rejected()
+    {
+        var inv = await PostInvoice(price: 1000, vat: 0); // gross 1000
+        var note = await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 12), _db.May.Id,
+            "Goodwill", null, "tester",
+            new[] { new CreditNoteLineInput("Goodwill credit", _db.Revenue.Id, null, 1, 200, 0) }, Now); // gross 200
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _creditNotes.ApplyToInvoiceAsync(inv.Id, new[] { (note.Id, 250m) }, "tester", Now));
+    }
+
+    [Fact]
+    public async Task Applying_credit_beyond_the_invoices_outstanding_is_rejected()
+    {
+        var inv = await PostInvoice(price: 100, vat: 0); // gross 100
+        var note = await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 12), _db.May.Id,
+            "Goodwill", null, "tester",
+            new[] { new CreditNoteLineInput("Goodwill credit", _db.Revenue.Id, null, 1, 200, 0) }, Now); // gross 200
+
+        // Available (200) covers it, but the invoice itself only owes 100.
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _creditNotes.ApplyToInvoiceAsync(inv.Id, new[] { (note.Id, 150m) }, "tester", Now));
+    }
+
+    [Fact]
+    public async Task A_credit_note_already_tied_to_an_invoice_at_creation_is_not_offered_as_available_credit()
+    {
+        var inv = await PostInvoice(); // gross 1050
+        await _creditNotes.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 12), _db.May.Id,
+            "Return", null, "tester",
+            new[] { new CreditNoteLineInput("Returned item", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now,
+            CreditNoteSettlementMethod.ApplyToInvoice); // gross 210, tied to inv at creation
+
+        var available = await _creditNotes.GetAvailableCreditAsync(_db.Customer.Id);
+        Assert.Empty(available);
+    }
 }
