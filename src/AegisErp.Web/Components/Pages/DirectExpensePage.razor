@@ -5,6 +5,7 @@
 @inject CustomerService CustomerSvc
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
+@inject ItemService ItemSvc
 @inject ISnackbar Snackbar
 
 <PageTitle>Expenses · Aegis ERP</PageTitle>
@@ -86,6 +87,7 @@
                 </MudStack>
                 <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0">
                     <HeaderContent>
+                        <MudTh Style="width:160px">Item</MudTh>
                         <MudTh>Expense Account</MudTh>
                         <MudTh>Cost Center</MudTh>
                         <MudTh>Description</MudTh>
@@ -93,6 +95,18 @@
                         <MudTh Style="width:48px"></MudTh>
                     </HeaderContent>
                     <RowTemplate>
+                        <MudTd>
+                            <MudSelect T="int" Value="context.ItemId ?? 0" ValueChanged="v => OnItemChanged(context, v)" Dense="true" Margin="Margin.Dense" Clearable="true">
+                                <MudSelectItem Value="0">— none —</MudSelectItem>
+                                @if (_items is not null)
+                                {
+                                    @foreach (var it in _items)
+                                    {
+                                        <MudSelectItem Value="it.Id">@it.Code — @it.Name</MudSelectItem>
+                                    }
+                                }
+                            </MudSelect>
+                        </MudTd>
                         <MudTd>
                             <MudSelect T="int" @bind-Value="context.ExpenseAccountId" Dense="true" Margin="Margin.Dense">
                                 <MudSelectItem Value="0">— select —</MudSelectItem>
@@ -201,6 +215,7 @@
     private List<CostCenter>? _costCenters;
     private List<FiscalPeriod>? _periods;
     private List<DirectExpense>? _recent;
+    private List<Item>? _items;
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
@@ -236,6 +251,7 @@
         _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense).ToList();
         _costCenters = await Coa.GetCostCentersAsync();
         _periods = await Ledger.GetPeriodsAsync();
+        _items = await ItemSvc.GetAllAsync(activeOnly: true);
         SyncPeriodToDate();
         _recent = await ExpenseSvc.GetRecentAsync(8);
         if (AuthState is not null)
@@ -266,6 +282,18 @@
     private void AddLine() => _lines.Add(new());
     private void RemoveLine(LineVm l) { if (_lines.Count > 1) _lines.Remove(l); }
 
+    /// <summary>Picking an item pre-fills its purchase account, description and cost price — still fully editable afterward.</summary>
+    private void OnItemChanged(LineVm line, int itemId)
+    {
+        line.ItemId = itemId == 0 ? null : itemId;
+        var item = _items?.FirstOrDefault(i => i.Id == itemId);
+        if (item is null) return;
+
+        if (item.PurchaseAccountId is int accId) line.ExpenseAccountId = accId;
+        line.Description = item.PurchaseDescription ?? item.Name;
+        if (item.CostPrice is decimal cost) line.Amount = cost;
+    }
+
     private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
 
     private void SyncPeriodToDate()
@@ -283,7 +311,7 @@
         try
         {
             var inputs = _itemized
-                ? _lines.Select(l => new DirectExpenseLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, l.Amount))
+                ? _lines.Select(l => new DirectExpenseLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, l.Amount, l.ItemId))
                 : new[] { new DirectExpenseLineInput(_singleExpenseAccountId, _singleCostCenterId, null, _singleAmount) };
 
             var e = await ExpenseSvc.CreateAndPostAsync(
@@ -317,6 +345,7 @@
 
     private class LineVm
     {
+        public int? ItemId { get; set; }
         public int ExpenseAccountId { get; set; }
         public int? CostCenterId { get; set; }
         public string? Description { get; set; }

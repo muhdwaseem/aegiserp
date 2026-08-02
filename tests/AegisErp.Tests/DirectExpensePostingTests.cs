@@ -103,4 +103,20 @@ public class DirectExpensePostingTests : IDisposable
         Assert.NotEqual(e1.ExpenseNo, e2.ExpenseNo);
         Assert.StartsWith("EXP-", e1.ExpenseNo);
     }
+
+    [Fact]
+    public async Task An_itemized_line_picked_from_the_catalog_persists_its_ItemId()
+    {
+        var items = new ItemService(_db);
+        var item = await items.CreateAsync(new NewItemInput(
+            "Courier charges", ItemKind.Service, "unit", 0,
+            null, null, 75, _db.Expense.Id, "Courier delivery", null));
+
+        var e = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 10), _db.May.Id, _db.Bank.Id,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, "Courier delivery", 75, item.Id) });
+
+        var found = (await _expenses.GetRecentAsync(1)).Single();
+        Assert.Equal(item.Id, found.Lines.Single().ItemId);
+    }
 }

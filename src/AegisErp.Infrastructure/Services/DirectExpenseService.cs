@@ -4,8 +4,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AegisErp.Infrastructure.Services;
 
-/// <summary>One expense line: an amount charged to a specific expense account.</summary>
-public record DirectExpenseLineInput(int ExpenseAccountId, int? CostCenterId, string? Description, decimal Amount);
+/// <summary>One expense line: an amount charged to a specific expense account, optionally picked from the Items catalog.</summary>
+public record DirectExpenseLineInput(int ExpenseAccountId, int? CostCenterId, string? Description, decimal Amount, int? ItemId = null);
 
 public class DirectExpenseService
 {
@@ -62,6 +62,7 @@ public class DirectExpenseService
             expense.Lines.Add(new DirectExpenseLine
             {
                 LineNo = no++,
+                ItemId = l.ItemId,
                 ExpenseAccountId = l.ExpenseAccountId,
                 CostCenterId = l.CostCenterId,
                 Description = l.Description,

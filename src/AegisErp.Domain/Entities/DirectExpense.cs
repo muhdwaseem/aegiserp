@@ -82,6 +82,10 @@ public class DirectExpenseLine
 
     public int LineNo { get; set; }
 
+    /// <summary>Optional catalog item this charge was picked from — auto-fills the account/description/amount below, editable afterward.</summary>
+    public int? ItemId { get; set; }
+    public Item? Item { get; set; }
+
     public int ExpenseAccountId { get; set; }
     public Account ExpenseAccount { get; set; } = null!;
 

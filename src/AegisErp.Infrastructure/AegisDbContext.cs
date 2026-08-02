@@ -425,6 +425,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.Amount).HasPrecision(18, 2);
             e.HasOne(l => l.ExpenseAccount).WithMany().HasForeignKey(l => l.ExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.CostCenter).WithMany().HasForeignKey(l => l.CostCenterId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<CompanySetup>(e =>
