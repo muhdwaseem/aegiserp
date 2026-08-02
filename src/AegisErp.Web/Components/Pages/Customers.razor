@@ -1,7 +1,9 @@
 @page "/customers"
 @attribute [Authorize]
+@using AegisErp.Web.Components.Dialogs
 @inject CustomerService CustomerSvc
 @inject CompanyService CompanySvc
+@inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
 <PageTitle>Customers · Aegis ERP</PageTitle>
@@ -11,66 +13,9 @@
     <MudSpacer />
     <AuthorizeView Roles="@AppRoles.Posters">
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenForm">New Customer</MudButton>
+                   OnClick="OpenNewForm">New Customer</MudButton>
     </AuthorizeView>
 </MudStack>
-
-@if (_showForm)
-{
-    <MudPaper Class="pa-4 mb-4" Elevation="2">
-        <MudText Typo="Typo.subtitle1" Class="mb-3">New Customer</MudText>
-        <MudGrid>
-            <MudItem xs="12" sm="3"><MudTextField Value="_nextCode" Label="Account No." ReadOnly="true" HelperText="Auto-generated" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Customer Name" Required="true" /></MudItem>
-            <MudItem xs="12" sm="3">
-                <MudSelect T="string" @bind-Value="_group" Label="Group" Clearable="true">
-                    <MudSelectItem Value="@("Corporate")">Corporate</MudSelectItem>
-                    <MudSelectItem Value="@("Individual")">Individual</MudSelectItem>
-                    <MudSelectItem Value="@("Government")">Government</MudSelectItem>
-                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-
-            <MudItem xs="12" sm="3">
-                <MudSelect T="string" @bind-Value="_currency" Label="Currency">
-                    <MudSelectItem Value="@("AED")">AED — UAE Dirham</MudSelectItem>
-                    <MudSelectItem Value="@("USD")">USD — US Dollar</MudSelectItem>
-                    <MudSelectItem Value="@("EUR")">EUR — Euro</MudSelectItem>
-                    <MudSelectItem Value="@("GBP")">GBP — British Pound</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_creditLimit" Label="Credit Limit" HideSpinButtons="true" Adornment="Adornment.End" AdornmentText="@_currency" /></MudItem>
-            <MudItem xs="12" sm="3">
-                <MudSelect T="int" @bind-Value="_terms" Label="Payment Terms">
-                    <MudSelectItem Value="0">Immediate</MudSelectItem>
-                    <MudSelectItem Value="15">Net 15</MudSelectItem>
-                    <MudSelectItem Value="30">Net 30</MudSelectItem>
-                    <MudSelectItem Value="60">Net 60</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="Optional" /></MudItem>
-            @if (_salespersonEnabled)
-            {
-                <MudItem xs="12" sm="3">
-                    <MudSelect T="string" @bind-Value="_salesperson" Label="Salesperson" Clearable="true">
-                        @foreach (var sp in _salespersons)
-                        {
-                            <MudSelectItem Value="@sp">@sp</MudSelectItem>
-                        }
-                    </MudSelect>
-                </MudItem>
-            }
-
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="Email" Placeholder="Optional" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_phone" Label="Phone" Placeholder="Optional" /></MudItem>
-            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_address" Label="Address" Placeholder="Optional" /></MudItem>
-        </MudGrid>
-        <MudStack Row="true" Spacing="2" Class="mt-3">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Check" OnClick="Save">Save Customer</MudButton>
-            <MudButton Variant="Variant.Text" OnClick="@(() => _showForm = false)">Cancel</MudButton>
-        </MudStack>
-    </MudPaper>
-}
 
 <MudTable Items="_summaries" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_summaries is null"
           T="CustomerSummary" OnRowClick="RowClicked" RowClass="cursor-pointer">
@@ -86,6 +31,7 @@
         <MudTh Style="text-align:right">Invoiced</MudTh>
         <MudTh Style="text-align:right">Received</MudTh>
         <MudTh Style="text-align:right">Outstanding</MudTh>
+        <MudTh Style="width:48px"></MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd Style="font-family:monospace">@context.Code</MudTd>
@@ -100,6 +46,11 @@
         <MudTd Style="text-align:right">@context.Received.ToString("N2")</MudTd>
         <MudTd Style="text-align:right;font-weight:600" Class="@(context.Outstanding > 0 ? "mud-error-text" : "mud-success-text")">
             @context.Outstanding.ToString("N2")
+        </MudTd>
+        <MudTd @onclick:stopPropagation="true">
+            <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditForm(context.Id))" />
+            </AuthorizeView>
         </MudTd>
     </RowTemplate>
 </MudTable>
@@ -143,21 +94,7 @@
     private List<CustomerSummary>? _summaries;
     private CustomerSummary? _statementFor;
     private List<StatementRow> _statement = new();
-
-    private bool _showForm;
-    private string _nextCode = "";
-    private string _name = "";
-    private string? _group;
-    private string _currency = "AED";
-    private decimal _creditLimit;
-    private string? _trn;
-    private string? _email;
-    private string? _phone;
-    private string? _address;
-    private int _terms = 30;
-    private string? _salesperson;
     private bool _salespersonEnabled;
-    private List<string> _salespersons = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -166,32 +103,28 @@
         {
             var company = await CompanySvc.GetAsync();
             _salespersonEnabled = company.SalespersonEnabled;
-            _salespersons = company.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList();
         }
         catch (PostingException) { _salespersonEnabled = false; }
     }
 
-    private async Task OpenForm()
+    private async Task OpenNewForm()
     {
-        _showForm = true;
-        _nextCode = await CustomerSvc.PeekNextCodeAsync();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewCustomerDialog>("New Customer", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false }) _summaries = await CustomerSvc.GetSummariesAsync();
     }
 
-    private async Task Save()
+    private async Task OpenEditForm(int customerId)
     {
-        try
-        {
-            var input = new NewCustomerInput(_name, _group, _currency, _creditLimit, _terms, _trn, _email, _phone, _address, _salesperson);
-            var c = await CustomerSvc.CreateAsync(input);
-            Snackbar.Add($"Customer {c.Code} created.", Severity.Success);
-            _name = ""; _group = null; _currency = "AED"; _creditLimit = 0;
-            _trn = _email = _phone = _address = _salesperson = null; _terms = 30; _showForm = false;
-            _summaries = await CustomerSvc.GetSummariesAsync();
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
+        var existing = await CustomerSvc.GetByIdAsync(customerId);
+        if (existing is null) return;
+
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var parameters = new DialogParameters<NewCustomerDialog> { { x => x.Existing, existing } };
+        var dialog = await DialogService.ShowAsync<NewCustomerDialog>("Edit Customer", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false }) _summaries = await CustomerSvc.GetSummariesAsync();
     }
 
     private async Task RowClicked(TableRowClickEventArgs<CustomerSummary> args)
