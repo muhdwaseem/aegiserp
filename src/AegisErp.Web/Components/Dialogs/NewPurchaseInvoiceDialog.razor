@@ -32,17 +32,6 @@
             <MudItem xs="12" sm="2">
                 <MudTextField Value="@_dueLabel" Label="Due date" ReadOnly="true" />
             </MudItem>
-            <MudItem xs="12" sm="2">
-                <MudSelect T="int" @bind-Value="_periodId" Label="Period" Dense="true">
-                    @if (_periods is not null)
-                    {
-                        @foreach (var p in _periods)
-                        {
-                            <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
-                        }
-                    }
-                </MudSelect>
-            </MudItem>
             <MudItem xs="12">
                 <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Defaults to 'Purchase invoice — vendor'" />
             </MudItem>
