@@ -29,6 +29,7 @@ public sealed class TestDb : IDbContextFactory<AegisDbContext>, IDisposable
     public Account Expense { get; }
     public Account Ap { get; }
     public Account VatInput { get; }
+    public Account DeferredRevenue { get; }
     public Customer Customer { get; }
     public Vendor Vendor { get; }
     public CostCenter CostCenter { get; }
@@ -56,12 +57,13 @@ public sealed class TestDb : IDbContextFactory<AegisDbContext>, IDisposable
         Expense = new Account { CompanyId = c, Code = "51010", Name = "Expense", Type = AccountType.Expense };
         Ap = new Account { CompanyId = c, Code = WellKnownAccounts.AccountsPayable, Name = "Accounts Payable", Type = AccountType.Liability };
         VatInput = new Account { CompanyId = c, Code = WellKnownAccounts.VatInput, Name = "VAT Input", Type = AccountType.Asset };
+        DeferredRevenue = new Account { CompanyId = c, Code = WellKnownAccounts.DeferredRevenue, Name = "Deferred Revenue", Type = AccountType.Liability };
         Customer = new Customer { CompanyId = c, Code = "C-0001", Name = "Test Customer", PaymentTermsDays = 30 };
         Vendor = new Vendor { CompanyId = c, Code = "V-0001", Name = "Test Vendor", PaymentTermsDays = 30 };
         CostCenter = new CostCenter { CompanyId = c, Code = "OPS", Name = "Operations" };
 
         db.FiscalPeriods.AddRange(May, Jun);
-        db.Accounts.AddRange(Bank, Ar, Vat, Revenue, Expense, Ap, VatInput);
+        db.Accounts.AddRange(Bank, Ar, Vat, Revenue, Expense, Ap, VatInput, DeferredRevenue);
         db.Customers.Add(Customer);
         db.Vendors.Add(Vendor);
         db.CostCenters.Add(CostCenter);

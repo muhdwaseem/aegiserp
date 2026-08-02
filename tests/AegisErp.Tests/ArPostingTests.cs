@@ -59,6 +59,38 @@ public class ArPostingTests : IDisposable
     }
 
     [Fact]
+    public async Task A_deferred_line_credits_deferred_revenue_instead_of_the_revenue_account()
+    {
+        var inv = await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("12-month plan", _db.Revenue.Id, null, 1, 1200, 0.05m,
+                Recognition: RevenueRecognition.Deferred) }, Now);
+
+        await using var db = _db.CreateDbContext();
+        var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == inv.JournalVoucherId);
+
+        Assert.Equal(1200m, voucher.Lines.Single(l => l.AccountId == _db.DeferredRevenue.Id).Credit); // Cr deferred, not revenue
+        Assert.DoesNotContain(voucher.Lines, l => l.AccountId == _db.Revenue.Id);
+    }
+
+    [Fact]
+    public async Task Direct_and_deferred_lines_on_the_same_invoice_post_to_their_own_accounts()
+    {
+        var inv = await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[]
+            {
+                new InvoiceLineInput("One-time setup", _db.Revenue.Id, null, 1, 500, 0.05m), // Direct (default)
+                new InvoiceLineInput("12-month plan", _db.Revenue.Id, null, 1, 1200, 0.05m,
+                    Recognition: RevenueRecognition.Deferred),
+            }, Now);
+
+        await using var db = _db.CreateDbContext();
+        var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == inv.JournalVoucherId);
+
+        Assert.Equal(500m, voucher.Lines.Single(l => l.AccountId == _db.Revenue.Id).Credit);
+        Assert.Equal(1200m, voucher.Lines.Single(l => l.AccountId == _db.DeferredRevenue.Id).Credit);
+    }
+
+    [Fact]
     public async Task Zero_rated_invoice_has_no_VAT_line()
     {
         var inv = await PostInvoice(vat: 0m);

@@ -174,6 +174,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.Uom).HasMaxLength(20);
             e.Property(l => l.AttachmentFileName).HasMaxLength(260);
             e.Property(l => l.AttachmentContentType).HasMaxLength(100);
+            e.Property(l => l.Recognition).HasConversion<string>().HasMaxLength(20);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);
@@ -567,7 +568,19 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     /// </summary>
     private void ApplyCompanyScope()
     {
-        if (CurrentCompanyId is not int companyId) return; // unscoped context (seed / firm admin)
+        // A null CurrentCompanyId legitimately means "unscoped" for read-only, firm-wide contexts
+        // AND for bulk seeding, which adds rows for several companies from one context — those
+        // rows already carry an explicit, non-zero CompanyId set by the caller, so they're left
+        // untouched below. What used to slip through silently was a row added with NEITHER an
+        // explicit CompanyId NOR anything to stamp it with (CompanyId stays 0, which isn't any
+        // real company) — that failed later with a raw, confusing "FOREIGN KEY constraint failed"
+        // instead of saying what was actually wrong.
+        if (CurrentCompanyId is not int companyId)
+        {
+            if (ChangeTracker.Entries<ICompanyScoped>().Any(e => e.State == EntityState.Added && e.Entity.CompanyId == 0))
+                throw new PostingException("No company is selected. Pick a company before creating this record.");
+            return;
+        }
 
         foreach (var entry in ChangeTracker.Entries<ICompanyScoped>())
         {

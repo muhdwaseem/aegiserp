@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = AppRoles.Posters)]
 @using AegisErp.Web.Components.Dialogs
 @inject SalesInvoiceService InvoiceSvc
+@inject LedgerService Ledger
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
@@ -15,6 +16,16 @@
         @foreach (var s in StatusFilters)
         {
             <MudSelectItem Value="s">@s</MudSelectItem>
+        }
+    </MudSelect>
+    <MudSelect T="int?" @bind-Value="_periodFilter" Label="Period" Dense="true" Clearable="true" Style="min-width:160px">
+        <MudSelectItem T="int?" Value="@((int?)null)">All periods</MudSelectItem>
+        @if (_periods is not null)
+        {
+            @foreach (var p in _periods)
+            {
+                <MudSelectItem T="int?" Value="@((int?)p.Id)">@p.Name</MudSelectItem>
+            }
         }
     </MudSelect>
     <MudMenu>
@@ -77,17 +88,31 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private List<SalesInvoiceRow>? _rows;
+    private List<FiscalPeriod>? _periods;
     private string _statusFilter = "All";
+    private int? _periodFilter;
 
-    private IEnumerable<SalesInvoiceRow> FilteredRows => _rows is null ? Enumerable.Empty<SalesInvoiceRow>() : _statusFilter switch
+    private IEnumerable<SalesInvoiceRow> FilteredRows
     {
-        "All" => _rows,
-        // Zoho-style umbrella filter: anything posted and not yet fully paid, due or not.
-        "Outstanding" => _rows.Where(r => r.Status is ArStatus.Pending or ArStatus.Overdue),
-        _ => _rows.Where(r => r.Status.ToString() == _statusFilter),
-    };
+        get
+        {
+            if (_rows is null) return Enumerable.Empty<SalesInvoiceRow>();
+            var rows = _statusFilter switch
+            {
+                "All" => _rows,
+                // Zoho-style umbrella filter: anything posted and not yet fully paid, due or not.
+                "Outstanding" => _rows.Where(r => r.Status is ArStatus.Pending or ArStatus.Overdue),
+                _ => _rows.Where(r => r.Status.ToString() == _statusFilter),
+            };
+            return _periodFilter is int periodId ? rows.Where(r => r.Invoice.FiscalPeriodId == periodId) : rows;
+        }
+    }
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        _periods = await Ledger.GetPeriodsAsync();
+        await Load();
+    }
 
     private async Task Load() => _rows = await InvoiceSvc.GetAllAsync();
 

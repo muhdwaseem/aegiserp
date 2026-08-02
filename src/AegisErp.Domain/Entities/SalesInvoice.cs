@@ -178,6 +178,11 @@ public class SalesInvoiceLine
     public int RevenueAccountId { get; set; }
     public Account RevenueAccount { get; set; } = null!;
 
+    /// <summary>Direct (default) credits <see cref="RevenueAccountId"/> as usual, hitting the P&amp;L
+    /// now. Deferred credits the Deferred Revenue control account (a Balance Sheet liability)
+    /// instead — see <see cref="AegisErp.Domain.RevenueRecognition"/>.</summary>
+    public RevenueRecognition Recognition { get; set; } = RevenueRecognition.Direct;
+
     public int? CostCenterId { get; set; }
     public CostCenter? CostCenter { get; set; }
 

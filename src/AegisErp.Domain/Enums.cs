@@ -113,6 +113,20 @@ public enum CreditNoteSettlementMethod
     CashRefund = 3
 }
 
+/// <summary>
+/// Whether a sales invoice line's revenue is earned now or later. <see cref="Direct"/> credits
+/// the line's own Revenue (Income) account immediately, same as every invoice line before this
+/// existed — it hits the P&amp;L this period. <see cref="Deferred"/> credits the
+/// <see cref="AegisErp.WellKnownAccounts.DeferredRevenue"/> control account (a Liability) instead
+/// — the amount sits on the Balance Sheet as unearned revenue until a separate Journal Voucher
+/// later moves it into the P&amp;L (Dr Deferred Revenue / Cr Revenue) as it's actually earned.
+/// </summary>
+public enum RevenueRecognition
+{
+    Direct = 1,
+    Deferred = 2
+}
+
 public static class AccountTypeExtensions
 {
     /// <summary>Assets and expenses are debit-normal; liabilities, equity and income are credit-normal.</summary>

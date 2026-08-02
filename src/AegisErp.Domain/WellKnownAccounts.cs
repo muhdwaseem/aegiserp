@@ -14,4 +14,8 @@ public static class WellKnownAccounts
 
     /// <summary>Recoverable input VAT on purchases (sits in the prepaid/VAT-input asset account).</summary>
     public const string VatInput = "13010";
+
+    /// <summary>Unearned revenue (Liability) — where a sales invoice line's credit lands when
+    /// its <see cref="Domain.RevenueRecognition"/> is Deferred, instead of a P&amp;L revenue account.</summary>
+    public const string DeferredRevenue = "23010";
 }

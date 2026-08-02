@@ -7,7 +7,8 @@ namespace AegisErp.Infrastructure.Services;
 /// <summary>Input line for creating a sales invoice from the UI.</summary>
 public record InvoiceLineInput(string Description, int RevenueAccountId, int? CostCenterId,
     decimal Quantity, decimal UnitPrice, decimal VatRate, int? ItemId = null,
-    decimal DiscountPercent = 0, string? Uom = null);
+    decimal DiscountPercent = 0, string? Uom = null,
+    RevenueRecognition Recognition = RevenueRecognition.Direct);
 
 public class SalesInvoiceService
 {
@@ -198,6 +199,7 @@ public class SalesInvoiceService
                 VatRate = l.VatRate,
                 DiscountPercent = l.DiscountPercent,
                 Uom = l.Uom,
+                Recognition = l.Recognition,
             });
         if (invoice.Lines.Count == 0)
             throw new PostingException("Invoice needs at least one line.");
@@ -254,6 +256,7 @@ public class SalesInvoiceService
                 VatRate = l.VatRate,
                 DiscountPercent = l.DiscountPercent,
                 Uom = l.Uom,
+                Recognition = l.Recognition,
             });
         if (invoice.Lines.Count == 0)
             throw new PostingException("Invoice needs at least one line.");
@@ -278,10 +281,12 @@ public class SalesInvoiceService
 
         var ar = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.AccountsReceivable);
         var vat = invoice.TotalVat > 0 ? await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.VatPayable) : null;
+        var deferred = invoice.Lines.Any(l => l.Recognition == RevenueRecognition.Deferred)
+            ? await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.DeferredRevenue) : null;
 
         invoice.JournalVoucher = await JournalPoster.PostAsync(
             db, VoucherType.SalesInvoice, invoice.InvoiceNo, invoice.Date, invoice.FiscalPeriodId,
-            invoice.Narration, invoice.InvoiceNo, postedBy, BuildVoucherLines(invoice, ar.Id, vat?.Id), nowUtc);
+            invoice.Narration, invoice.InvoiceNo, postedBy, BuildVoucherLines(invoice, ar.Id, vat?.Id, deferred?.Id), nowUtc);
 
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return invoice;
@@ -409,8 +414,13 @@ public class SalesInvoiceService
         return (line.AttachmentFileName, line.AttachmentContentType ?? "application/octet-stream", line.AttachmentData);
     }
 
-    /// <summary>Dr AR for the gross, Cr revenue per line, Cr VAT for the total tax.</summary>
-    private static List<VoucherLineInput> BuildVoucherLines(SalesInvoice invoice, int arAccountId, int? vatAccountId)
+    /// <summary>
+    /// Dr AR for the gross, Cr revenue per line (or Cr Deferred Revenue for a line whose
+    /// <see cref="RevenueRecognition"/> is Deferred — see <see cref="WellKnownAccounts.DeferredRevenue"/>),
+    /// Cr VAT for the total tax.
+    /// </summary>
+    private static List<VoucherLineInput> BuildVoucherLines(
+        SalesInvoice invoice, int arAccountId, int? vatAccountId, int? deferredRevenueAccountId)
     {
         var lines = new List<VoucherLineInput>
         {
@@ -419,7 +429,11 @@ public class SalesInvoiceService
         // Skip zero-net lines (e.g. complimentary items) — the invoice still records them,
         // but a zero GL line would fail the double-entry rules.
         lines.AddRange(invoice.Lines.Where(l => l.Net > 0).Select(l =>
-            new VoucherLineInput(l.RevenueAccountId, l.CostCenterId, l.Description, 0, l.Net)));
+        {
+            var creditAccountId = l.Recognition == RevenueRecognition.Deferred && deferredRevenueAccountId is int defId
+                ? defId : l.RevenueAccountId;
+            return new VoucherLineInput(creditAccountId, l.CostCenterId, l.Description, 0, l.Net);
+        }));
         if (invoice.TotalVat > 0 && vatAccountId is int vatId)
             lines.Add(new VoucherLineInput(vatId, null, $"Output VAT — {invoice.InvoiceNo}", 0, invoice.TotalVat));
         return lines;
@@ -475,16 +489,19 @@ public class SalesInvoiceService
                 VatRate = l.VatRate,
                 DiscountPercent = l.DiscountPercent,
                 Uom = l.Uom,
+                Recognition = l.Recognition,
             });
 
         invoice.Post(createdBy, nowUtc); // domain validation (positive totals, valid lines, due date)
 
         var ar = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.AccountsReceivable);
         var vat = invoice.TotalVat > 0 ? await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.VatPayable) : null;
+        var deferred = invoice.Lines.Any(l => l.Recognition == RevenueRecognition.Deferred)
+            ? await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.DeferredRevenue) : null;
 
         invoice.JournalVoucher = await JournalPoster.PostAsync(
             db, VoucherType.SalesInvoice, invoiceNo, date, fiscalPeriodId,
-            invoice.Narration, invoiceNo, createdBy, BuildVoucherLines(invoice, ar.Id, vat?.Id), nowUtc);
+            invoice.Narration, invoiceNo, createdBy, BuildVoucherLines(invoice, ar.Id, vat?.Id, deferred?.Id), nowUtc);
 
         db.SalesInvoices.Add(invoice);
         await JournalPoster.SaveAndCommitAsync(db, tx);
