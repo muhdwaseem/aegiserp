@@ -58,6 +58,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<DirectExpenseLine> DirectExpenseLines => Set<DirectExpenseLine>();
     public DbSet<CompanySetup> CompanySetups => Set<CompanySetup>();
     public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
+    public DbSet<Salesperson> Salespersons => Set<Salesperson>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<TaxCode> TaxCodes => Set<TaxCode>();
     public DbSet<Item> Items => Set<Item>();
@@ -132,6 +133,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(c => c.Group).HasMaxLength(40);
             e.Property(c => c.Currency).HasMaxLength(3).IsRequired();
             e.Property(c => c.CreditLimit).HasPrecision(18, 2);
+            e.Property(c => c.Salesperson).HasMaxLength(100);
         });
 
         b.Entity<SalesInvoice>(e =>
@@ -447,6 +449,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(c => c.RowVersion).IsConcurrencyToken();
             e.HasMany(c => c.BankAccounts).WithOne(a => a.CompanySetup)
                 .HasForeignKey(a => a.CompanySetupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.Salespersons).WithOne(s => s.CompanySetup)
+                .HasForeignKey(s => s.CompanySetupId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<CompanyBankAccount>(e =>
@@ -457,6 +461,11 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(a => a.Iban).HasMaxLength(40);
             e.Property(a => a.Swift).HasMaxLength(20);
             e.Property(a => a.Currency).HasMaxLength(3);
+        });
+
+        b.Entity<Salesperson>(e =>
+        {
+            e.Property(s => s.Name).HasMaxLength(100).IsRequired();
         });
 
         b.Entity<Currency>(e =>

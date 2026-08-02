@@ -86,6 +86,15 @@ public class CompanySetup
     public bool AuditTrailEnabled { get; set; } = true;
     public bool ApprovalWorkflowEnabled { get; set; }
 
+    /// <summary>When on, the New Customer form collects a Salesperson — off by default since most
+    /// companies don't track this; a pro-services-type company would turn it on. Admin-only
+    /// (this whole page is <c>[Authorize(Roles = AppRoles.Admins)]</c>).</summary>
+    public bool SalespersonEnabled { get; set; }
+
+    /// <summary>The company's maintained list of salesperson names — admin-curated here, offered
+    /// as a dropdown on the New Customer form instead of free text, so names stay consistent.</summary>
+    public List<Salesperson> Salespersons { get; set; } = new();
+
     public string? UpdatedBy { get; set; }
     public DateTime? UpdatedAtUtc { get; set; }
 
@@ -110,4 +119,16 @@ public class CompanyBankAccount
     public string? Swift { get; set; }
     public string Currency { get; set; } = "AED";
     public bool IsPrimary { get; set; }
+}
+
+/// <summary>One name in the company's maintained salesperson list (see
+/// <see cref="CompanySetup.SalespersonEnabled"/>). Deliberately just a name — not tied to a login
+/// user — since not every salesperson needs system access.</summary>
+public class Salesperson
+{
+    public int Id { get; set; }
+    public int CompanySetupId { get; set; }
+    public CompanySetup CompanySetup { get; set; } = null!;
+
+    public string Name { get; set; } = string.Empty;
 }

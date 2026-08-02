@@ -6,7 +6,7 @@ namespace AegisErp.Infrastructure.Services;
 /// <summary>A customer with its subledger position (posted documents only).</summary>
 public record CustomerSummary(
     int Id, string Code, string Name, string? Trn, int PaymentTermsDays,
-    decimal Invoiced, decimal Received, decimal Outstanding);
+    decimal Invoiced, decimal Received, decimal Outstanding, string? Salesperson = null);
 
 /// <summary>One row in a customer statement: an invoice (debit) or receipt (credit).</summary>
 public record StatementRow(

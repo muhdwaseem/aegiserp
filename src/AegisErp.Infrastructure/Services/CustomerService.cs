@@ -7,7 +7,8 @@ namespace AegisErp.Infrastructure.Services;
 /// <summary>Everything the "New Customer" form collects.</summary>
 public record NewCustomerInput(
     string Name, string? Group, string Currency, decimal CreditLimit,
-    int PaymentTermsDays, string? Trn, string? Email, string? Phone, string? Address);
+    int PaymentTermsDays, string? Trn, string? Email, string? Phone, string? Address,
+    string? Salesperson = null);
 
 public class CustomerService
 {
@@ -49,6 +50,7 @@ public class CustomerService
             Phone = input.Phone?.Trim(),
             Address = input.Address?.Trim(),
             PaymentTermsDays = input.PaymentTermsDays,
+            Salesperson = string.IsNullOrWhiteSpace(input.Salesperson) ? null : input.Salesperson.Trim(),
         };
         db.Customers.Add(customer);
         await db.SaveChangesAsync();
@@ -82,7 +84,7 @@ public class CustomerService
             var received = receipts.Where(r => r.CustomerId == c.Id).Sum(r => r.Amount);
             var credited = credits.Where(n => n.CustomerId == c.Id).Sum(n => n.TotalGross);
             return new CustomerSummary(c.Id, c.Code, c.Name, c.Trn, c.PaymentTermsDays,
-                invoiced, received, invoiced - received - credited);
+                invoiced, received, invoiced - received - credited, c.Salesperson);
         }).ToList();
     }
 

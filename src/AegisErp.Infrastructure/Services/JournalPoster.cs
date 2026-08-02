@@ -2,6 +2,7 @@ using AegisErp.Domain;
 using AegisErp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 
 namespace AegisErp.Infrastructure.Services;
 
@@ -172,6 +173,32 @@ internal static class JournalPoster
         {
             return new PostingException(
                 "This record was changed by another user since you opened it. Please reload and try again.", ex);
+        }
+
+        // On Postgres, prefer the structured SQLSTATE over string-sniffing — it's stable across
+        // locales/versions and gives us the actual column/constraint name instead of a guess.
+        if (ex.InnerException is PostgresException pg)
+        {
+            switch (pg.SqlState)
+            {
+                case PostgresErrorCodes.UniqueViolation:
+                    return new PostingException(
+                        "This document conflicts with one just posted by another user (duplicate number). Please try again.", ex);
+                case PostgresErrorCodes.ForeignKeyViolation:
+                    return new PostingException(
+                        $"This refers to a{(pg.ColumnName is null ? "n" : $" {pg.ColumnName}")} record that doesn't exist " +
+                        "(it may have been deleted, or belongs to a different company) — check your selections and try again.", ex);
+                case PostgresErrorCodes.NotNullViolation:
+                    return new PostingException(
+                        $"{pg.ColumnName ?? "A required field"} is required and can't be left blank.", ex);
+                case PostgresErrorCodes.CheckViolation:
+                    return new PostingException(
+                        $"That value isn't valid for {pg.ColumnName ?? "one of these fields"} — please check it and try again.", ex);
+                case PostgresErrorCodes.SerializationFailure:
+                case PostgresErrorCodes.DeadlockDetected:
+                case PostgresErrorCodes.LockNotAvailable:
+                    return new PostingException("The database was busy with another user's request. Please try again.", ex);
+            }
         }
 
         var msg = ex.InnerException?.Message ?? ex.Message;

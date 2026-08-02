@@ -26,7 +26,7 @@ public class CompanyService
     public async Task<CompanySetup?> GetByIdAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        return await db.CompanySetups.AsNoTracking().Include(c => c.BankAccounts)
+        return await db.CompanySetups.AsNoTracking().Include(c => c.BankAccounts).Include(c => c.Salespersons)
             .FirstOrDefaultAsync(c => c.Id == id);
     }
 
@@ -54,7 +54,7 @@ public class CompanyService
     public async Task<CompanySetup> GetAsync()
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var query = db.CompanySetups.AsNoTracking().Include(c => c.BankAccounts).AsQueryable();
+        var query = db.CompanySetups.AsNoTracking().Include(c => c.BankAccounts).Include(c => c.Salespersons).AsQueryable();
 
         var company = _current.CompanyId is int id
             ? await query.FirstOrDefaultAsync(c => c.Id == id)
@@ -72,7 +72,7 @@ public class CompanyService
     public async Task SaveAsync(CompanySetup model, string updatedBy)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var existing = await db.CompanySetups.Include(c => c.BankAccounts)
+        var existing = await db.CompanySetups.Include(c => c.BankAccounts).Include(c => c.Salespersons)
             .FirstOrDefaultAsync(c => c.Id == model.Id);
 
         if (existing is null)
@@ -84,7 +84,7 @@ public class CompanyService
 
         var expectedRowVersion = model.RowVersion;
 
-        // Copy scalar fields; then rebuild the bank-account list.
+        // Copy scalar fields; then rebuild the bank-account and salesperson lists.
         db.Entry(existing).CurrentValues.SetValues(model);
         db.CompanyBankAccounts.RemoveRange(existing.BankAccounts);
         existing.BankAccounts = model.BankAccounts.Select(b => new CompanyBankAccount
@@ -97,6 +97,12 @@ public class CompanyService
             Currency = string.IsNullOrWhiteSpace(b.Currency) ? "AED" : b.Currency,
             IsPrimary = b.IsPrimary,
         }).ToList();
+
+        db.Salespersons.RemoveRange(existing.Salespersons);
+        existing.Salespersons = model.Salespersons
+            .Where(s => !string.IsNullOrWhiteSpace(s.Name))
+            .Select(s => new Salesperson { Name = s.Name.Trim() })
+            .ToList();
 
         existing.UpdatedBy = updatedBy;
         existing.UpdatedAtUtc = DateTime.UtcNow;

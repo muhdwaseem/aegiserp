@@ -1,0 +1,38 @@
+@* Collapsible document-section panel — the reference prototype's signature structural pattern
+   (Dynamics BC-style "FastTabs"), used on document detail/edit pages instead of a flat MudPaper
+   card. Click the header to expand/collapse; content stays mounted (not re-rendered) while
+   collapsed, so no state is lost and no extra data round-trip happens on re-expand. *@
+
+<div class="fasttab @(_open ? "" : "closed") @Class">
+    <button type="button" class="fasttab-head" @onclick="Toggle">
+        <svg class="fasttab-chev" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7-11-7Z" /></svg>
+        <span>@Title</span>
+        @if (Badge is not null)
+        {
+            @Badge
+        }
+        <span class="fasttab-spacer"></span>
+        @if (!string.IsNullOrEmpty(Hint))
+        {
+            <span class="fasttab-hint">@Hint</span>
+        }
+    </button>
+    <div class="fasttab-body" style="@(_open ? "" : "display:none")">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public RenderFragment? Badge { get; set; }
+    [Parameter] public bool StartOpen { get; set; } = true;
+    [Parameter] public string Class { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _open;
+
+    protected override void OnInitialized() => _open = StartOpen;
+
+    private void Toggle() => _open = !_open;
+}

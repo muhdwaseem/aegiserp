@@ -14,6 +14,7 @@
     <MudAppBar Elevation="1" Dense="true">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                        OnClick="@(() => _drawerOpen = !_drawerOpen)" />
+        <span class="brand-mark ml-1">AE</span>
         <MudText Typo="Typo.h6" Class="ml-2" Style="font-weight:700;letter-spacing:-.3px">Aegis&nbsp;ERP</MudText>
         <MudText Typo="Typo.caption" Class="ml-2 d-none d-sm-flex" Style="opacity:.7">Finance &amp; Operations</MudText>
         <MudSpacer />
@@ -139,6 +140,15 @@
 @* App-bar text/chips: MudChip's text variant dims the inherited colour to a faint grey on the
    navy bar. Force crisp white with a subtle translucent pill so they read clearly. *@
 <style>
+    /* Brand mark: small gradient tile echoing the ledger-and-ink identity — primary blue into a
+       warm gold, the one place gold appears in the chrome (kept sparing on purpose). */
+    .brand-mark {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; border-radius: 3px; flex: 0 0 28px;
+        background: linear-gradient(135deg, var(--mud-palette-primary), var(--brand-gold, #92662c));
+        color: #fff; font-weight: 700; font-size: 11px; letter-spacing: .02em;
+    }
+
     .mud-appbar .mud-chip.mud-chip-text {
         color: #ffffff !important;
         background-color: rgba(255, 255, 255, 0.10);
@@ -155,15 +165,16 @@
     /* Toolbar icon buttons (menu, dark-mode) crisp white */
     .mud-appbar .mud-icon-button { color: rgba(255, 255, 255, 0.9); }
 
-    /* The active company must be unmistakable — it decides whose books you are editing. */
+    /* The active company must be unmistakable — it decides whose books you are editing. Gold
+       reads clearly against the constant dark-olive appbar in both light and dark mode. */
     .mud-appbar .mud-chip.company-chip {
-        background-color: rgba(46, 134, 222, 0.30) !important;
-        border: 1px solid rgba(255, 255, 255, 0.45);
+        background-color: rgba(146, 102, 44, 0.35) !important;
+        border: 1px solid rgba(242, 230, 207, 0.45);
         font-weight: 700 !important;
         letter-spacing: .2px;
     }
     .mud-appbar .mud-chip.company-chip:hover {
-        background-color: rgba(46, 134, 222, 0.45) !important;
+        background-color: rgba(146, 102, 44, 0.5) !important;
     }
 </style>
 
@@ -228,81 +239,91 @@
         StateHasChanged();
     }
 
-    // Palette mapped to the original prototype's design tokens, tuned for both modes.
+    // "Ledger" palette — warm stone canvas + deep forest-green primary + brass/gold secondary,
+    // approved design direction (see design-preview artifact). The appbar/drawer shell stays a
+    // constant dark olive in BOTH modes (only the page canvas/cards switch between the warm-stone
+    // light surface and the charcoal-green dark surface) — matching the reference prototype's
+    // "dark nav shell regardless of theme" pattern.
     private readonly MudTheme _theme = new()
     {
+        Typography = new Typography
+        {
+            Default = new Default { FontFamily = new[] { "Plex Sans", "Segoe UI", "system-ui", "sans-serif" } }
+        },
         PaletteLight = new PaletteLight
         {
-            Primary = "#2e86de",
-            PrimaryContrastText = "#ffffff",
-            Secondary = "#5b2da0",
-            Info = "#185fa5",
-            Success = "#0f6b35",
-            Warning = "#92600a",
-            Error = "#c0392b",
-            Dark = "#1f2d3d",
+            Primary = "#1f4d3a",
+            PrimaryContrastText = "#f8f6f1",
+            Secondary = "#92662c",
+            SecondaryContrastText = "#f8f6f1",
+            Info = "#315a86",
+            Success = "#2f6b3f",
+            Warning = "#8a5a09",
+            Error = "#8f3a2a",
+            Dark = "#21261e",
 
-            Background = "#f5f6f8",
-            Surface = "#ffffff",
-            BackgroundGray = "#eceef2",
+            Background = "#e9e6de",
+            Surface = "#f8f6f1",
+            BackgroundGray = "#ded9cc",
 
-            AppbarBackground = "#1f2d3d",
-            AppbarText = "rgba(255,255,255,0.92)",
-            DrawerBackground = "#ffffff",
-            DrawerText = "#3a4256",
-            DrawerIcon = "#5a6478",
+            AppbarBackground = "#21261e",
+            AppbarText = "rgba(242,240,230,0.92)",
+            DrawerBackground = "#21261e",
+            DrawerText = "#cdd0c2",
+            DrawerIcon = "#cdd0c2",
 
-            TextPrimary = "#1c2333",
-            TextSecondary = "#5a6478",
-            TextDisabled = "rgba(28,35,51,0.38)",
-            ActionDefault = "#6b7488",
-            ActionDisabled = "rgba(28,35,51,0.26)",
-            ActionDisabledBackground = "rgba(28,35,51,0.10)",
+            TextPrimary = "#262a22",
+            TextSecondary = "#565b4c",
+            TextDisabled = "rgba(38,42,34,0.38)",
+            ActionDefault = "#6b7060",
+            ActionDisabled = "rgba(38,42,34,0.26)",
+            ActionDisabledBackground = "rgba(38,42,34,0.10)",
 
-            LinesDefault = "#e2e5ec",
-            LinesInputs = "#c8cdd8",
-            Divider = "#e6e9f0",
+            LinesDefault = "#d2ccbb",
+            LinesInputs = "#b7ae97",
+            Divider = "#d2ccbb",
             DividerLight = "rgba(0,0,0,0.05)",
-            TableLines = "#e6e9f0",
-            TableStriped = "rgba(28,35,51,0.02)",
-            TableHover = "rgba(46,134,222,0.07)",
+            TableLines = "#d2ccbb",
+            TableStriped = "rgba(38,42,34,0.02)",
+            TableHover = "rgba(31,77,58,0.09)",
         },
         PaletteDark = new PaletteDark
         {
-            Primary = "#5b9ef2",
-            PrimaryContrastText = "#0a1220",
-            Secondary = "#a78bfa",
-            Info = "#60a5fa",
-            Success = "#4ade80",
-            Warning = "#fbbf24",
-            Error = "#f87171",
-            Dark = "#0d1117",
+            Primary = "#6fae84",
+            PrimaryContrastText = "#0d150f",
+            Secondary = "#d3a15c",
+            SecondaryContrastText = "#0d150f",
+            Info = "#7fa8d6",
+            Success = "#7fc696",
+            Warning = "#e0b34d",
+            Error = "#d97b6a",
+            Dark = "#0e120b",
 
-            Background = "#161a21",     // page
-            Surface = "#1e2530",        // cards / paper (elevated)
-            BackgroundGray = "#232b37",
+            Background = "#14180f",     // page
+            Surface = "#1b2015",        // cards / paper (elevated)
+            BackgroundGray = "#232a1a",
 
-            AppbarBackground = "#111820",
-            AppbarText = "rgba(255,255,255,0.92)",
-            DrawerBackground = "#151a22",
-            DrawerText = "#a6afc0",
-            DrawerIcon = "#8790a4",
+            AppbarBackground = "#0e120b",
+            AppbarText = "rgba(242,240,230,0.92)",
+            DrawerBackground = "#0e120b",
+            DrawerText = "#cdd0c2",
+            DrawerIcon = "#cdd0c2",
 
-            TextPrimary = "#e8eaf0",
-            TextSecondary = "#a6afc0",
-            TextDisabled = "rgba(232,234,240,0.34)",
-            ActionDefault = "#8891a3",
-            ActionDisabled = "rgba(232,234,240,0.26)",
-            ActionDisabledBackground = "rgba(232,234,240,0.10)",
+            TextPrimary = "#e7e6dc",
+            TextSecondary = "#aaad9b",
+            TextDisabled = "rgba(231,230,220,0.34)",
+            ActionDefault = "#8b8f7c",
+            ActionDisabled = "rgba(231,230,220,0.26)",
+            ActionDisabledBackground = "rgba(231,230,220,0.10)",
 
-            LinesDefault = "#2c3242",
-            LinesInputs = "#3a4152",
-            Divider = "#2c3242",
+            LinesDefault = "#2c331f",
+            LinesInputs = "#3a4326",
+            Divider = "#2c331f",
             DividerLight = "rgba(255,255,255,0.06)",
-            TableLines = "#2c3242",
+            TableLines = "#2c331f",
             TableStriped = "rgba(255,255,255,0.03)",
-            TableHover = "rgba(91,158,242,0.10)",
+            TableHover = "rgba(111,174,132,0.14)",
         },
-        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "7px" }
+        LayoutProperties = new LayoutProperties { DefaultBorderRadius = "3px" }
     };
 }

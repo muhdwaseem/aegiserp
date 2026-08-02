@@ -1,6 +1,7 @@
 @page "/customers"
 @attribute [Authorize]
 @inject CustomerService CustomerSvc
+@inject CompanyService CompanySvc
 @inject ISnackbar Snackbar
 
 <PageTitle>Customers · Aegis ERP</PageTitle>
@@ -48,6 +49,17 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="3"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="Optional" /></MudItem>
+            @if (_salespersonEnabled)
+            {
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="string" @bind-Value="_salesperson" Label="Salesperson" Clearable="true">
+                        @foreach (var sp in _salespersons)
+                        {
+                            <MudSelectItem Value="@sp">@sp</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
 
             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="Email" Placeholder="Optional" /></MudItem>
             <MudItem xs="12" sm="3"><MudTextField @bind-Value="_phone" Label="Phone" Placeholder="Optional" /></MudItem>
@@ -66,6 +78,10 @@
         <MudTh>Code</MudTh>
         <MudTh>Name</MudTh>
         <MudTh>TRN</MudTh>
+        @if (_salespersonEnabled)
+        {
+            <MudTh>Salesperson</MudTh>
+        }
         <MudTh>Terms</MudTh>
         <MudTh Style="text-align:right">Invoiced</MudTh>
         <MudTh Style="text-align:right">Received</MudTh>
@@ -75,6 +91,10 @@
         <MudTd Style="font-family:monospace">@context.Code</MudTd>
         <MudTd>@context.Name</MudTd>
         <MudTd Style="font-family:monospace;font-size:11.5px">@context.Trn</MudTd>
+        @if (_salespersonEnabled)
+        {
+            <MudTd>@context.Salesperson</MudTd>
+        }
         <MudTd>@context.PaymentTermsDays d</MudTd>
         <MudTd Style="text-align:right">@context.Invoiced.ToString("N2")</MudTd>
         <MudTd Style="text-align:right">@context.Received.ToString("N2")</MudTd>
@@ -135,8 +155,21 @@
     private string? _phone;
     private string? _address;
     private int _terms = 30;
+    private string? _salesperson;
+    private bool _salespersonEnabled;
+    private List<string> _salespersons = new();
 
-    protected override async Task OnInitializedAsync() => _summaries = await CustomerSvc.GetSummariesAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        _summaries = await CustomerSvc.GetSummariesAsync();
+        try
+        {
+            var company = await CompanySvc.GetAsync();
+            _salespersonEnabled = company.SalespersonEnabled;
+            _salespersons = company.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList();
+        }
+        catch (PostingException) { _salespersonEnabled = false; }
+    }
 
     private async Task OpenForm()
     {
@@ -148,11 +181,11 @@
     {
         try
         {
-            var input = new NewCustomerInput(_name, _group, _currency, _creditLimit, _terms, _trn, _email, _phone, _address);
+            var input = new NewCustomerInput(_name, _group, _currency, _creditLimit, _terms, _trn, _email, _phone, _address, _salesperson);
             var c = await CustomerSvc.CreateAsync(input);
             Snackbar.Add($"Customer {c.Code} created.", Severity.Success);
             _name = ""; _group = null; _currency = "AED"; _creditLimit = 0;
-            _trn = _email = _phone = _address = null; _terms = 30; _showForm = false;
+            _trn = _email = _phone = _address = _salesperson = null; _terms = 30; _showForm = false;
             _summaries = await CustomerSvc.GetSummariesAsync();
         }
         catch (PostingException ex)

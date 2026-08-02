@@ -217,8 +217,28 @@ else
                     <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.MultiCompanyEnabled" Label="Multi-Company" Color="Color.Primary" /></MudItem>
                     <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.AuditTrailEnabled" Label="Audit Trail" Color="Color.Primary" /></MudItem>
                     <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.ApprovalWorkflowEnabled" Label="Approval Workflow" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.SalespersonEnabled" Label="Salesperson on Customers" Color="Color.Primary" /></MudItem>
                 </MudGrid>
                 <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">Document number series and posting groups are configured per the Chart of Accounts and voucher prefixes.</MudAlert>
+
+                @if (_c.SalespersonEnabled)
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">Salespersons</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">
+                        Names offered on the New Customer form's Salesperson dropdown.
+                    </MudText>
+                    <MudStack Spacing="2">
+                        @foreach (var sp in _c.Salespersons)
+                        {
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudTextField @bind-Value="sp.Name" Placeholder="Salesperson name" Margin="Margin.Dense" Class="flex-grow-1" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => _c.Salespersons.Remove(sp))" />
+                            </MudStack>
+                        }
+                    </MudStack>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Class="mt-2" StartIcon="@Icons.Material.Filled.Add" OnClick="AddSalesperson">Add Salesperson</MudButton>
+                }
             </MudTabPanel>
 
             @* ── 9. Bank Accounts ── *@
@@ -334,6 +354,8 @@ else
 
     private void AddBank() => _c!.BankAccounts.Add(new CompanyBankAccount { Currency = "AED" });
 
+    private void AddSalesperson() => _c!.Salespersons.Add(new Salesperson());
+
     private string? ValidateTrn(string trn) =>
         string.IsNullOrWhiteSpace(trn) || (trn.Length == 15 && trn.All(char.IsDigit)) ? null : "TRN must be 15 digits";
 
@@ -347,8 +369,12 @@ else
                 var created = await Company.CreateAsync(_c!);
                 await Session.RefreshAsync();
                 Session.SwitchTo(created.Id);   // drop the user straight into the new company
-                Snackbar.Add($"Company {created.CompanyCode} created — you are now working in it.", Severity.Success);
-                Navigation.NavigateTo("companies");
+                Snackbar.Add($"Company {created.CompanyCode} created. New users have no access to it until " +
+                    "you grant them a role below.", Severity.Success);
+                // Carries straight into Companies with this one pre-selected and its access panel
+                // open, since granting access is the very next thing a FirmAdmin needs to do after
+                // creating a company — nobody else can see or work in it until they do.
+                Navigation.NavigateTo($"companies?newCompanyId={created.Id}");
                 return;
             }
 

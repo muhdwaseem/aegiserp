@@ -1,7 +1,7 @@
 <MudNavMenu Class="pa-2">
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
 
-    <MudNavGroup Title="General Ledger" Icon="@Icons.Material.Filled.AccountBalance" Expanded="true">
+    <MudNavGroup Title="Finance" Icon="@Icons.Material.Filled.AccountBalance" Expanded="true">
         <MudNavLink Href="chart-of-accounts" Icon="@Icons.Material.Filled.MenuBook">Chart of Accounts</MudNavLink>
         <MudNavLink Href="general-ledger" Icon="@Icons.Material.Filled.FindInPage">General Ledger</MudNavLink>
         <MudNavLink Href="journal-voucher" Icon="@Icons.Material.Filled.PostAdd">Journal Voucher</MudNavLink>
@@ -15,9 +15,14 @@
         <MudNavLink Href="reports" Icon="@Icons.Material.Filled.Insights">MIS &amp; Segment Reports</MudNavLink>
     </MudNavGroup>
 
+    @* Its own section (not folded into Accounts Receivable) so stock/inventory features — stock
+       levels, warehouses, stock adjustments — have an obvious home to land in later. *@
+    <MudNavGroup Title="Items" Icon="@Icons.Material.Filled.Inventory2" Expanded="true">
+        <MudNavLink Href="items" Icon="@Icons.Material.Filled.Inventory2">Items</MudNavLink>
+    </MudNavGroup>
+
     <MudNavGroup Title="Accounts Receivable" Icon="@Icons.Material.Filled.CallReceived" Expanded="true">
         <MudNavLink Href="customers" Icon="@Icons.Material.Filled.Groups">Customers</MudNavLink>
-        <MudNavLink Href="items" Icon="@Icons.Material.Filled.Inventory2">Items</MudNavLink>
         <MudNavLink Href="sales-invoice" Icon="@Icons.Material.Filled.ReceiptLong">Sales Invoice</MudNavLink>
         <MudNavLink Href="estimate" Icon="@Icons.Material.Filled.RequestQuote">Estimate / Quotation</MudNavLink>
         <MudNavLink Href="delivery-note" Icon="@Icons.Material.Filled.LocalShipping">Delivery Note</MudNavLink>
@@ -48,28 +53,31 @@
     </AuthorizeView>
 </MudNavMenu>
 
-@* Force high-contrast nav text in both themes (text-primary is dark in light, light in dark).
-   Active item gets a bold accent bar instead of low-contrast coloured text. *@
+@* The drawer/appbar shell is a constant dark olive in BOTH light and dark mode (see MainLayout's
+   theme), so nav text must read against --mud-palette-drawer-text/-icon (the shell's own light
+   text tokens) — NOT --mud-palette-text-primary, which flips dark in light mode and would be
+   unreadable against the still-dark sidebar. Active item gets a gold accent bar, matching the
+   approved "Ledger" design's one deliberate secondary accent. *@
 <style>
     .mud-navmenu .mud-nav-link,
     .mud-navmenu .mud-nav-group > .mud-nav-link {
-        color: var(--mud-palette-text-primary);
+        color: var(--mud-palette-drawer-text);
         font-weight: 500;
         opacity: 1;
     }
     .mud-navmenu .mud-nav-link .mud-nav-link-icon {
-        color: var(--mud-palette-text-secondary);
+        color: var(--mud-palette-drawer-icon);
     }
     .mud-navmenu .mud-nav-link.active {
-        color: var(--mud-palette-text-primary) !important;
-        background-color: rgba(46, 134, 222, 0.12);
+        color: #f3e6cf !important;
+        background-color: rgba(146, 102, 44, 0.18);
         font-weight: 700;
-        box-shadow: inset 3px 0 0 var(--mud-palette-primary);
+        box-shadow: inset 3px 0 0 var(--brand-gold, #92662c);
     }
     .mud-navmenu .mud-nav-link.active .mud-nav-link-icon {
-        color: var(--mud-palette-primary);
+        color: var(--brand-gold, #92662c);
     }
     .mud-navmenu .mud-nav-link:hover {
-        background-color: var(--mud-palette-action-default-hover);
+        background-color: rgba(255, 255, 255, 0.06);
     }
 </style>

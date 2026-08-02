@@ -18,8 +18,17 @@
 
 <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
     Each company keeps a completely separate set of books — its own chart of accounts, periods,
-    documents and numbering. Staff only see the companies they are granted access to.
+    documents and numbering. Staff only see the companies they are granted access to — only a
+    Firm Administrator (this page) can grant it, and it has to be done here after a company is
+    created, or no one else can open it.
 </MudText>
+
+@if (NewCompanyId is not null)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-3">
+        This company has no other users yet — grant access below to let your team work in it.
+    </MudAlert>
+}
 
 <MudTable Items="_companies" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_companies is null"
           T="CompanySetup" OnRowClick="RowClicked" RowClass="cursor-pointer">
@@ -101,6 +110,10 @@
 }
 
 @code {
+    /// <summary>Set by CompanySetupPage right after creating a company, so the FirmAdmin lands
+    /// here with that company's access panel already open instead of having to find and click it.</summary>
+    [SupplyParameterFromQuery] public int? NewCompanyId { get; set; }
+
     private List<CompanySetup>? _companies;
     private CompanySetup? _selected;
     private List<CompanyMemberRow> _members = new();
@@ -113,6 +126,12 @@
     {
         _companies = await CompanySvc.GetAllAsync();
         _allUsers = Users.Users.OrderBy(u => u.Email).ToList();
+
+        if (NewCompanyId is int id && _companies.FirstOrDefault(c => c.Id == id) is { } created)
+        {
+            _selected = created;
+            _members = await AccessSvc.GetMembersAsync(created.Id);
+        }
     }
 
     private async Task RowClicked(TableRowClickEventArgs<CompanySetup> args)

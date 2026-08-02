@@ -3,6 +3,7 @@ using System;
 using AegisErp.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AegisErp.Infrastructure.Migrations
 {
     [DbContext(typeof(AegisDbContext))]
-    partial class AegisDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260802140842_AddSalespersonToggle")]
+    partial class AddSalespersonToggle
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1771,29 +1774,6 @@ namespace AegisErp.Infrastructure.Migrations
                     b.ToTable("SalesInvoiceLines");
                 });
 
-            modelBuilder.Entity("AegisErp.Domain.Entities.Salesperson", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CompanySetupId")
-                        .HasColumnType("integer");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CompanySetupId");
-
-                    b.ToTable("Salespersons");
-                });
-
             modelBuilder.Entity("AegisErp.Domain.Entities.TaxCode", b =>
                 {
                     b.Property<int>("Id")
@@ -2841,17 +2821,6 @@ namespace AegisErp.Infrastructure.Migrations
                     b.Navigation("SalesInvoice");
                 });
 
-            modelBuilder.Entity("AegisErp.Domain.Entities.Salesperson", b =>
-                {
-                    b.HasOne("AegisErp.Domain.Entities.CompanySetup", "CompanySetup")
-                        .WithMany("Salespersons")
-                        .HasForeignKey("CompanySetupId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CompanySetup");
-                });
-
             modelBuilder.Entity("AegisErp.Domain.Entities.TaxCode", b =>
                 {
                     b.HasOne("AegisErp.Domain.Entities.CompanySetup", null)
@@ -3002,8 +2971,6 @@ namespace AegisErp.Infrastructure.Migrations
             modelBuilder.Entity("AegisErp.Domain.Entities.CompanySetup", b =>
                 {
                     b.Navigation("BankAccounts");
-
-                    b.Navigation("Salespersons");
                 });
 
             modelBuilder.Entity("AegisErp.Domain.Entities.CreditNote", b =>

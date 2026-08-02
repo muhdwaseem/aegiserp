@@ -227,11 +227,10 @@ else if (_invoice is not null)
             </div>
         </div>
 
-        <MudPaper Class="pa-3 mt-4 invoice-print-hide" Elevation="0" Style="background:var(--mud-palette-background-grey)">
-            <MudText Typo="Typo.caption" Class="mud-text-secondary" Style="text-transform:uppercase;letter-spacing:0.05em">Audit Trail</MudText>
+        <FastTab Title="Audit Trail" StartOpen="false" Class="mt-4 invoice-print-hide">
             @foreach (var entry in AuditEntries())
             {
-                <MudStack Row="true" Spacing="1" Class="mt-2">
+                <MudStack Row="true" Spacing="1" Class="mb-2">
                     <MudIcon Icon="@Icons.Material.Filled.FiberManualRecord" Size="Size.Small" Class="mt-1" Style="font-size:8px" />
                     <div>
                         <MudText Typo="Typo.body2">@entry.Text</MudText>
@@ -239,28 +238,29 @@ else if (_invoice is not null)
                     </div>
                 </MudStack>
             }
-        </MudPaper>
+        </FastTab>
     </MudPaper>
 
     @if (_lineBalances is not null && _lineBalances.Count > 1)
     {
-        <MudText Typo="Typo.subtitle1" Class="mb-2 invoice-print-hide">Per-Service Payment Status</MudText>
-        <MudTable Items="_lineBalances" Dense="true" Bordered="true" Elevation="0" Class="invoice-print-hide">
-            <HeaderContent>
-                <MudTh>Service / Description</MudTh>
-                <MudTh Style="text-align:right">Amount</MudTh>
-                <MudTh Style="text-align:right">Paid</MudTh>
-                <MudTh Style="text-align:right">Balance</MudTh>
-                <MudTh>Status</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@(context.ItemName is null ? context.Description : $"{context.ItemName} — {context.Description}")</MudTd>
-                <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
-                <MudTd Style="text-align:right">@context.Allocated.ToString("N2")</MudTd>
-                <MudTd Style="text-align:right;font-weight:600">@context.Balance.ToString("N2")</MudTd>
-                <MudTd><MudChip T="string" Size="Size.Small" Color="LineStatusColor(context)" Variant="Variant.Text">@LineStatusLabel(context)</MudChip></MudTd>
-            </RowTemplate>
-        </MudTable>
+        <FastTab Title="Per-Service Payment Status" Class="invoice-print-hide">
+            <MudTable Items="_lineBalances" Dense="true" Bordered="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Service / Description</MudTh>
+                    <MudTh Style="text-align:right">Amount</MudTh>
+                    <MudTh Style="text-align:right">Paid</MudTh>
+                    <MudTh Style="text-align:right">Balance</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(context.ItemName is null ? context.Description : $"{context.ItemName} — {context.Description}")</MudTd>
+                    <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.Allocated.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right;font-weight:600">@context.Balance.ToString("N2")</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="LineStatusColor(context)" Variant="Variant.Text">@LineStatusLabel(context)</MudChip></MudTd>
+                </RowTemplate>
+            </MudTable>
+        </FastTab>
     }
 }
 

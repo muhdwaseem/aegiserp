@@ -1,6 +1,130 @@
-html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+/* IBM Plex — self-hosted (wwwroot/fonts), no external font request. Sans for UI text, Mono
+   reserved for account codes/voucher numbers/figures so a column of numbers actually lines up. */
+@font-face {
+    font-family: "Plex Sans"; font-style: normal; font-weight: 400; font-display: swap;
+    src: url("fonts/plex-sans-400.woff2") format("woff2");
 }
+@font-face {
+    font-family: "Plex Sans"; font-style: normal; font-weight: 600; font-display: swap;
+    src: url("fonts/plex-sans-600.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Plex Sans"; font-style: normal; font-weight: 700; font-display: swap;
+    src: url("fonts/plex-sans-700.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Plex Mono"; font-style: normal; font-weight: 400; font-display: swap;
+    src: url("fonts/plex-mono-400.woff2") format("woff2");
+}
+@font-face {
+    font-family: "Plex Mono"; font-style: normal; font-weight: 600; font-display: swap;
+    src: url("fonts/plex-mono-600.woff2") format("woff2");
+}
+
+:root {
+    --font-ui: "Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-mono: "Plex Mono", "Cascadia Code", Consolas, monospace;
+    /* Warm ledger-gold — a deliberate second accent alongside the forest-green primary, used
+       sparingly (brand mark, one KPI accent, a Credit Note highlight) rather than as a general
+       UI color. */
+    --brand-gold: #92662c;
+}
+@media (prefers-color-scheme: dark) { :root { --brand-gold: #d3a15c; } }
+:root[data-theme="dark"] { --brand-gold: #d3a15c; }
+:root[data-theme="light"] { --brand-gold: #92662c; }
+
+html, body {
+    font-family: var(--font-ui);
+}
+
+/* Account codes, voucher/invoice numbers, and any column of figures read like a ledger —
+   reserved for a monospace face so they line up and read as "data" rather than prose. */
+.mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Table density pass: hairline grid, tinted sticky header, tabular figures ---- */
+.mud-table-container table thead th {
+    background: var(--mud-palette-background-gray);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--mud-palette-text-secondary);
+}
+.mud-table-container table tbody td {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Status chips: pill shape with a matching hairline border instead of a flat fill ---- */
+.mud-chip.mud-chip-filled {
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .02em;
+    border: 1px solid rgba(0, 0, 0, .08);
+}
+
+/* ---- KPI tiles (Dashboard): a left accent bar keyed to the tile's semantic color ---- */
+.kpi-card {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--mud-palette-lines-default);
+}
+.kpi-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--kpi-bar, var(--mud-palette-primary));
+}
+.kpi-label {
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: .07em;
+}
+.kpi-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.01em;
+}
+
+/* ---- FastTab: collapsible document-section panel (the reference prototype's signature
+   structural pattern) — a MudPaper-alike with a clickable header row and a slide-free show/hide
+   body, used on document detail pages instead of a flat card. ---- */
+.fasttab {
+    border: 1px solid var(--mud-palette-lines-default);
+    margin-bottom: 14px;
+    overflow: hidden;
+}
+.fasttab-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: var(--mud-palette-background-gray);
+    border: none;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+    font: 600 13px var(--font-ui);
+    color: var(--mud-palette-text-primary);
+    text-align: left;
+}
+.fasttab-head:hover { background: var(--mud-palette-table-hover); }
+.fasttab.closed .fasttab-head { border-bottom: none; }
+.fasttab-chev {
+    width: 15px; height: 15px; flex: 0 0 15px;
+    transition: transform .15s ease;
+    transform: rotate(90deg);
+}
+.fasttab.closed .fasttab-chev { transform: rotate(0deg); }
+.fasttab-spacer { flex: 1; }
+.fasttab-hint { font-size: 11.5px; font-weight: 400; color: var(--mud-palette-text-secondary); }
+.fasttab-body { padding: 16px 18px; }
 
 /* Clickable in-app reference (account code/name, voucher number) that drills into related detail. */
 .gl-link {

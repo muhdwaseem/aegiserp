@@ -32,5 +32,10 @@ public class Customer : ICompanyScoped
     /// <summary>Days until an invoice falls due (drives the invoice DueDate and aging).</summary>
     public int PaymentTermsDays { get; set; } = 30;
 
+    /// <summary>Staff member who owns this customer relationship. Only collected when the owning
+    /// company has <see cref="CompanySetup.SalespersonEnabled"/> turned on — some companies
+    /// (e.g. pro-services firms) track this, most don't.</summary>
+    public string? Salesperson { get; set; }
+
     public bool IsActive { get; set; } = true;
 }
