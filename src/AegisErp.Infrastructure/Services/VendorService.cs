@@ -123,6 +123,7 @@ public class VendorService
         var invoices = (await PostedInvoicesAsync(db)).Where(i => i.Date <= asOf).ToList();
         var payments = (await PostedPaymentsAsync(db)).Where(p => p.Date <= asOf).ToList();
         var debits = (await PostedDebitNotesAsync(db)).Where(d => d.Date <= asOf).ToList();
+        var (allocatedByInvoice, paymentIdsWithAllocations) = await AllocationsForAsync(db, payments.Select(p => p.Id).ToList());
 
         var rows = new List<ApAgingRow>();
         foreach (var v in vendors)
@@ -130,7 +131,7 @@ public class VendorService
             decimal current = 0, b30 = 0, b60 = 0, b90 = 0, over = 0;
             foreach (var inv in invoices.Where(i => i.VendorId == v.Id))
             {
-                var allocated = payments.Where(p => p.PurchaseInvoiceId == inv.Id).Sum(p => p.Amount)
+                var allocated = allocatedByInvoice.GetValueOrDefault(inv.Id)
                                 + debits.Where(d => d.PurchaseInvoiceId == inv.Id).Sum(d => d.TotalGross);
                 var outstanding = inv.TotalGross - allocated;
                 if (outstanding <= 0) continue;
@@ -143,8 +144,15 @@ public class VendorService
                 else over += outstanding;
             }
 
-            var unallocated = payments.Where(p => p.VendorId == v.Id && p.PurchaseInvoiceId == null).Sum(p => p.Amount)
-                              + debits.Where(d => d.VendorId == v.Id && d.PurchaseInvoiceId == null).Sum(d => d.TotalGross);
+            // A payment is either 100% on-account (no allocations at all) or 100% applied (its
+            // allocations sum to exactly its Amount — no partial/overpayment state is allowed),
+            // so "unallocated" is simply "has zero allocation rows", not merely PurchaseInvoiceId
+            // == null (a payment spanning multiple invoices also has PurchaseInvoiceId == null
+            // but is fully applied).
+            var unallocated = payments
+                .Where(p => p.VendorId == v.Id && !paymentIdsWithAllocations.Contains(p.Id))
+                .Sum(p => p.Amount)
+                + debits.Where(d => d.VendorId == v.Id && d.PurchaseInvoiceId == null).Sum(d => d.TotalGross);
 
             if (current + b30 + b60 + b90 + over > 0 || unallocated > 0)
                 rows.Add(new ApAgingRow(v.Code, v.Name, current, b30, b60, b90, over, unallocated));
@@ -159,13 +167,15 @@ public class VendorService
         var invoices = (await PostedInvoicesAsync(db)).Where(i => i.VendorId == vendorId).ToList();
         var payments = (await PostedPaymentsAsync(db)).Where(p => p.VendorId == vendorId).ToList();
         var debits = (await PostedDebitNotesAsync(db)).Where(d => d.VendorId == vendorId).ToList();
+        var (allocatedByInvoice, _) = await AllocationsForAsync(db, payments.Select(p => p.Id).ToList());
 
         return invoices
             .Select(i =>
             {
-                var allocated = payments.Where(p => p.PurchaseInvoiceId == i.Id).Sum(p => p.Amount)
+                var allocated = allocatedByInvoice.GetValueOrDefault(i.Id)
                                 + debits.Where(d => d.PurchaseInvoiceId == i.Id).Sum(d => d.TotalGross);
-                return new OpenPurchaseInvoice(i.Id, i.InvoiceNo, i.Date, i.DueDate, i.TotalGross, i.TotalGross - allocated);
+                var billableLineCount = i.Lines.Count(l => l.Net > 0);
+                return new OpenPurchaseInvoice(i.Id, i.InvoiceNo, i.Date, i.DueDate, i.TotalGross, i.TotalGross - allocated, billableLineCount);
             })
             .Where(o => o.Outstanding > 0)
             .OrderBy(o => o.Date)
@@ -183,4 +193,24 @@ public class VendorService
     private static Task<List<DebitNote>> PostedDebitNotesAsync(AegisDbContext db) =>
         db.DebitNotes.AsNoTracking().Include(d => d.Lines)
             .Where(d => d.Status == VoucherStatus.Posted).ToListAsync();
+
+    /// <summary>
+    /// For a set of (already Posted-filtered) payment ids: how much is allocated to each invoice
+    /// they touch, and which of those payment ids have any allocation at all (vs. purely on
+    /// account). A payment's <see cref="VendorPayment.PurchaseInvoiceId"/> is never used here — it
+    /// can't represent a payment spanning multiple invoices, so <see cref="VendorPaymentAllocation"/>
+    /// (joined through the line it targets) is the only correct source of truth.
+    /// </summary>
+    private static async Task<(Dictionary<int, decimal> AllocatedByInvoice, HashSet<int> PaymentIdsWithAllocations)>
+        AllocationsForAsync(AegisDbContext db, List<int> paymentIds)
+    {
+        var allocations = await db.VendorPaymentAllocations.AsNoTracking()
+            .Where(a => paymentIds.Contains(a.VendorPaymentId))
+            .Select(a => new { a.VendorPaymentId, InvoiceId = a.PurchaseInvoiceLine.PurchaseInvoiceId, a.Amount })
+            .ToListAsync();
+
+        var byInvoice = allocations.GroupBy(a => a.InvoiceId).ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
+        var paymentsWithAllocations = allocations.Select(a => a.VendorPaymentId).ToHashSet();
+        return (byInvoice, paymentsWithAllocations);
+    }
 }

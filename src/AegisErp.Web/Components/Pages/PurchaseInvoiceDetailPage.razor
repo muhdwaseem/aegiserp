@@ -98,6 +98,28 @@ else if (_invoice is not null)
             <MudText Typo="Typo.h6">Total: AED @_invoice.TotalGross.ToString("N2")</MudText>
         </MudStack>
     </MudPaper>
+
+    @if (_lineBalances is not null && _lineBalances.Count > 1)
+    {
+        <FastTab Title="Per-Charge Payment Status" Class="invoice-print-hide">
+            <MudTable Items="_lineBalances" Dense="true" Bordered="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Description</MudTh>
+                    <MudTh Style="text-align:right">Amount</MudTh>
+                    <MudTh Style="text-align:right">Paid</MudTh>
+                    <MudTh Style="text-align:right">Balance</MudTh>
+                    <MudTh>Status</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right">@context.Allocated.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right;font-weight:600">@context.Balance.ToString("N2")</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Color="LineStatusColor(context)" Variant="Variant.Text">@LineStatusLabel(context)</MudChip></MudTd>
+                </RowTemplate>
+            </MudTable>
+        </FastTab>
+    }
 }
 
 <style>
@@ -114,6 +136,7 @@ else if (_invoice is not null)
     private CompanySetup? _company;
     private decimal _balance;
     private ArStatus _status;
+    private List<PurchaseInvoiceLineBalance>? _lineBalances;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -124,6 +147,7 @@ else if (_invoice is not null)
         if (_invoice is null) return;
 
         _balance = await InvoiceSvc.GetOutstandingAsync(Id);
+        _lineBalances = await InvoiceSvc.GetLineBalancesAsync(Id);
         try { _company = await CompanySvc.GetAsync(); }
         catch (PostingException) { _company = null; }
 
@@ -154,4 +178,10 @@ else if (_invoice is not null)
         ArStatus.Paid => Color.Success,
         _ => Color.Default,
     };
+
+    private static string LineStatusLabel(PurchaseInvoiceLineBalance l) =>
+        l.Balance <= 0 ? "Paid" : l.Allocated > 0 ? "Partially Paid" : "Unpaid";
+
+    private static Color LineStatusColor(PurchaseInvoiceLineBalance l) =>
+        l.Balance <= 0 ? Color.Success : l.Allocated > 0 ? Color.Info : Color.Default;
 }

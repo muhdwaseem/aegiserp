@@ -15,4 +15,11 @@ public record ApAgingRow(
 }
 
 /// <summary>A posted purchase invoice with money still owing (for payment allocation pickers).</summary>
-public record OpenPurchaseInvoice(int Id, string InvoiceNo, DateOnly Date, DateOnly DueDate, decimal Gross, decimal Outstanding);
+public record OpenPurchaseInvoice(int Id, string InvoiceNo, DateOnly Date, DateOnly DueDate, decimal Gross, decimal Outstanding, int BillableLineCount);
+
+/// <summary>One purchase invoice line with how much of it has actually been paid, via vendor
+/// payment allocations — so staff can see which specific charge on a multi-line bill is settled.</summary>
+public record PurchaseInvoiceLineBalance(int LineId, string Description, decimal Gross, decimal Allocated)
+{
+    public decimal Balance => Gross - Allocated;
+}

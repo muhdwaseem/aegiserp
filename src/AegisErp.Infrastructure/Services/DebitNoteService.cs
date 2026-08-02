@@ -76,9 +76,9 @@ public class DebitNoteService
             if (invoice.Status != VoucherStatus.Posted)
                 throw new PostingException("Only posted purchase invoices can be debited.");
 
-            var paid = (await db.VendorPayments
-                .Where(p => p.PurchaseInvoiceId == invId && p.Status == VoucherStatus.Posted)
-                .Select(p => p.Amount).ToListAsync()).Sum();
+            var paid = (await db.VendorPaymentAllocations
+                .Where(a => a.PurchaseInvoiceLine.PurchaseInvoiceId == invId && a.VendorPayment.Status == VoucherStatus.Posted)
+                .Select(a => a.Amount).ToListAsync()).Sum();
             var debited = (await db.DebitNotes.Include(d => d.Lines)
                 .Where(d => d.PurchaseInvoiceId == invId && d.Status == VoucherStatus.Posted)
                 .ToListAsync()).Sum(d => d.TotalGross);

@@ -42,9 +42,11 @@ public class PurchaseInvoiceService
     }
 
     /// <summary>
-    /// This invoice's remaining balance — its gross total minus posted vendor payments and debit
-    /// notes applied against it. Mirrors the same calc <see cref="VendorPaymentService"/>'s own
-    /// outstanding check already does inline; exposed here purely for display on the detail page.
+    /// This invoice's remaining balance — its gross total minus posted vendor payments (via
+    /// <see cref="VendorPaymentAllocation"/>, joined through the line each allocation targets —
+    /// never <see cref="VendorPayment.PurchaseInvoiceId"/>, which can't represent a payment
+    /// spanning multiple invoices) and debit notes applied against it. Exposed here purely for
+    /// display on the detail page.
     /// </summary>
     public async Task<decimal> GetOutstandingAsync(int invoiceId)
     {
@@ -53,14 +55,38 @@ public class PurchaseInvoiceService
             .FirstOrDefaultAsync(i => i.Id == invoiceId)
             ?? throw new PostingException("Invoice not found.");
 
-        var paid = (await db.VendorPayments.AsNoTracking()
-            .Where(p => p.PurchaseInvoiceId == invoiceId && p.Status == VoucherStatus.Posted)
-            .Select(p => p.Amount).ToListAsync()).Sum();
+        var paid = (await db.VendorPaymentAllocations.AsNoTracking()
+            .Where(a => a.PurchaseInvoiceLine.PurchaseInvoiceId == invoiceId && a.VendorPayment.Status == VoucherStatus.Posted)
+            .Select(a => a.Amount).ToListAsync()).Sum();
         var debited = (await db.DebitNotes.AsNoTracking().Include(d => d.Lines)
             .Where(d => d.PurchaseInvoiceId == invoiceId && d.Status == VoucherStatus.Posted)
             .ToListAsync()).Sum(d => d.TotalGross);
 
         return invoice.TotalGross - paid - debited;
+    }
+
+    /// <summary>
+    /// Per-line paid/balance breakdown for one invoice, from posted vendor payment allocations —
+    /// so staff can see which specific charge on a multi-line bill is settled vs still owing.
+    /// </summary>
+    public async Task<List<PurchaseInvoiceLineBalance>> GetLineBalancesAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var lines = await db.PurchaseInvoiceLines.AsNoTracking()
+            .Where(l => l.PurchaseInvoiceId == invoiceId)
+            .OrderBy(l => l.LineNo)
+            .ToListAsync();
+
+        var lineIds = lines.Select(l => l.Id).ToList();
+        var allocated = (await db.VendorPaymentAllocations.AsNoTracking()
+            .Where(a => lineIds.Contains(a.PurchaseInvoiceLineId) && a.VendorPayment.Status == VoucherStatus.Posted)
+            .Select(a => new { a.PurchaseInvoiceLineId, a.Amount })
+            .ToListAsync())
+            .GroupBy(a => a.PurchaseInvoiceLineId)
+            .ToDictionary(g => g.Key, g => g.Sum(a => a.Amount));
+
+        return lines.Select(l => new PurchaseInvoiceLineBalance(
+            l.Id, l.Description, l.Gross, allocated.GetValueOrDefault(l.Id))).ToList();
     }
 
     /// <summary>

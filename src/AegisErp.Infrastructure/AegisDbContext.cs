@@ -53,6 +53,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<PurchaseInvoice> PurchaseInvoices => Set<PurchaseInvoice>();
     public DbSet<PurchaseInvoiceLine> PurchaseInvoiceLines => Set<PurchaseInvoiceLine>();
     public DbSet<VendorPayment> VendorPayments => Set<VendorPayment>();
+    public DbSet<VendorPaymentAllocation> VendorPaymentAllocations => Set<VendorPaymentAllocation>();
     public DbSet<DebitNote> DebitNotes => Set<DebitNote>();
     public DbSet<DebitNoteLine> DebitNoteLines => Set<DebitNoteLine>();
     public DbSet<DirectExpense> DirectExpenses => Set<DirectExpense>();
@@ -349,14 +350,25 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasIndex(p => new { p.CompanyId, p.PaymentNo }).IsUnique();
             e.Property(p => p.PaymentNo).HasMaxLength(30).IsRequired();
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.PaymentMode).HasConversion<string>().HasMaxLength(20);
             e.Property(p => p.Amount).HasPrecision(18, 2);
             e.Property(p => p.Narration).HasMaxLength(400);
             e.Property(p => p.CreatedBy).HasMaxLength(80);
+            e.Property(p => p.ReferenceNo).HasMaxLength(60);
+            e.Property(p => p.AttachmentFileName).HasMaxLength(260);
+            e.Property(p => p.AttachmentContentType).HasMaxLength(100);
             e.HasOne(p => p.Vendor).WithMany().HasForeignKey(p => p.VendorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.PurchaseInvoice).WithMany().HasForeignKey(p => p.PurchaseInvoiceId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.FiscalPeriod).WithMany().HasForeignKey(p => p.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.BankAccount).WithMany().HasForeignKey(p => p.BankAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.JournalVoucher).WithMany().HasForeignKey(p => p.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(p => p.Allocations).WithOne(a => a.VendorPayment).HasForeignKey(a => a.VendorPaymentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<VendorPaymentAllocation>(e =>
+        {
+            e.Property(a => a.Amount).HasPrecision(18, 2);
+            e.HasOne(a => a.PurchaseInvoiceLine).WithMany().HasForeignKey(a => a.PurchaseInvoiceLineId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<DebitNote>(e =>
