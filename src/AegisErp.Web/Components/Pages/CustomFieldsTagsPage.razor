@@ -1,0 +1,303 @@
+@page "/custom-fields-tags"
+@attribute [Authorize(Roles = AppRoles.Admins)]
+@inject CustomFieldService CustomFieldSvc
+@inject TagService TagSvc
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Custom Fields &amp; Tags · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">Custom Fields &amp; Tags</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Fields and tags defined here appear on the New/Edit Customer form. Built to extend to other
+    modules later — only Customers uses them today.
+</MudText>
+
+<MudPaper Elevation="1">
+    <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-5" Border="true">
+
+        <MudTabPanel Text="Custom Fields">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">@(_editingFieldId is null ? "New Custom Field" : "Edit Custom Field")</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="3"><MudTextField @bind-Value="_fieldLabel" Label="Label" /></MudItem>
+                <MudItem xs="12" sm="6" md="2">
+                    <MudSelect T="CustomFieldType" @bind-Value="_fieldType" Label="Type" Dense="true">
+                        @foreach (var t in Enum.GetValues<CustomFieldType>())
+                        {
+                            <MudSelectItem Value="t">@FieldTypeLabel(t)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                @if (_fieldType == CustomFieldType.Dropdown)
+                {
+                    <MudItem xs="12" sm="6" md="3">
+                        <MudTextField @bind-Value="_fieldOptionsCsv" Label="Options" Placeholder="Comma-separated, e.g. A, B, C" />
+                    </MudItem>
+                }
+                <MudItem xs="12" sm="6" md="2">
+                    <MudNumericField T="int" @bind-Value="_fieldSortOrder" Label="Sort Order" HideSpinButtons="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="1" Class="d-flex align-center">
+                    <MudSwitch T="bool" @bind-Value="_fieldRequired" Label="Required" Color="Color.Primary" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="1" Class="d-flex align-center" Style="gap:8px">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="SaveField">
+                        @(_editingFieldId is null ? "Add" : "Save")
+                    </MudButton>
+                    @if (_editingFieldId is not null)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CancelEditField" />
+                    }
+                </MudItem>
+            </MudGrid>
+
+            <MudTable Items="_fields" Dense="true" Hover="true" Bordered="true" Striped="true" Class="mt-4" Loading="_fields is null">
+                <HeaderContent>
+                    <MudTh>Label</MudTh>
+                    <MudTh>Type</MudTh>
+                    <MudTh>Options</MudTh>
+                    <MudTh>Required</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh Style="width:60px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Label</MudTd>
+                    <MudTd><MudChip T="string" Size="Size.Small" Variant="Variant.Text">@FieldTypeLabel(context.FieldType)</MudChip></MudTd>
+                    <MudTd Style="font-size:11.5px">@(context.DropdownOptionsCsv ?? "—")</MudTd>
+                    <MudTd>@(context.IsRequired ? "Yes" : "No")</MudTd>
+                    <MudTd>
+                        <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                            @(context.IsActive ? "Active" : "Inactive")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd>
+                        <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                            <MudMenuItem OnClick="@(() => EditField(context))">Edit</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => ToggleField(context))">@(context.IsActive ? "Deactivate" : "Activate")</MudMenuItem>
+                            <MudMenuItem OnClick="@(() => DeleteField(context))">Delete</MudMenuItem>
+                        </MudMenu>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No custom fields yet.</MudText></NoRecordsContent>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Reporting Tags">
+            <MudText Typo="Typo.subtitle2" Class="mb-2">@(_editingGroupId is null ? "New Tag Group" : "Edit Tag Group")</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6" md="5"><MudTextField @bind-Value="_groupName" Label="Group Name" Placeholder="e.g. Region, Department" /></MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudNumericField T="int" @bind-Value="_groupSortOrder" Label="Sort Order" HideSpinButtons="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6" md="2" Class="d-flex align-center" Style="gap:8px">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="SaveGroup">
+                        @(_editingGroupId is null ? "Add" : "Save")
+                    </MudButton>
+                    @if (_editingGroupId is not null)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="CancelEditGroup" />
+                    }
+                </MudItem>
+            </MudGrid>
+
+            @if (_groups is not null)
+            {
+                @foreach (var group in _groups)
+                {
+                    <FastTab Title="@($"{group.Name} ({group.Tags.Count(t => t.IsActive)} active tags)")" Class="mt-3">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                            <MudChip T="string" Size="Size.Small" Color="@(group.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                                @(group.IsActive ? "Active" : "Inactive")
+                            </MudChip>
+                            <MudSpacer />
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => EditGroup(group))">Edit Group</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleGroup(group))">@(group.IsActive ? "Deactivate" : "Activate")</MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => DeleteGroup(group))">Delete</MudButton>
+                        </MudStack>
+
+                        <MudStack Row="true" AlignItems="AlignItems.End" Class="mb-2" Style="gap:8px">
+                            <MudTextField @bind-Value="_newTagName[group.Id]" Label="New tag name" Margin="Margin.Dense" Style="max-width:240px" />
+                            <MudButton Variant="Variant.Outlined" OnClick="@(() => AddTag(group))">Add Tag</MudButton>
+                        </MudStack>
+
+                        <MudTable Items="group.Tags.OrderBy(t => t.SortOrder).ThenBy(t => t.Name)" Dense="true" Bordered="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Tag</MudTh>
+                                <MudTh>Status</MudTh>
+                                <MudTh Style="width:48px"></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Name</MudTd>
+                                <MudTd>
+                                    <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                                        @(context.IsActive ? "Active" : "Inactive")
+                                    </MudChip>
+                                </MudTd>
+                                <MudTd>
+                                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                                        <MudMenuItem OnClick="@(() => ToggleTag(context))">@(context.IsActive ? "Deactivate" : "Activate")</MudMenuItem>
+                                        <MudMenuItem OnClick="@(() => DeleteTag(context))">Delete</MudMenuItem>
+                                    </MudMenu>
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No tags in this group yet.</MudText></NoRecordsContent>
+                        </MudTable>
+                    </FastTab>
+                }
+            }
+        </MudTabPanel>
+    </MudTabs>
+</MudPaper>
+
+@code {
+    private const string Module = CustomerService.Module;
+
+    private List<CustomFieldDefinition>? _fields;
+    private List<TagGroup>? _groups;
+    private readonly Dictionary<int, string> _newTagName = new();
+
+    private int? _editingFieldId;
+    private string _fieldLabel = "";
+    private CustomFieldType _fieldType = CustomFieldType.Text;
+    private string? _fieldOptionsCsv;
+    private bool _fieldRequired;
+    private int _fieldSortOrder;
+
+    private int? _editingGroupId;
+    private string _groupName = "";
+    private int _groupSortOrder;
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        _fields = await CustomFieldSvc.GetDefinitionsAsync(Module);
+        _groups = await TagSvc.GetGroupsAsync(Module);
+        foreach (var g in _groups) _newTagName.TryAdd(g.Id, "");
+    }
+
+    // ── Custom Fields ──
+
+    private async Task SaveField()
+    {
+        try
+        {
+            var input = new NewCustomFieldDefinitionInput(Module, _fieldLabel, _fieldType, _fieldOptionsCsv, _fieldRequired, _fieldSortOrder);
+            if (_editingFieldId is int id) await CustomFieldSvc.UpdateDefinitionAsync(id, input);
+            else await CustomFieldSvc.CreateDefinitionAsync(input);
+            Snackbar.Add(_editingFieldId is null ? "Custom field added." : "Custom field updated.", Severity.Success);
+            CancelEditField();
+            await LoadAll();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void EditField(CustomFieldDefinition f)
+    {
+        _editingFieldId = f.Id;
+        _fieldLabel = f.Label;
+        _fieldType = f.FieldType;
+        _fieldOptionsCsv = f.DropdownOptionsCsv;
+        _fieldRequired = f.IsRequired;
+        _fieldSortOrder = f.SortOrder;
+    }
+
+    private void CancelEditField()
+    {
+        _editingFieldId = null;
+        _fieldLabel = ""; _fieldType = CustomFieldType.Text; _fieldOptionsCsv = null;
+        _fieldRequired = false; _fieldSortOrder = 0;
+    }
+
+    private async Task ToggleField(CustomFieldDefinition f)
+    {
+        await CustomFieldSvc.SetActiveAsync(f.Id, !f.IsActive);
+        await LoadAll();
+    }
+
+    private async Task DeleteField(CustomFieldDefinition f)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete custom field", $"Delete '{f.Label}'?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try { await CustomFieldSvc.DeleteAsync(f.Id); await LoadAll(); }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private static string FieldTypeLabel(CustomFieldType t) => t switch
+    {
+        CustomFieldType.Text => "Text",
+        CustomFieldType.Number => "Number",
+        CustomFieldType.Date => "Date",
+        CustomFieldType.Dropdown => "Dropdown",
+        CustomFieldType.Checkbox => "Checkbox",
+        _ => t.ToString(),
+    };
+
+    // ── Reporting Tags ──
+
+    private async Task SaveGroup()
+    {
+        try
+        {
+            if (_editingGroupId is int id) await TagSvc.UpdateGroupAsync(id, _groupName, _groupSortOrder);
+            else await TagSvc.CreateGroupAsync(new NewTagGroupInput(Module, _groupName, _groupSortOrder));
+            Snackbar.Add(_editingGroupId is null ? "Tag group added." : "Tag group updated.", Severity.Success);
+            CancelEditGroup();
+            await LoadAll();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void EditGroup(TagGroup g)
+    {
+        _editingGroupId = g.Id;
+        _groupName = g.Name;
+        _groupSortOrder = g.SortOrder;
+    }
+
+    private void CancelEditGroup()
+    {
+        _editingGroupId = null;
+        _groupName = ""; _groupSortOrder = 0;
+    }
+
+    private async Task ToggleGroup(TagGroup g)
+    {
+        await TagSvc.SetGroupActiveAsync(g.Id, !g.IsActive);
+        await LoadAll();
+    }
+
+    private async Task DeleteGroup(TagGroup g)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete tag group", $"Delete '{g.Name}' and all its tags?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try { await TagSvc.DeleteGroupAsync(g.Id); await LoadAll(); }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task AddTag(TagGroup g)
+    {
+        var name = _newTagName.GetValueOrDefault(g.Id, "");
+        try
+        {
+            await TagSvc.AddTagAsync(g.Id, new NewTagInput(name, g.Tags.Count));
+            _newTagName[g.Id] = "";
+            await LoadAll();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ToggleTag(Tag t)
+    {
+        await TagSvc.SetTagActiveAsync(t.Id, !t.IsActive);
+        await LoadAll();
+    }
+
+    private async Task DeleteTag(Tag t)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete tag", $"Delete '{t.Name}'?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try { await TagSvc.DeleteTagAsync(t.Id); await LoadAll(); }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}
