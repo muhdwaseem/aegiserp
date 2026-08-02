@@ -64,6 +64,13 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<TaxCode> TaxCodes => Set<TaxCode>();
     public DbSet<Item> Items => Set<Item>();
+    public DbSet<CustomerContactPerson> CustomerContactPersons => Set<CustomerContactPerson>();
+    public DbSet<CustomerDocument> CustomerDocuments => Set<CustomerDocument>();
+    public DbSet<CustomFieldDefinition> CustomFieldDefinitions => Set<CustomFieldDefinition>();
+    public DbSet<CustomerCustomFieldValue> CustomerCustomFieldValues => Set<CustomerCustomFieldValue>();
+    public DbSet<TagGroup> TagGroups => Set<TagGroup>();
+    public DbSet<Tag> Tags => Set<Tag>();
+    public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -136,6 +143,99 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(c => c.Currency).HasMaxLength(3).IsRequired();
             e.Property(c => c.CreditLimit).HasPrecision(18, 2);
             e.Property(c => c.Salesperson).HasMaxLength(100);
+
+            e.Property(c => c.CustomerType).HasConversion<string>().HasMaxLength(20);
+            e.Property(c => c.Salutation).HasMaxLength(20);
+            e.Property(c => c.FirstName).HasMaxLength(80);
+            e.Property(c => c.LastName).HasMaxLength(80);
+            e.Property(c => c.CompanyName).HasMaxLength(160);
+            e.Property(c => c.DisplayNameArabic).HasMaxLength(160);
+            e.Property(c => c.CustomerLanguage).HasMaxLength(40).IsRequired();
+            e.Property(c => c.WorkPhone).HasMaxLength(40);
+            e.Property(c => c.Mobile).HasMaxLength(40);
+
+            e.Property(c => c.TaxTreatment).HasConversion<string>().HasMaxLength(40);
+            e.Property(c => c.PlaceOfSupply).HasMaxLength(40);
+            e.Property(c => c.OpeningBalance).HasPrecision(18, 2);
+            e.Property(c => c.Remarks).HasMaxLength(1000);
+
+            e.Property(c => c.BillingAttention).HasMaxLength(160);
+            e.Property(c => c.BillingCountry).HasMaxLength(80);
+            e.Property(c => c.BillingAddressLine1).HasMaxLength(200);
+            e.Property(c => c.BillingAddressLine1Arabic).HasMaxLength(200);
+            e.Property(c => c.BillingAddressLine2).HasMaxLength(200);
+            e.Property(c => c.BillingAddressLine2Arabic).HasMaxLength(200);
+            e.Property(c => c.BillingCity).HasMaxLength(80);
+            e.Property(c => c.BillingEmirate).HasMaxLength(40);
+            e.Property(c => c.BillingZip).HasMaxLength(20);
+            e.Property(c => c.BillingPhone).HasMaxLength(40);
+            e.Property(c => c.BillingFax).HasMaxLength(40);
+
+            e.Property(c => c.ShippingAttention).HasMaxLength(160);
+            e.Property(c => c.ShippingCountry).HasMaxLength(80);
+            e.Property(c => c.ShippingAddressLine1).HasMaxLength(200);
+            e.Property(c => c.ShippingAddressLine1Arabic).HasMaxLength(200);
+            e.Property(c => c.ShippingAddressLine2).HasMaxLength(200);
+            e.Property(c => c.ShippingAddressLine2Arabic).HasMaxLength(200);
+            e.Property(c => c.ShippingCity).HasMaxLength(80);
+            e.Property(c => c.ShippingEmirate).HasMaxLength(40);
+            e.Property(c => c.ShippingZip).HasMaxLength(20);
+            e.Property(c => c.ShippingPhone).HasMaxLength(40);
+            e.Property(c => c.ShippingFax).HasMaxLength(40);
+
+            e.HasMany(c => c.ContactPersons).WithOne(p => p.Customer).HasForeignKey(p => p.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.Documents).WithOne(d => d.Customer).HasForeignKey(d => d.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.CustomFieldValues).WithOne(v => v.Customer).HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.Tags).WithOne(t => t.Customer).HasForeignKey(t => t.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CustomerContactPerson>(e =>
+        {
+            e.Property(p => p.Salutation).HasMaxLength(20);
+            e.Property(p => p.FirstName).HasMaxLength(80).IsRequired();
+            e.Property(p => p.LastName).HasMaxLength(80);
+            e.Property(p => p.Email).HasMaxLength(160);
+            e.Property(p => p.WorkPhone).HasMaxLength(40);
+            e.Property(p => p.Mobile).HasMaxLength(40);
+            e.Property(p => p.Designation).HasMaxLength(100);
+            e.Property(p => p.Department).HasMaxLength(100);
+        });
+
+        b.Entity<CustomerDocument>(e =>
+        {
+            e.Property(d => d.FileName).HasMaxLength(260).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(100).IsRequired();
+        });
+
+        b.Entity<CustomFieldDefinition>(e =>
+        {
+            e.Property(f => f.Module).HasMaxLength(40).IsRequired();
+            e.Property(f => f.Label).HasMaxLength(80).IsRequired();
+            e.Property(f => f.FieldType).HasConversion<string>().HasMaxLength(20);
+            e.Property(f => f.DropdownOptionsCsv).HasMaxLength(1000);
+        });
+
+        b.Entity<CustomerCustomFieldValue>(e =>
+        {
+            e.Property(v => v.Value).HasMaxLength(1000);
+            e.HasOne(v => v.CustomFieldDefinition).WithMany().HasForeignKey(v => v.CustomFieldDefinitionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<TagGroup>(e =>
+        {
+            e.Property(g => g.Module).HasMaxLength(40).IsRequired();
+            e.Property(g => g.Name).HasMaxLength(80).IsRequired();
+            e.HasMany(g => g.Tags).WithOne(t => t.TagGroup).HasForeignKey(t => t.TagGroupId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Tag>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(80).IsRequired();
+        });
+
+        b.Entity<CustomerTag>(e =>
+        {
+            e.HasOne(t => t.Tag).WithMany().HasForeignKey(t => t.TagId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<SalesInvoice>(e =>
@@ -559,6 +659,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<Currency>(b);
         ConfigureCompanyScope<TaxCode>(b);
         ConfigureCompanyScope<Item>(b);
+        ConfigureCompanyScope<CustomFieldDefinition>(b);
+        ConfigureCompanyScope<TagGroup>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()

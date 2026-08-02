@@ -48,6 +48,8 @@ public static class DependencyInjection
         services.AddScoped<CurrencyService>();
         services.AddScoped<TaxCodeService>();
         services.AddScoped<ItemService>();
+        services.AddScoped<CustomFieldService>();
+        services.AddScoped<TagService>();
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
         services.AddScoped<EmailService>();
         return services;

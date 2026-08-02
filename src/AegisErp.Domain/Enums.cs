@@ -127,6 +127,40 @@ public enum RevenueRecognition
     Deferred = 2
 }
 
+/// <summary>Whether a customer represents a company or a single person — drives whether Company
+/// Name or Salutation/First/Last Name is the primary identity field on the customer form.</summary>
+public enum CustomerType
+{
+    Business = 1,
+    Individual = 2
+}
+
+/// <summary>
+/// UAE VAT registration status for a customer, distinct from (but usually paired with) their
+/// <see cref="Entities.Customer.Trn"/>. Drives how VAT is treated on invoices raised to them.
+/// </summary>
+public enum TaxTreatment
+{
+    VatRegistered = 1,
+    NonVatRegistered = 2,
+    GccVatRegistered = 3,
+    GccNonVatRegistered = 4,
+    NonGcc = 5,
+    VatRegisteredDesignatedZone = 6,
+    NonVatRegisteredDesignatedZone = 7
+}
+
+/// <summary>How an admin-defined <see cref="Entities.CustomFieldDefinition"/> is rendered and
+/// validated on the form it appears on.</summary>
+public enum CustomFieldType
+{
+    Text = 1,
+    Number = 2,
+    Date = 3,
+    Dropdown = 4,
+    Checkbox = 5
+}
+
 public static class AccountTypeExtensions
 {
     /// <summary>Assets and expenses are debit-normal; liabilities, equity and income are credit-normal.</summary>
