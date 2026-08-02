@@ -28,8 +28,21 @@ public static class SeedData
             // from /companies and /users — supplied via config (Seed:AdminEmail/AdminPassword),
             // not hardcoded, since this account has full access to every company.
             if (bootstrapAdmin is { } b)
-                await EnsureUserAsync(userManager, b.Email, b.Password, b.DisplayName,
-                    AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
+            {
+                try
+                {
+                    await EnsureUserAsync(userManager, b.Email, b.Password, b.DisplayName,
+                        AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // A Seed:AdminPassword that fails Identity's complexity rules shouldn't take
+                    // the whole service down (it previously did — an unhandled exception here
+                    // crashed startup entirely). Log it clearly and let the app boot anyway; fix
+                    // the env var and redeploy to retry.
+                    Console.Error.WriteLine($"[SeedData] Could not seed the bootstrap admin: {ex.Message}");
+                }
+            }
             return;
         }
 
