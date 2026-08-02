@@ -109,7 +109,7 @@
 
     private async Task OpenNewForm()
     {
-        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
         var dialog = await DialogService.ShowAsync<NewCustomerDialog>("New Customer", options);
         var result = await dialog.Result;
         if (result is { Canceled: false }) _summaries = await CustomerSvc.GetSummariesAsync();
@@ -120,7 +120,7 @@
         var existing = await CustomerSvc.GetByIdAsync(customerId);
         if (existing is null) return;
 
-        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
         var parameters = new DialogParameters<NewCustomerDialog> { { x => x.Existing, existing } };
         var dialog = await DialogService.ShowAsync<NewCustomerDialog>("Edit Customer", parameters, options);
         var result = await dialog.Result;

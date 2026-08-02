@@ -12,7 +12,7 @@
     </TitleContent>
     <DialogContent>
         <MudGrid>
-            <MudItem xs="12" sm="4">
+            <MudItem xs="12">
                 <MudRadioGroup T="CustomerType" Value="_customerType" ValueChanged="OnCustomerTypeChanged">
                     <MudRadio T="CustomerType" Value="CustomerType.Business" Color="Color.Primary">Business</MudRadio>
                     <MudRadio T="CustomerType" Value="CustomerType.Individual" Color="Color.Primary">Individual</MudRadio>
@@ -21,31 +21,21 @@
 
             @if (_customerType == CustomerType.Business)
             {
-                <MudItem xs="12" sm="8"><MudTextField @bind-Value="_companyName" Label="Company Name" /></MudItem>
-                <MudItem xs="12" sm="3">
-                    <MudSelect T="string" @bind-Value="_salutation" Label="Salutation" Clearable="true">
-                        <MudSelectItem Value="@("Mr.")">Mr.</MudSelectItem>
-                        <MudSelectItem Value="@("Mrs.")">Mrs.</MudSelectItem>
-                        <MudSelectItem Value="@("Ms.")">Ms.</MudSelectItem>
-                        <MudSelectItem Value="@("Dr.")">Dr.</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_firstName" Label="Primary Contact — First Name" /></MudItem>
-                <MudItem xs="12" sm="5"><MudTextField @bind-Value="_lastName" Label="Last Name" /></MudItem>
+                <MudItem xs="12"><MudTextField @bind-Value="_companyName" Label="Company Name" /></MudItem>
             }
-            else
-            {
-                <MudItem xs="12" sm="3">
-                    <MudSelect T="string" @bind-Value="_salutation" Label="Salutation" Clearable="true">
-                        <MudSelectItem Value="@("Mr.")">Mr.</MudSelectItem>
-                        <MudSelectItem Value="@("Mrs.")">Mrs.</MudSelectItem>
-                        <MudSelectItem Value="@("Ms.")">Ms.</MudSelectItem>
-                        <MudSelectItem Value="@("Dr.")">Dr.</MudSelectItem>
-                    </MudSelect>
-                </MudItem>
-                <MudItem xs="12" sm="4"><MudTextField @bind-Value="_firstName" Label="First Name" /></MudItem>
-                <MudItem xs="12" sm="5"><MudTextField @bind-Value="_lastName" Label="Last Name" /></MudItem>
-            }
+
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_salutation" Label="Salutation" Clearable="true">
+                    <MudSelectItem Value="@("Mr.")">Mr.</MudSelectItem>
+                    <MudSelectItem Value="@("Mrs.")">Mrs.</MudSelectItem>
+                    <MudSelectItem Value="@("Ms.")">Ms.</MudSelectItem>
+                    <MudSelectItem Value="@("Dr.")">Dr.</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_firstName" Label="@(_customerType == CustomerType.Business ? "Primary Contact — First Name" : "First Name")" />
+            </MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_lastName" Label="Last Name" /></MudItem>
 
             <MudItem xs="12" sm="6">
                 <MudAutocomplete T="string" @bind-Value="_name" Label="Display Name" Required="true"
@@ -174,33 +164,35 @@
 
                 @* ── Contact Persons ── *@
                 <MudTabPanel Text="Contact Persons">
-                    <MudTable Items="_contactPersons" Dense="true" Bordered="true" Elevation="0">
-                        <HeaderContent>
-                            <MudTh>Salutation</MudTh>
-                            <MudTh>First Name</MudTh>
-                            <MudTh>Last Name</MudTh>
-                            <MudTh>Email</MudTh>
-                            <MudTh>Work Phone</MudTh>
-                            <MudTh>Mobile</MudTh>
-                            <MudTh>Designation</MudTh>
-                            <MudTh>Primary</MudTh>
-                            <MudTh Style="width:48px"></MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd><MudTextField @bind-Value="context.Salutation" Margin="Margin.Dense" /></MudTd>
-                            <MudTd><MudTextField @bind-Value="context.FirstName" Margin="Margin.Dense" Required="true" /></MudTd>
-                            <MudTd><MudTextField @bind-Value="context.LastName" Margin="Margin.Dense" /></MudTd>
-                            <MudTd><MudTextField @bind-Value="context.Email" Margin="Margin.Dense" /></MudTd>
-                            <MudTd><MudTextField @bind-Value="context.WorkPhone" Margin="Margin.Dense" /></MudTd>
-                            <MudTd><MudTextField @bind-Value="context.Mobile" Margin="Margin.Dense" /></MudTd>
-                            <MudTd><MudTextField @bind-Value="context.Designation" Margin="Margin.Dense" /></MudTd>
-                            <MudTd><MudCheckBox T="bool" Value="context.IsPrimary" ValueChanged="@(v => SetPrimaryContact(context, v))" Dense="true" /></MudTd>
-                            <MudTd>
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => _contactPersons.Remove(context))" />
-                            </MudTd>
-                        </RowTemplate>
-                        <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No contact persons yet.</MudText></NoRecordsContent>
-                    </MudTable>
+                    <div style="overflow-x:auto">
+                        <MudTable Items="_contactPersons" Dense="true" Bordered="true" Elevation="0" Style="min-width:960px">
+                            <HeaderContent>
+                                <MudTh Style="width:110px">Salutation</MudTh>
+                                <MudTh>First Name</MudTh>
+                                <MudTh>Last Name</MudTh>
+                                <MudTh>Email</MudTh>
+                                <MudTh>Work Phone</MudTh>
+                                <MudTh>Mobile</MudTh>
+                                <MudTh>Designation</MudTh>
+                                <MudTh Style="width:80px">Primary</MudTh>
+                                <MudTh Style="width:48px"></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudTextField @bind-Value="context.Salutation" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.FirstName" Margin="Margin.Dense" Required="true" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.LastName" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Email" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.WorkPhone" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Mobile" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Designation" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudCheckBox T="bool" Value="context.IsPrimary" ValueChanged="@(v => SetPrimaryContact(context, v))" Dense="true" /></MudTd>
+                                <MudTd>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => _contactPersons.Remove(context))" />
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No contact persons yet.</MudText></NoRecordsContent>
+                        </MudTable>
+                    </div>
                     <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="@(() => _contactPersons.Add(new()))">Add Contact Person</MudButton>
                 </MudTabPanel>
 
@@ -363,6 +355,11 @@
                 _selectedTagByGroup[t.Tag.TagGroupId] = t.TagId;
 
             _documents = await CustomerSvc.GetDocumentsAsync(c.Id);
+        }
+        else
+        {
+            _billing.Country = "United Arab Emirates";
+            _shipping.Country = "United Arab Emirates";
         }
     }
 
