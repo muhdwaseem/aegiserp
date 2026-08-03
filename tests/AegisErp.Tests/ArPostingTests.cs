@@ -1,4 +1,5 @@
 using AegisErp.Domain;
+using AegisErp.Domain.Entities;
 using AegisErp.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -727,7 +728,7 @@ public class ArPostingTests : IDisposable
     public async Task Discount_percent_reduces_Net_Vat_and_Gross()
     {
         var inv = await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
-            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m, DiscountPercent: 10) }, Now);
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m, DiscountValue: 10) }, Now);
 
         var line = inv.Lines.Single();
         Assert.Equal(900m, line.Net);   // 1000 * (1 - 10%)
@@ -741,7 +742,57 @@ public class ArPostingTests : IDisposable
     {
         await Assert.ThrowsAsync<PostingException>(() => _invoices.CreateAndPostAsync(
             _db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
-            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m, DiscountPercent: -1) }, Now));
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m, DiscountValue: -1) }, Now));
+    }
+
+    [Fact]
+    public async Task Discount_amount_reduces_Net_Vat_and_Gross()
+    {
+        var inv = await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m,
+                DiscountValue: 150, DiscountType: DiscountType.Amount) }, Now);
+
+        var line = inv.Lines.Single();
+        Assert.Equal(DiscountType.Amount, line.DiscountType);
+        Assert.Equal(850m, line.Net);   // 1000 - 150 flat
+        Assert.Equal(42.5m, line.Vat);  // 850 * 5%
+        Assert.Equal(892.5m, line.Gross);
+    }
+
+    [Fact]
+    public async Task Negative_discount_amount_is_rejected()
+    {
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.CreateAndPostAsync(
+            _db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m,
+                DiscountValue: -1, DiscountType: DiscountType.Amount) }, Now));
+    }
+
+    [Fact]
+    public void Discount_amount_exceeding_line_subtotal_floors_net_at_zero()
+    {
+        var line = new SalesInvoiceLine
+        {
+            Quantity = 1, UnitPrice = 100, VatRate = 0.05m,
+            DiscountType = DiscountType.Amount, DiscountValue = 500,
+        };
+
+        Assert.Equal(0m, line.Net);
+        Assert.Equal(0m, line.Vat);
+    }
+
+    [Fact]
+    public async Task Subject_terms_and_conditions_and_salesperson_persist_through_create_and_post()
+    {
+        var inv = await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now,
+            subject: "Website redesign — phase 1", termsAndConditions: "Payment due within 15 days of receipt.",
+            salesperson: "Ahmed Al Mansoori");
+
+        var found = await _invoices.GetByIdAsync(inv.Id);
+        Assert.Equal("Website redesign — phase 1", found!.Subject);
+        Assert.Equal("Payment due within 15 days of receipt.", found.TermsAndConditions);
+        Assert.Equal("Ahmed Al Mansoori", found.Salesperson);
     }
 
     [Fact]

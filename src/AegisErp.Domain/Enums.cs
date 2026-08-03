@@ -127,6 +127,14 @@ public enum RevenueRecognition
     Deferred = 2
 }
 
+/// <summary>Whether a <see cref="Entities.SalesInvoiceLine.DiscountValue"/> is a percentage of the
+/// line's own subtotal (0-100) or a flat currency amount subtracted from it.</summary>
+public enum DiscountType
+{
+    Percent = 1,
+    Amount = 2
+}
+
 /// <summary>Whether a customer represents a company or a single person — drives whether Company
 /// Name or Salutation/First/Last Name is the primary identity field on the customer form.</summary>
 public enum CustomerType

@@ -49,8 +49,41 @@
             <MudItem xs="12" sm="2">
                 <MudTextField @bind-Value="_salesOrderRef" Label="Sales Order Ref." Placeholder="Optional" />
             </MudItem>
+            <MudItem xs="12" sm="@(_salespersonEnabled ? 8 : 12)">
+                <MudTextField @bind-Value="_subject" Label="Subject" Placeholder="Let your customer know what this invoice is for" />
+            </MudItem>
+            @if (_salespersonEnabled)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="string" @bind-Value="_salesperson" Label="Salesperson" Clearable="true">
+                        @foreach (var sp in _salespersons)
+                        {
+                            <MudSelectItem Value="@sp">@sp</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
             <MudItem xs="12">
                 <MudTextField @bind-Value="_notes" Label="Notes" Lines="2" Placeholder="Payment terms, delivery notes… (shown on the printed invoice)" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_termsAndConditions" Label="Terms &amp; Conditions" Lines="2"
+                              Placeholder="Enter the terms and conditions of your business to be displayed on this invoice" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudFileUpload T="IBrowserFile" FilesChanged="OnInvoiceFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile" Size="Size.Small">
+                                Attach Document
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                    @if (_invoiceAttachmentFileName is not null)
+                    {
+                        <MudChip T="string" Size="Size.Small" OnClose="RemoveInvoiceAttachment" CloseIcon="@Icons.Material.Filled.Close">@_invoiceAttachmentFileName</MudChip>
+                    }
+                </MudStack>
             </MudItem>
         </MudGrid>
 
@@ -65,7 +98,7 @@
                 <MudTh Style="width:90px;text-align:right">Qty</MudTh>
                 <MudTh Style="width:80px">UOM</MudTh>
                 <MudTh Style="width:120px;text-align:right">Unit Price</MudTh>
-                <MudTh Style="width:90px;text-align:right">Disc %</MudTh>
+                <MudTh Style="width:140px;text-align:right">Discount</MudTh>
                 <MudTh Style="width:100px">VAT</MudTh>
                 <MudTh Style="width:120px;text-align:right">Line Total</MudTh>
                 <MudTh Style="width:48px">Doc</MudTh>
@@ -118,7 +151,17 @@
                 <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
                 <MudTd><MudTextField @bind-Value="context.Uom" Margin="Margin.Dense" Placeholder="unit" /></MudTd>
                 <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
-                <MudTd><MudNumericField T="decimal" @bind-Value="context.DiscountPercent" Min="0" Max="100" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                <MudTd>
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudNumericField T="decimal" @bind-Value="context.DiscountValue" Min="0"
+                                         Max="@(context.DiscountType == DiscountType.Percent ? 100m : decimal.MaxValue)"
+                                         HideSpinButtons="true" Margin="Margin.Dense" Style="width:80px" />
+                        <MudSelect T="DiscountType" @bind-Value="context.DiscountType" Dense="true" Margin="Margin.Dense" Style="width:72px">
+                            <MudSelectItem Value="DiscountType.Percent">%</MudSelectItem>
+                            <MudSelectItem Value="DiscountType.Amount">AED</MudSelectItem>
+                        </MudSelect>
+                    </MudStack>
+                </MudTd>
                 <MudTd>
                     <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
                         <MudSelectItem Value="0.05m">5%</MudSelectItem>
@@ -193,10 +236,20 @@
     private string? _deliveryNoteRef;
     private string? _salesOrderRef;
     private string? _notes;
+    private string? _subject;
+    private string? _termsAndConditions;
+    private string? _salesperson;
+    private bool _salespersonEnabled;
+    private List<string> _salespersons = new();
     private bool _posting;
     private string _dueLabel = "—";
     private string _invoiceNo = "—";
     private int _paymentTermsDays = 30;
+
+    private string? _invoiceAttachmentFileName;
+    private string? _invoiceAttachmentContentType;
+    private byte[]? _invoiceAttachmentBytes;
+    private bool _removeInvoiceAttachment;
 
     private readonly List<LineVm> _lines = new() { new() };
 
@@ -218,6 +271,12 @@
         _periods = await Ledger.GetPeriodsAsync();
         _items = await ItemSvc.GetAllAsync(activeOnly: true);
 
+        CompanySetup? company = null;
+        try { company = await CompanySvc.GetAsync(); }
+        catch (PostingException) { /* no company selected yet — keep the built-in defaults */ }
+        _salespersonEnabled = company?.SalespersonEnabled ?? false;
+        _salespersons = company?.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList() ?? new();
+
         var seed = Existing ?? CloneFrom;
         if (seed is not null)
         {
@@ -228,8 +287,16 @@
             _deliveryNoteRef = seed.DeliveryNoteRef;
             _salesOrderRef = seed.SalesOrderRef;
             _notes = seed.Notes;
+            _subject = seed.Subject;
+            _termsAndConditions = seed.TermsAndConditions;
+            _salesperson = seed.Salesperson;
             _paymentTermsDays = Math.Max(0, seed.DueDate.DayNumber - seed.Date.DayNumber);
             _invoiceNo = Existing?.InvoiceNo ?? await InvoiceSvc.PeekNextInvoiceNoAsync(DateTime.Today.Year);
+            if (Existing is not null)
+            {
+                _invoiceAttachmentFileName = Existing.AttachmentFileName;
+                _invoiceAttachmentContentType = Existing.AttachmentContentType;
+            }
             _lines.Clear();
             foreach (var l in seed.Lines.OrderBy(l => l.LineNo))
                 _lines.Add(new LineVm
@@ -242,7 +309,8 @@
                     Quantity = l.Quantity,
                     UnitPrice = l.UnitPrice,
                     VatRate = l.VatRate,
-                    DiscountPercent = l.DiscountPercent,
+                    DiscountValue = l.DiscountValue,
+                    DiscountType = l.DiscountType,
                     Uom = l.Uom,
                     Recognition = l.Recognition,
                     AttachmentFileName = l.AttachmentFileName,
@@ -254,16 +322,51 @@
         else
         {
             _invoiceNo = await InvoiceSvc.PeekNextInvoiceNoAsync((_date ?? DateTime.Today).Year);
-            try
+            if (company is not null)
             {
-                var company = await CompanySvc.GetAsync();
                 _paymentTermsDays = company.InvoiceDefaultPaymentTermsDays;
                 _notes = company.InvoiceDefaultNotes;
+                _termsAndConditions = company.InvoiceDefaultTermsAndConditions;
             }
-            catch (PostingException) { /* no company selected yet — keep the built-in defaults */ }
         }
 
         SyncPeriodToDate();
+    }
+
+    private async Task OnInvoiceFileSelected(IBrowserFile file)
+    {
+        if (file.Size > SalesInvoiceService.MaxAttachmentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {SalesInvoiceService.MaxAttachmentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(SalesInvoiceService.MaxAttachmentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _invoiceAttachmentBytes = ms.ToArray();
+        _invoiceAttachmentFileName = file.Name;
+        _invoiceAttachmentContentType = file.ContentType;
+        _removeInvoiceAttachment = false;
+    }
+
+    private void RemoveInvoiceAttachment()
+    {
+        _invoiceAttachmentFileName = null;
+        _invoiceAttachmentContentType = null;
+        _invoiceAttachmentBytes = null;
+        _removeInvoiceAttachment = Existing?.AttachmentFileName is not null;
+    }
+
+    /// <summary>Applies a newly-staged invoice-level attachment, or an explicit removal, after save.
+    /// Mirrors <see cref="SaveLineAttachmentsAsync"/> but for the single document-level attachment.</summary>
+    private async Task SaveInvoiceAttachmentAsync(SalesInvoice inv)
+    {
+        if (_invoiceAttachmentBytes is not null)
+            await InvoiceSvc.SetAttachmentAsync(inv.Id, _invoiceAttachmentFileName!,
+                _invoiceAttachmentContentType ?? "application/octet-stream", _invoiceAttachmentBytes);
+        else if (_removeInvoiceAttachment)
+            await InvoiceSvc.RemoveAttachmentAsync(inv.Id);
     }
 
     /// <summary>
@@ -335,6 +438,7 @@
         _customerId = id;
         var c = _customers?.FirstOrDefault(x => x.Id == id);
         if (c is not null) _paymentTermsDays = c.PaymentTermsDays;
+        if (_salespersonEnabled && string.IsNullOrWhiteSpace(_salesperson)) _salesperson = c?.Salesperson;
         ApplyZeroRateDefaultToBlankLines();
         UpdateDueLabel();
     }
@@ -376,14 +480,15 @@
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new InvoiceLineInput(
                 l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate, l.ItemId,
-                l.DiscountPercent, l.Uom, l.Recognition));
+                l.DiscountValue, l.Uom, l.Recognition, l.DiscountType));
 
             SalesInvoice inv;
             if (IsEdit)
             {
                 await InvoiceSvc.UpdateDraftAsync(Existing!.Id, _customerId,
                     DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _narration, inputs,
-                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays);
+                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
+                    _subject, _termsAndConditions, _salesperson);
                 inv = await InvoiceSvc.PostDraftAsync(Existing!.Id, userName, DateTime.UtcNow);
             }
             else
@@ -391,9 +496,11 @@
                 inv = await InvoiceSvc.CreateAndPostAsync(
                     _customerId, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
                     _narration, userName, inputs, DateTime.UtcNow,
-                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays);
+                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
+                    _subject, _termsAndConditions, _salesperson);
             }
             await SaveLineAttachmentsAsync(inv);
+            await SaveInvoiceAttachmentAsync(inv);
 
             Snackbar.Add($"Posted {inv.InvoiceNo} — GL voucher {inv.JournalVoucher?.VoucherNo} generated.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(inv.Id));
@@ -413,14 +520,15 @@
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new InvoiceLineInput(
                 l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate, l.ItemId,
-                l.DiscountPercent, l.Uom, l.Recognition));
+                l.DiscountValue, l.Uom, l.Recognition, l.DiscountType));
 
             SalesInvoice inv;
             if (IsEdit)
             {
                 inv = await InvoiceSvc.UpdateDraftAsync(Existing!.Id, _customerId,
                     DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _narration, inputs,
-                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays);
+                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
+                    _subject, _termsAndConditions, _salesperson);
                 Snackbar.Add($"Updated {inv.InvoiceNo}.", Severity.Success);
             }
             else
@@ -428,10 +536,12 @@
                 inv = await InvoiceSvc.CreateDraftAsync(
                     _customerId, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
                     _narration, userName, inputs, DateTime.UtcNow,
-                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays);
+                    _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
+                    _subject, _termsAndConditions, _salesperson);
                 Snackbar.Add($"Saved {inv.InvoiceNo} as a draft.", Severity.Success);
             }
             await SaveLineAttachmentsAsync(inv);
+            await SaveInvoiceAttachmentAsync(inv);
 
             MudDialog.Close(DialogResult.Ok(inv.Id));
         }
@@ -471,7 +581,8 @@
         public decimal Quantity { get; set; } = 1;
         public decimal UnitPrice { get; set; }
         public decimal VatRate { get; set; } = 0.05m;
-        public decimal DiscountPercent { get; set; }
+        public decimal DiscountValue { get; set; }
+        public DiscountType DiscountType { get; set; } = DiscountType.Percent;
         public string? Uom { get; set; }
         public RevenueRecognition Recognition { get; set; } = RevenueRecognition.Direct;
 
@@ -479,7 +590,9 @@
         public string? AttachmentContentType { get; set; }
         public byte[]? AttachmentBytes { get; set; }
 
-        public decimal Net => Math.Round(Quantity * UnitPrice * (1 - DiscountPercent / 100m), 2, MidpointRounding.AwayFromZero);
+        public decimal Net => DiscountType == DiscountType.Percent
+            ? Math.Round(Quantity * UnitPrice * (1 - DiscountValue / 100m), 2, MidpointRounding.AwayFromZero)
+            : Math.Round(Math.Max(0, Quantity * UnitPrice - DiscountValue), 2, MidpointRounding.AwayFromZero);
         public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
         public decimal Gross => Net + Vat;
     }

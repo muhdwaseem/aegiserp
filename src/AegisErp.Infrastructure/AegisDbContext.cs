@@ -263,6 +263,9 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(i => i.DeliveryNoteRef).HasMaxLength(60);
             e.Property(i => i.SalesOrderRef).HasMaxLength(60);
             e.Property(i => i.Notes).HasMaxLength(1000);
+            e.Property(i => i.Subject).HasMaxLength(200);
+            e.Property(i => i.TermsAndConditions).HasMaxLength(2000);
+            e.Property(i => i.Salesperson).HasMaxLength(120);
             e.Property(i => i.ApprovalStatus).HasConversion<string>().HasMaxLength(20);
             e.Property(i => i.SubmittedForApprovalBy).HasMaxLength(80);
             e.Property(i => i.ApprovalDecisionBy).HasMaxLength(80);
@@ -312,7 +315,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.Quantity).HasPrecision(18, 3);
             e.Property(l => l.UnitPrice).HasPrecision(18, 2);
             e.Property(l => l.VatRate).HasPrecision(5, 4);
-            e.Property(l => l.DiscountPercent).HasPrecision(5, 2);
+            e.Property(l => l.DiscountValue).HasPrecision(18, 2);
+            e.Property(l => l.DiscountType).HasConversion<string>().HasMaxLength(20);
             e.Property(l => l.Uom).HasMaxLength(20);
             e.Property(l => l.AttachmentFileName).HasMaxLength(260);
             e.Property(l => l.AttachmentContentType).HasMaxLength(100);

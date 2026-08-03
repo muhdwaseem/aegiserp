@@ -7,8 +7,9 @@ namespace AegisErp.Infrastructure.Services;
 /// <summary>Input line for creating a sales invoice from the UI.</summary>
 public record InvoiceLineInput(string Description, int RevenueAccountId, int? CostCenterId,
     decimal Quantity, decimal UnitPrice, decimal VatRate, int? ItemId = null,
-    decimal DiscountPercent = 0, string? Uom = null,
-    RevenueRecognition Recognition = RevenueRecognition.Direct);
+    decimal DiscountValue = 0, string? Uom = null,
+    RevenueRecognition Recognition = RevenueRecognition.Direct,
+    DiscountType DiscountType = DiscountType.Percent);
 
 public class SalesInvoiceService
 {
@@ -181,7 +182,8 @@ public class SalesInvoiceService
         int customerId, DateOnly date, int fiscalPeriodId, string? narration,
         string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
-        string? notes = null, int? paymentTermsDays = null)
+        string? notes = null, int? paymentTermsDays = null,
+        string? subject = null, string? termsAndConditions = null, string? salesperson = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -200,6 +202,9 @@ public class SalesInvoiceService
             DeliveryNoteRef = string.IsNullOrWhiteSpace(deliveryNoteRef) ? null : deliveryNoteRef.Trim(),
             SalesOrderRef = string.IsNullOrWhiteSpace(salesOrderRef) ? null : salesOrderRef.Trim(),
             Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            Subject = string.IsNullOrWhiteSpace(subject) ? null : subject.Trim(),
+            TermsAndConditions = string.IsNullOrWhiteSpace(termsAndConditions) ? null : termsAndConditions.Trim(),
+            Salesperson = string.IsNullOrWhiteSpace(salesperson) ? null : salesperson.Trim(),
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
             Status = VoucherStatus.Draft,
@@ -217,7 +222,8 @@ public class SalesInvoiceService
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
-                DiscountPercent = l.DiscountPercent,
+                DiscountValue = l.DiscountValue,
+                DiscountType = l.DiscountType,
                 Uom = l.Uom,
                 Recognition = l.Recognition,
             });
@@ -238,7 +244,8 @@ public class SalesInvoiceService
         int invoiceId, int customerId, DateOnly date, int fiscalPeriodId, string? narration,
         IEnumerable<InvoiceLineInput> lines,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
-        string? notes = null, int? paymentTermsDays = null)
+        string? notes = null, int? paymentTermsDays = null,
+        string? subject = null, string? termsAndConditions = null, string? salesperson = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -261,6 +268,9 @@ public class SalesInvoiceService
         invoice.DeliveryNoteRef = string.IsNullOrWhiteSpace(deliveryNoteRef) ? null : deliveryNoteRef.Trim();
         invoice.SalesOrderRef = string.IsNullOrWhiteSpace(salesOrderRef) ? null : salesOrderRef.Trim();
         invoice.Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        invoice.Subject = string.IsNullOrWhiteSpace(subject) ? null : subject.Trim();
+        invoice.TermsAndConditions = string.IsNullOrWhiteSpace(termsAndConditions) ? null : termsAndConditions.Trim();
+        invoice.Salesperson = string.IsNullOrWhiteSpace(salesperson) ? null : salesperson.Trim();
 
         invoice.Lines.Clear();
         var no = 1;
@@ -275,7 +285,8 @@ public class SalesInvoiceService
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
-                DiscountPercent = l.DiscountPercent,
+                DiscountValue = l.DiscountValue,
+                DiscountType = l.DiscountType,
                 Uom = l.Uom,
                 Recognition = l.Recognition,
             });
@@ -584,7 +595,8 @@ public class SalesInvoiceService
         int customerId, DateOnly date, int fiscalPeriodId, string? narration,
         string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
-        string? notes = null, int? paymentTermsDays = null)
+        string? notes = null, int? paymentTermsDays = null,
+        string? subject = null, string? termsAndConditions = null, string? salesperson = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -606,6 +618,9 @@ public class SalesInvoiceService
             DeliveryNoteRef = string.IsNullOrWhiteSpace(deliveryNoteRef) ? null : deliveryNoteRef.Trim(),
             SalesOrderRef = string.IsNullOrWhiteSpace(salesOrderRef) ? null : salesOrderRef.Trim(),
             Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
+            Subject = string.IsNullOrWhiteSpace(subject) ? null : subject.Trim(),
+            TermsAndConditions = string.IsNullOrWhiteSpace(termsAndConditions) ? null : termsAndConditions.Trim(),
+            Salesperson = string.IsNullOrWhiteSpace(salesperson) ? null : salesperson.Trim(),
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
             Customer = customer,
@@ -623,7 +638,8 @@ public class SalesInvoiceService
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
-                DiscountPercent = l.DiscountPercent,
+                DiscountValue = l.DiscountValue,
+                DiscountType = l.DiscountType,
                 Uom = l.Uom,
                 Recognition = l.Recognition,
             });

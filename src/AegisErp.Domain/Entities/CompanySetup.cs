@@ -84,6 +84,8 @@ public class CompanySetup
     // ── 7b. Invoice Preferences ──
     public int InvoiceDefaultPaymentTermsDays { get; set; } = 30;
     public string? InvoiceDefaultNotes { get; set; }
+    /// <summary>Pre-filled into the separate Terms &amp; Conditions box on every new invoice — still editable per invoice.</summary>
+    public string? InvoiceDefaultTermsAndConditions { get; set; }
     public string InvoiceNumberPrefix { get; set; } = "INV";
 
     /// <summary>Send an automated reminder this many days before the due date (0 = don't).</summary>

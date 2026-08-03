@@ -26,6 +26,10 @@
         <MudItem xs="12" sm="6" Class="text-right">
             <MudText Typo="Typo.h4">TAX INVOICE</MudText>
             <MudText Typo="Typo.body1"># @Invoice.InvoiceNo</MudText>
+            @if (!string.IsNullOrWhiteSpace(Invoice.Subject))
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary">@Invoice.Subject</MudText>
+            }
         </MudItem>
 
         <MudItem xs="12" sm="6">
@@ -62,7 +66,7 @@
             <MudTh Style="text-align:right">Qty</MudTh>
             <MudTh>UOM</MudTh>
             <MudTh Style="text-align:right">Rate</MudTh>
-            <MudTh Style="text-align:right">Disc %</MudTh>
+            <MudTh Style="text-align:right">Discount</MudTh>
             <MudTh Style="text-align:right">Amount</MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -71,7 +75,7 @@
             <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
             <MudTd>@context.Uom</MudTd>
             <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
-            <MudTd Style="text-align:right">@(context.DiscountPercent > 0 ? context.DiscountPercent.ToString("N2") : "—")</MudTd>
+            <MudTd Style="text-align:right">@(context.DiscountValue > 0 ? (context.DiscountType == DiscountType.Percent ? $"{context.DiscountValue:N2}%" : $"AED {context.DiscountValue:N2}") : "—")</MudTd>
             <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
         </RowTemplate>
     </MudTable>
@@ -111,6 +115,13 @@
         <MudDivider Class="my-4" />
         <MudText Typo="Typo.subtitle2">Notes</MudText>
         <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@Invoice.Notes</MudText>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Invoice.TermsAndConditions))
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle2">Terms &amp; Conditions</MudText>
+        <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@Invoice.TermsAndConditions</MudText>
     }
 
     <div class="sig-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:2rem">

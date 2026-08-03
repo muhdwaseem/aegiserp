@@ -40,6 +40,19 @@ public class SalesInvoice : ICompanyScoped
     /// distinct from <see cref="Narration"/>, which is the internal GL voucher description.</summary>
     public string? Notes { get; set; }
 
+    /// <summary>One-line, customer-facing summary of what the invoice is for — shown near the
+    /// invoice number on the printed document. Distinct from <see cref="Narration"/> (internal).</summary>
+    public string? Subject { get; set; }
+
+    /// <summary>Legal/payment boilerplate printed at the bottom of the invoice — distinct from
+    /// <see cref="Notes"/>, which is a short thank-you/context note.</summary>
+    public string? TermsAndConditions { get; set; }
+
+    /// <summary>Free-text salesperson credited with this invoice — internal only, never printed on
+    /// the customer-facing document. Mirrors <see cref="Customer.Salesperson"/>; only collected when
+    /// <see cref="CompanySetup.SalespersonEnabled"/> is on.</summary>
+    public string? Salesperson { get; set; }
+
     /// <summary>Approval workflow state — independent of <see cref="Status"/>. An invoice can be
     /// submitted for approval while still a Draft; approval does not itself post it.</summary>
     public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.None;
@@ -108,8 +121,10 @@ public class SalesInvoice : ICompanyScoped
                 throw new PostingException($"Line {line.LineNo} unit price cannot be negative.");
             if (line.VatRate is < 0 or > 1)
                 throw new PostingException($"Line {line.LineNo} VAT rate is invalid.");
-            if (line.DiscountPercent is < 0 or > 100)
+            if (line.DiscountType == DiscountType.Percent && line.DiscountValue is < 0 or > 100)
                 throw new PostingException($"Line {line.LineNo} discount % is invalid.");
+            if (line.DiscountType == DiscountType.Amount && line.DiscountValue < 0)
+                throw new PostingException($"Line {line.LineNo} discount amount cannot be negative.");
         }
 
         if (TotalGross <= 0)
@@ -204,8 +219,12 @@ public class SalesInvoiceLine
     /// <summary>Fractional VAT rate, e.g. 0.05 for UAE 5%.</summary>
     public decimal VatRate { get; set; } = 0.05m;
 
-    /// <summary>Line discount, 0-100.</summary>
-    public decimal DiscountPercent { get; set; }
+    /// <summary>Line discount — a percentage (0-100) or a flat amount, per <see cref="DiscountType"/>.</summary>
+    public decimal DiscountValue { get; set; }
+
+    /// <summary>Whether <see cref="DiscountValue"/> is a percentage of the line subtotal or a flat
+    /// currency amount subtracted from it.</summary>
+    public DiscountType DiscountType { get; set; } = DiscountType.Percent;
 
     /// <summary>Unit of measure, e.g. "pcs", "hrs" — free text, defaults from the item's own Unit.</summary>
     public string? Uom { get; set; }
@@ -215,7 +234,9 @@ public class SalesInvoiceLine
     public string? AttachmentContentType { get; set; }
     public byte[]? AttachmentData { get; set; }
 
-    public decimal Net => Math.Round(Quantity * UnitPrice * (1 - DiscountPercent / 100m), 2, MidpointRounding.AwayFromZero);
+    public decimal Net => DiscountType == DiscountType.Percent
+        ? Math.Round(Quantity * UnitPrice * (1 - DiscountValue / 100m), 2, MidpointRounding.AwayFromZero)
+        : Math.Round(Math.Max(0, Quantity * UnitPrice - DiscountValue), 2, MidpointRounding.AwayFromZero);
     public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;
 }

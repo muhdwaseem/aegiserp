@@ -217,6 +217,7 @@ else
                     <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.InvoiceNumberPrefix" Label="Invoice Number Prefix" HelperText="e.g. INV — new invoices are numbered INV-2026-0001" /></MudItem>
                     <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_c.InvoiceDefaultPaymentTermsDays" Label="Default Payment Terms (Days)" Min="0" HideSpinButtons="true" /></MudItem>
                     <MudItem xs="12"><MudTextField @bind-Value="_c.InvoiceDefaultNotes" Label="Default Notes" Lines="3" HelperText="Pre-filled on every new invoice — still editable per invoice" /></MudItem>
+                    <MudItem xs="12"><MudTextField @bind-Value="_c.InvoiceDefaultTermsAndConditions" Label="Default Terms &amp; Conditions" Lines="3" HelperText="Pre-filled into the Terms &amp; Conditions box on every new invoice — still editable per invoice" /></MudItem>
                 </MudGrid>
                 <MudDivider Class="my-4" />
                 <MudText Typo="Typo.subtitle2" Class="mb-2">Automated Payment Reminders</MudText>
