@@ -12,15 +12,27 @@
             <MudText Typo="Typo.h6">@Company?.LegalName</MudText>
             @if (!string.IsNullOrWhiteSpace(Company?.AddressLine1))
             {
-                <MudText Typo="Typo.body2">@Company!.AddressLine1</MudText>
+                <MudText Typo="Typo.body2">@Company!.AddressLine1 @Company?.City</MudText>
             }
-            @if (!string.IsNullOrWhiteSpace(Company?.City) || !string.IsNullOrWhiteSpace(Company?.AddressCountry))
+            @if (!string.IsNullOrWhiteSpace(Company?.Phone))
             {
-                <MudText Typo="Typo.body2">@Company?.City @Company?.AddressCountry</MudText>
+                <MudText Typo="Typo.body2">Tel: @Company!.Phone</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(EmirateLabel))
+            {
+                <MudText Typo="Typo.body2">Emirate: @EmirateLabel</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Company?.AddressCountry))
+            {
+                <MudText Typo="Typo.body2">Country: @Company!.AddressCountry</MudText>
             }
             @if (!string.IsNullOrWhiteSpace(Company?.TrnNumber))
             {
                 <MudText Typo="Typo.body2">TRN: @Company!.TrnNumber</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(PlaceOfSupplyLabel))
+            {
+                <MudText Typo="Typo.body2">Place of Supply: @PlaceOfSupplyLabel</MudText>
             }
         </MudItem>
         <MudItem xs="12" sm="6" Class="text-right">
@@ -67,6 +79,7 @@
             <MudTh>UOM</MudTh>
             <MudTh Style="text-align:right">Rate</MudTh>
             <MudTh Style="text-align:right">Discount</MudTh>
+            <MudTh Style="text-align:right">VAT %</MudTh>
             <MudTh Style="text-align:right">Amount</MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -76,6 +89,7 @@
             <MudTd>@context.Uom</MudTd>
             <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
             <MudTd Style="text-align:right">@(context.DiscountValue > 0 ? (context.DiscountType == DiscountType.Percent ? $"{context.DiscountValue:N2}%" : $"AED {context.DiscountValue:N2}") : "—")</MudTd>
+            <MudTd Style="text-align:right">@context.VatRate.ToString("P0")</MudTd>
             <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
         </RowTemplate>
     </MudTable>
@@ -85,6 +99,32 @@
         <MudText>VAT: @Invoice.TotalVat.ToString("N2")</MudText>
         <MudText Typo="Typo.h6">Total: AED @Invoice.TotalGross.ToString("N2")</MudText>
     </MudStack>
+
+    <MudText Typo="Typo.body2" Class="mt-3"><b>Amount Chargeable (in words):</b> @AmountInWords.ToWords(Invoice.TotalGross)</MudText>
+
+    @if (Invoice.TotalVat > 0)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle2">VAT Summary</MudText>
+        <MudTable Items="VatSummary" Dense="true" Bordered="true" Elevation="0" Class="mt-2" Style="max-width:420px">
+            <HeaderContent>
+                <MudTh>VAT %</MudTh>
+                <MudTh Style="text-align:right">Assessable Value</MudTh>
+                <MudTh Style="text-align:right">Tax Amount</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Rate.ToString("P0")</MudTd>
+                <MudTd Style="text-align:right">@context.Net.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.Vat.ToString("N2")</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                <MudTd><b>Total</b></MudTd>
+                <MudTd Style="text-align:right"><b>@Invoice.TotalNet.ToString("N2")</b></MudTd>
+                <MudTd Style="text-align:right"><b>@Invoice.TotalVat.ToString("N2")</b></MudTd>
+            </FooterContent>
+        </MudTable>
+        <MudText Typo="Typo.body2" Class="mt-2"><b>VAT Amount (in words):</b> @AmountInWords.ToWords(Invoice.TotalVat)</MudText>
+    }
 
     @{ var bank = Company?.BankAccounts.FirstOrDefault(a => a.IsPrimary) ?? Company?.BankAccounts.FirstOrDefault(); }
     @if (bank is not null)
@@ -124,16 +164,28 @@
         <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@Invoice.TermsAndConditions</MudText>
     }
 
+    @if (!string.IsNullOrWhiteSpace(Company?.TrnNumber))
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.caption">Declaration: We declare that this invoice shows the actual price of the goods/services described and that all particulars are true and correct.</MudText>
+    }
+
     <div class="sig-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:2rem">
         <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="height:1px;background:rgba(0,0,0,0.2)"></div>
-            <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Authorised Signature &amp; Stamp</MudText>
+            @if (!string.IsNullOrWhiteSpace(Company?.LegalName))
+            {
+                <MudText Typo="Typo.body2" Align="Align.Center">for @Company!.LegalName</MudText>
+            }
+            <div style="height:1px;background:rgba(0,0,0,0.2);margin-top:32px"></div>
+            <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Authorised Signatory</MudText>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="height:1px;background:rgba(0,0,0,0.2)"></div>
+            <div style="height:1px;background:rgba(0,0,0,0.2);margin-top:56px"></div>
             <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Customer Acknowledgement</MudText>
         </div>
     </div>
+
+    <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary d-block mt-4">This is a Computer Generated Invoice</MudText>
 </MudPaper>
 
 <style>
@@ -154,4 +206,17 @@
     [Parameter] public CompanySetup? Company { get; set; }
     [Parameter] public decimal Balance { get; set; }
     [Parameter] public ArStatus Status { get; set; }
+
+    private string? EmirateLabel => Company?.Emirate ?? Company?.AddressEmirate;
+
+    /// <summary>Defaults to the supplier's own Emirate/Country — correct for the common case (the
+    /// supplier is established in the UAE and the recipient has no other place of establishment).</summary>
+    private string? PlaceOfSupplyLabel => string.IsNullOrWhiteSpace(EmirateLabel)
+        ? null
+        : string.IsNullOrWhiteSpace(Company?.AddressCountry) ? EmirateLabel : $"{Company!.AddressCountry}, {EmirateLabel}";
+
+    private IEnumerable<(decimal Rate, decimal Net, decimal Vat)> VatSummary => Invoice.Lines
+        .GroupBy(l => l.VatRate)
+        .Select(g => (Rate: g.Key, Net: g.Sum(l => l.Net), Vat: g.Sum(l => l.Vat)))
+        .OrderByDescending(x => x.Rate);
 }
