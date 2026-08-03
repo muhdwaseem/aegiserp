@@ -197,3 +197,14 @@ h1:focus {
     border-width: 1px;
     border-color: var(--mud-palette-primary);
 }
+
+/* MudBlazor date/time/color picker popovers position themselves relative to the input, which
+   clips them ("half a calendar") when the field sits near a viewport edge — a known MudBlazor
+   limitation, not something specific to one page. Centering the popover on screen instead of
+   anchoring it sidesteps the clipping entirely. */
+.mud-popover:has(.mud-picker) {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
