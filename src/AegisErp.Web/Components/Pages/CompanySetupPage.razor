@@ -211,6 +211,25 @@ else
                 <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">Tax rate table and tax groups map to the Chart of Accounts — managed there for now.</MudAlert>
             </MudTabPanel>
 
+            @* ── 7b. Invoice Preferences ── *@
+            <MudTabPanel Text="Invoice Preferences">
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.InvoiceNumberPrefix" Label="Invoice Number Prefix" HelperText="e.g. INV — new invoices are numbered INV-2026-0001" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_c.InvoiceDefaultPaymentTermsDays" Label="Default Payment Terms (Days)" Min="0" HideSpinButtons="true" /></MudItem>
+                    <MudItem xs="12"><MudTextField @bind-Value="_c.InvoiceDefaultNotes" Label="Default Notes" Lines="3" HelperText="Pre-filled on every new invoice — still editable per invoice" /></MudItem>
+                </MudGrid>
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Automated Payment Reminders</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">
+                    The background service sends a reminder email automatically on these days, in addition to "Send Reminder Now" on any invoice.
+                </MudText>
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudNumericField T="int" @bind-Value="_c.ReminderDaysBeforeDue" Label="Days Before Due" Min="0" HideSpinButtons="true" HelperText="0 = don't remind before due" /></MudItem>
+                    <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_c.ReminderOnDueDate" Label="Remind on Due Date" Color="Color.Primary" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.ReminderDaysAfterDue" Label="Days After Due" Placeholder="e.g. 7,15,30" HelperText="Comma-separated" /></MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
             @* ── 8. System Controls ── *@
             <MudTabPanel Text="System">
                 <MudGrid>
