@@ -421,7 +421,10 @@ public class SalesInvoiceService
             throw new PostingException($"Attachment is too large — the limit is {MaxAttachmentBytes / (1024 * 1024)} MB.");
 
         await using var db = await _dbf.CreateDbContextAsync();
-        var line = await db.SalesInvoiceLines.FirstOrDefaultAsync(l => l.Id == lineId)
+        // Route through SalesInvoices (company-scoped) rather than db.SalesInvoiceLines directly —
+        // SalesInvoiceLine has no CompanyId/query filter of its own, so a bare lineId lookup would
+        // reach another company's line.
+        var line = await db.SalesInvoices.SelectMany(i => i.Lines).FirstOrDefaultAsync(l => l.Id == lineId)
             ?? throw new PostingException("Invoice line not found.");
 
         line.AttachmentFileName = fileName;
@@ -433,7 +436,7 @@ public class SalesInvoiceService
     public async Task RemoveLineAttachmentAsync(int lineId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var line = await db.SalesInvoiceLines.FirstOrDefaultAsync(l => l.Id == lineId)
+        var line = await db.SalesInvoices.SelectMany(i => i.Lines).FirstOrDefaultAsync(l => l.Id == lineId)
             ?? throw new PostingException("Invoice line not found.");
 
         line.AttachmentFileName = null;
@@ -445,7 +448,7 @@ public class SalesInvoiceService
     public async Task<(string FileName, string ContentType, byte[] Data)?> GetLineAttachmentAsync(int lineId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var line = await db.SalesInvoiceLines.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lineId);
+        var line = await db.SalesInvoices.AsNoTracking().SelectMany(i => i.Lines).FirstOrDefaultAsync(l => l.Id == lineId);
         if (line?.AttachmentData is null || line.AttachmentFileName is null) return null;
         return (line.AttachmentFileName, line.AttachmentContentType ?? "application/octet-stream", line.AttachmentData);
     }

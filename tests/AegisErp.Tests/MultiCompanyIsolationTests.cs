@@ -166,6 +166,25 @@ public class MultiCompanyIsolationTests : IDisposable
     }
 
     [Fact]
+    public async Task Invoice_line_attachment_methods_reject_a_lineId_from_another_company()
+    {
+        // SalesInvoiceLine has no CompanyId/query filter of its own — these methods must route
+        // through the company-scoped SalesInvoices, not query db.SalesInvoiceLines directly by id.
+        var other = _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var theirs = await _invoices.CreateAndPostAsync(other.Customer.Id, new(2026, 5, 12), other.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", other.Revenue.Id, null, 1, 500, 0.05m) }, Now);
+        _db.SwitchTo(_db.Company.Id);
+
+        var theirLineId = theirs.Lines.Single().Id;
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _invoices.SetLineAttachmentAsync(theirLineId, "spec.pdf", "application/pdf", new byte[] { 1, 2, 3 }));
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.RemoveLineAttachmentAsync(theirLineId));
+        Assert.Null(await _invoices.GetLineAttachmentAsync(theirLineId));
+    }
+
+    [Fact]
     public async Task An_unscoped_context_sees_every_company()
     {
         await PostInvoice();
