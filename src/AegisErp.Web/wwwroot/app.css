@@ -183,18 +183,3 @@ h1:focus {
     border-color: #929292;
 }
 
-/* Opt-in, per-page: a thinner, lighter outlined input border than MudBlazor's own default
-   (which is noticeably heavier, especially on focus) — closer to the reference screenshots'
-   subtle boxed fields. Wrap a page/dialog's content in class="zoho-style-inputs" to apply. */
-.zoho-style-inputs .mud-input.mud-input-outlined .mud-input-outlined-border {
-    border-color: var(--mud-palette-lines-default);
-    border-radius: 8px;
-}
-.zoho-style-inputs .mud-input.mud-input-outlined:hover .mud-input-outlined-border {
-    border-color: var(--mud-palette-lines-default);
-}
-.zoho-style-inputs .mud-input.mud-input-outlined:focus-within .mud-input-outlined-border {
-    border-width: 1px;
-    border-color: var(--mud-palette-primary);
-}
-
