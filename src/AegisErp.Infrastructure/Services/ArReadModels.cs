@@ -49,3 +49,14 @@ public record SalesInvoiceLineBalance(int LineId, string Description, string? It
 {
     public decimal Balance => Gross - Allocated;
 }
+
+/// <summary>
+/// One row on the cross-invoice Transactions view: a single Sales Invoice line, flattened out of
+/// its parent invoice, with fulfillment (Completed/Supplier) and payment (Paid From) attribution —
+/// so operational staff can track each billed service company-wide without opening every invoice.
+/// </summary>
+public record TransactionRow(
+    int LineId, string TranRef, int InvoiceId, string InvoiceNo, DateOnly InvoiceDate, VoucherStatus InvoiceStatus,
+    string CustomerName, string? OrderNo, string Description, string? ItemName, ItemKind? ServiceType,
+    decimal Quantity, decimal Amount, bool IsCompleted, DateTime? CompletedAtUtc, string? CompletedBy,
+    int? SupplierId, string? SupplierName, string? PaidFromAccountName);

@@ -1,0 +1,216 @@
+@page "/transactions"
+@attribute [Authorize]
+@using System.Text
+@inject TransactionService TxnSvc
+@inject VendorService VendorSvc
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Transactions · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudIcon Icon="@Icons.Material.Filled.ViewList" Class="mud-text-secondary" Size="Size.Large" />
+    <div>
+        <MudText Typo="Typo.h5">Transactions</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@FilteredRows().Count() lines</MudText>
+    </div>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportCsv">Export</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-3 mb-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+        <MudTextField @bind-Value="_search" Placeholder="Search…" Immediate="true" DebounceInterval="200"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense"
+                      Variant="Variant.Outlined" Style="max-width:220px" Class="mt-0" />
+        <MudSelect T="string" @bind-Value="_completionFilter" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" Label="Completion">
+            <MudSelectItem Value="@("All")">All Completion</MudSelectItem>
+            <MudSelectItem Value="@("Completed")">Completed</MudSelectItem>
+            <MudSelectItem Value="@("Pending")">Pending</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" @bind-Value="_invoiceStatusFilter" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:150px" Label="Invoice">
+            <MudSelectItem Value="@("All")">All Invoice</MudSelectItem>
+            <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+            <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" @bind-Value="_serviceTypeFilter" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" Label="Service Type">
+            <MudSelectItem Value="@("All")">All Service Types</MudSelectItem>
+            <MudSelectItem Value="@("Service")">Service</MudSelectItem>
+            <MudSelectItem Value="@("Goods")">Goods</MudSelectItem>
+        </MudSelect>
+        <MudDatePicker @bind-Date="_invoiceDateFrom" Label="Invoice date from" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" />
+        <MudDatePicker @bind-Date="_invoiceDateTo" Label="Invoice date to" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" />
+    </MudStack>
+</MudPaper>
+
+<div style="overflow-x:auto">
+<MudTable Items="FilteredRows()" Dense="true" Hover="true" Bordered="true" Loading="_rows is null" FixedHeader="true" Height="calc(100vh - 300px)">
+    <HeaderContent>
+        <MudTh>Tran Ref</MudTh>
+        <MudTh>Invoice #</MudTh>
+        <MudTh>Invoice Date</MudTh>
+        <MudTh>Customer</MudTh>
+        <MudTh>Order #</MudTh>
+        <MudTh>Item / Description</MudTh>
+        <MudTh Style="text-align:right">Qty</MudTh>
+        <MudTh Style="text-align:right">Amount</MudTh>
+        <MudTh>Supplier</MudTh>
+        <MudTh>Paid From</MudTh>
+        <MudTh>Completion</MudTh>
+        <MudTh Style="width:120px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace">@context.TranRef</MudTd>
+        <MudTd><MudLink Href="@($"/sales-invoice/{context.InvoiceId}")">@context.InvoiceNo</MudLink></MudTd>
+        <MudTd>@context.InvoiceDate.ToString("dd MMM yyyy")</MudTd>
+        <MudTd>@context.CustomerName</MudTd>
+        <MudTd>@(context.OrderNo ?? "—")</MudTd>
+        <MudTd>@(context.ItemName ?? context.Description)</MudTd>
+        <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+        <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+        <MudTd Style="min-width:150px">
+            <AuthorizeView Roles="@AppRoles.Posters" Context="posterAuth">
+                <Authorized>
+                    <MudSelect T="int?" Value="context.SupplierId" ValueChanged="@(v => OnSupplierChanged(context, v))"
+                               Dense="true" Margin="Margin.Dense" Clearable="true">
+                        @if (_vendors is not null)
+                        {
+                            @foreach (var v in _vendors)
+                            {
+                                <MudSelectItem T="int?" Value="@((int?)v.Id)">@v.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </Authorized>
+                <NotAuthorized>
+                    @(context.SupplierName ?? "—")
+                </NotAuthorized>
+            </AuthorizeView>
+        </MudTd>
+        <MudTd>@(context.PaidFromAccountName ?? "—")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : Color.Default)" Variant="Variant.Text">
+                @(context.IsCompleted ? "Completed" : "Pending")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <AuthorizeView Roles="@AppRoles.Posters" Context="completeAuth">
+                <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                           Color="@(context.IsCompleted ? Color.Default : Color.Success)"
+                           StartIcon="@(context.IsCompleted ? Icons.Material.Filled.Replay : Icons.Material.Filled.CheckCircle)"
+                           OnClick="@(() => ToggleCompletion(context))">
+                    @(context.IsCompleted ? "Reopen" : "Complete")
+                </MudButton>
+            </AuthorizeView>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No transactions match these filters.</MudText>
+    </NoRecordsContent>
+</MudTable>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<TransactionRow>? _rows;
+    private List<Vendor>? _vendors;
+
+    private string _search = "";
+    private string _completionFilter = "All";
+    private string _invoiceStatusFilter = "All";
+    private string _serviceTypeFilter = "All";
+    private DateTime? _invoiceDateFrom;
+    private DateTime? _invoiceDateTo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _vendors = await VendorSvc.GetAllAsync(activeOnly: true);
+        await Load();
+    }
+
+    private async Task Load() => _rows = await TxnSvc.GetAllAsync();
+
+    private IEnumerable<TransactionRow> FilteredRows()
+    {
+        if (_rows is null) return Enumerable.Empty<TransactionRow>();
+        IEnumerable<TransactionRow> q = _rows;
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(r =>
+                r.TranRef.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                r.InvoiceNo.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                r.CustomerName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                (r.OrderNo?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.ItemName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                r.Description.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                (r.SupplierName?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        q = _completionFilter switch
+        {
+            "Completed" => q.Where(r => r.IsCompleted),
+            "Pending" => q.Where(r => !r.IsCompleted),
+            _ => q,
+        };
+        q = _invoiceStatusFilter switch
+        {
+            "Draft" => q.Where(r => r.InvoiceStatus == VoucherStatus.Draft),
+            "Posted" => q.Where(r => r.InvoiceStatus == VoucherStatus.Posted),
+            _ => q,
+        };
+        q = _serviceTypeFilter switch
+        {
+            "Service" => q.Where(r => r.ServiceType == ItemKind.Service),
+            "Goods" => q.Where(r => r.ServiceType == ItemKind.Goods),
+            _ => q,
+        };
+        if (_invoiceDateFrom is { } from) q = q.Where(r => r.InvoiceDate >= DateOnly.FromDateTime(from));
+        if (_invoiceDateTo is { } to) q = q.Where(r => r.InvoiceDate <= DateOnly.FromDateTime(to));
+
+        return q;
+    }
+
+    private async Task ToggleCompletion(TransactionRow row)
+    {
+        var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+        await TxnSvc.SetCompletionAsync(row.LineId, !row.IsCompleted, userName, DateTime.UtcNow);
+        await Load();
+    }
+
+    private async Task OnSupplierChanged(TransactionRow row, int? supplierId)
+    {
+        try
+        {
+            await TxnSvc.SetSupplierAsync(row.LineId, supplierId);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Tran Ref,Invoice #,Invoice Date,Customer,Order #,Item/Description,Qty,Amount,Supplier,Paid From,Completion");
+        foreach (var r in FilteredRows())
+            sb.AppendLine(string.Join(",",
+                Csv(r.TranRef), Csv(r.InvoiceNo), r.InvoiceDate.ToString("yyyy-MM-dd"), Csv(r.CustomerName),
+                Csv(r.OrderNo), Csv(r.ItemName ?? r.Description), r.Quantity.ToString("F2"), r.Amount.ToString("F2"),
+                Csv(r.SupplierName), Csv(r.PaidFromAccountName), r.IsCompleted ? "Completed" : "Pending"));
+        await JS.InvokeVoidAsync("aegisDownload", "transactions.csv", sb.ToString(), "text/csv");
+    }
+
+    private static string Csv(string? s)
+    {
+        s ??= "";
+        // Neutralize formula triggers so Excel/LibreOffice/Sheets can't execute attacker-controlled
+        // text (customer/supplier names, descriptions) as a formula on open.
+        if (s.Length > 0 && "=+-@\t\r".Contains(s[0])) s = "'" + s;
+        return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+    }
+}

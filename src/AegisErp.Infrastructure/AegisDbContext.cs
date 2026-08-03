@@ -321,12 +321,14 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.AttachmentFileName).HasMaxLength(260);
             e.Property(l => l.AttachmentContentType).HasMaxLength(100);
             e.Property(l => l.Recognition).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.CompletedBy).HasMaxLength(80);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);
             e.HasOne(l => l.RevenueAccount).WithMany().HasForeignKey(l => l.RevenueAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.CostCenter).WithMany().HasForeignKey(l => l.CostCenterId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.Supplier).WithMany().HasForeignKey(l => l.SupplierId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<CustomerReceipt>(e =>

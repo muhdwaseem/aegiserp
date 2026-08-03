@@ -234,6 +234,18 @@ public class SalesInvoiceLine
     public string? AttachmentContentType { get; set; }
     public byte[]? AttachmentData { get; set; }
 
+    /// <summary>Fulfillment tracking for the cross-invoice Transactions view — independent of the
+    /// invoice's own posting/payment status, since a service can be delivered before or after
+    /// it's paid for.</summary>
+    public bool IsCompleted { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+    public string? CompletedBy { get; set; }
+
+    /// <summary>The vendor/subcontractor who actually fulfills this line, if the service is
+    /// outsourced rather than delivered in-house — surfaced as "Supplier" on the Transactions view.</summary>
+    public int? SupplierId { get; set; }
+    public Vendor? Supplier { get; set; }
+
     public decimal Net => DiscountType == DiscountType.Percent
         ? Math.Round(Quantity * UnitPrice * (1 - DiscountValue / 100m), 2, MidpointRounding.AwayFromZero)
         : Math.Round(Math.Max(0, Quantity * UnitPrice - DiscountValue), 2, MidpointRounding.AwayFromZero);
