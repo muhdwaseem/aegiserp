@@ -1,0 +1,124 @@
+@inject DebitNoteService DebitNoteSvc
+@inject NavigationManager Nav
+
+@if (_loaded && _note is null)
+{
+    <MudAlert Severity="Severity.Error">Debit note not found.</MudAlert>
+}
+else if (_note is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">@_note.DebitNoteNo</MudText>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_note.Status)" Variant="Variant.Text">@_note.Status</MudChip>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Vendor</MudText>
+                        <MudText Class="mb-2">@_note.Vendor.Name</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Date</MudText>
+                        <MudText Class="mb-2">@_note.Date.ToString("dd MMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Against</MudText>
+                        <MudText Class="mb-2">
+                            @if (_note.PurchaseInvoice is not null)
+                            {
+                                <MudLink Href="@($"/purchase-invoice/{_note.PurchaseInvoice.Id}")">@_note.PurchaseInvoice.InvoiceNo</MudLink>
+                            }
+                            else
+                            {
+                                <text>On account</text>
+                            }
+                        </MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        @if (!string.IsNullOrWhiteSpace(_note.Reason))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Reason</MudText>
+                            <MudText Class="mb-2">@_note.Reason</MudText>
+                        }
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Total</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2">AED @_note.TotalGross.ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+                @if (!string.IsNullOrWhiteSpace(_note.Narration))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">Narration</MudText>
+                    <MudText>@_note.Narration</MudText>
+                }
+
+                <MudDivider Class="my-4" />
+                <MudTable Items="_note.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Description</MudTh>
+                        <MudTh Style="text-align:right">Qty</MudTh>
+                        <MudTh Style="text-align:right">Unit Price</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Description</MudTd>
+                        <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+                <MudStack Class="mt-3" AlignItems="AlignItems.End">
+                    <MudText>Net: @_note.TotalNet.ToString("N2")</MudText>
+                    <MudText>VAT: @_note.TotalVat.ToString("N2")</MudText>
+                    <MudText Typo="Typo.h6">Total: AED @_note.TotalGross.ToString("N2")</MudText>
+                </MudStack>
+            </MudTabPanel>
+
+            <MudTabPanel Text="GL Voucher">
+                @if (_note.JournalVoucher is null)
+                {
+                    <MudText Class="mud-text-secondary">No GL voucher generated.</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Voucher No.</MudText>
+                    <MudText Class="mb-2">@_note.JournalVoucher.VoucherNo</MudText>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MenuBook" OnClick="ViewJournal">View Journal</MudButton>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    [Parameter, EditorRequired] public int DebitNoteId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private int _loadedForId = -1;
+    private bool _loaded;
+    private DebitNote? _note;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (DebitNoteId != _loadedForId)
+        {
+            _loadedForId = DebitNoteId;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _note = await DebitNoteSvc.GetByIdAsync(DebitNoteId);
+        _loaded = true;
+    }
+
+    private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_note!.JournalVoucher!.VoucherNo)}");
+
+    private static Color StatusColor(VoucherStatus status) => status switch
+    {
+        VoucherStatus.Draft => Color.Default,
+        VoucherStatus.Posted => Color.Success,
+        VoucherStatus.Void => Color.Dark,
+        _ => Color.Default,
+    };
+}

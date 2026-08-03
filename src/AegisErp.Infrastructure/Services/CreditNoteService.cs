@@ -41,6 +41,17 @@ public class CreditNoteService
             .ToListAsync();
     }
 
+    /// <summary>One credit note with full detail, for the credit note detail view.</summary>
+    public async Task<CreditNote?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.CreditNotes.AsNoTracking()
+            .Include(n => n.Customer).Include(n => n.Lines).Include(n => n.SalesInvoice)
+            .Include(n => n.JournalVoucher).Include(n => n.BankAccount)
+            .Include(n => n.Allocations).ThenInclude(a => a.SalesInvoice)
+            .FirstOrDefaultAsync(n => n.Id == id);
+    }
+
     /// <summary>
     /// Creates and posts a credit note in one transaction: the note, its lines and the generated GL
     /// voucher are persisted atomically — the mirror image of a sales invoice (Dr revenue net per

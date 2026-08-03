@@ -33,6 +33,15 @@ public class DebitNoteService
             .ToListAsync();
     }
 
+    /// <summary>One debit note with full detail, for the debit note detail view.</summary>
+    public async Task<DebitNote?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.DebitNotes.AsNoTracking()
+            .Include(n => n.Vendor).Include(n => n.Lines).Include(n => n.PurchaseInvoice).Include(n => n.JournalVoucher)
+            .FirstOrDefaultAsync(n => n.Id == id);
+    }
+
     /// <summary>
     /// Creates and posts a debit note in one transaction: the note, its lines and the generated GL
     /// voucher (Dr AP gross / Cr expense net per line / Cr VAT input) are persisted atomically — the
