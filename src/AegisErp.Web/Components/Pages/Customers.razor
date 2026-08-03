@@ -1,9 +1,11 @@
 @page "/customers"
+@page "/customers/{Id:int?}"
 @attribute [Authorize]
 @using AegisErp.Web.Components.Dialogs
 @inject CustomerService CustomerSvc
 @inject CompanyService CompanySvc
 @inject IDialogService DialogService
+@inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>Customers · Aegis ERP</PageTitle>
@@ -17,94 +19,77 @@
     </AuthorizeView>
 </MudStack>
 
-<MudTable Items="_summaries" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_summaries is null"
-          T="CustomerSummary" OnRowClick="RowClicked" RowClass="cursor-pointer">
-    <HeaderContent>
-        <MudTh>Code</MudTh>
-        <MudTh>Name</MudTh>
-        <MudTh>TRN</MudTh>
-        @if (_salespersonEnabled)
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="customer-list-pane" Elevation="1">
+            @if (_summaries is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_summaries.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No customers yet.</MudText>
+            }
+            else
+            {
+                @foreach (var c in _summaries)
+                {
+                    <div class="customer-row @(c.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(c))">
+                        <div class="customer-row-name">@c.Name</div>
+                        <div class="customer-row-meta">@c.Code</div>
+                    </div>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
         {
-            <MudTh>Salesperson</MudTh>
+            <CustomerDetailPanel @key="id" CustomerId="id" OnChanged="Load" />
         }
-        <MudTh>Terms</MudTh>
-        <MudTh Style="text-align:right">Invoiced</MudTh>
-        <MudTh Style="text-align:right">Received</MudTh>
-        <MudTh Style="text-align:right">Outstanding</MudTh>
-        <MudTh Style="width:48px"></MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd Style="font-family:monospace">@context.Code</MudTd>
-        <MudTd>@context.Name</MudTd>
-        <MudTd Style="font-family:monospace;font-size:11.5px">@context.Trn</MudTd>
-        @if (_salespersonEnabled)
+        else
         {
-            <MudTd>@context.Salesperson</MudTd>
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select a customer on the left to view their details.</MudText>
+            </MudPaper>
         }
-        <MudTd>@context.PaymentTermsDays d</MudTd>
-        <MudTd Style="text-align:right">@context.Invoiced.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right">@context.Received.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right;font-weight:600" Class="@(context.Outstanding > 0 ? "mud-error-text" : "mud-success-text")">
-            @context.Outstanding.ToString("N2")
-        </MudTd>
-        <MudTd @onclick:stopPropagation="true">
-            <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
-                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => OpenEditForm(context.Id))" />
-            </AuthorizeView>
-        </MudTd>
-    </RowTemplate>
-</MudTable>
-<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
-    Subledger totals reflect posted AR documents; the GL opening balance on Accounts Receivable is not attributed to customers. Click a row for the statement.
-</MudText>
+    </MudItem>
+</MudGrid>
 
-@if (_statementFor is not null)
-{
-    <MudPaper Class="pa-4 mt-4" Elevation="2">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-            <MudText Typo="Typo.subtitle1">Statement — @_statementFor.Name (@_statementFor.Code)</MudText>
-            <MudSpacer />
-            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _statementFor = null)" />
-        </MudStack>
-        <MudTable Items="_statement" Dense="true" Bordered="true" Striped="true">
-            <HeaderContent>
-                <MudTh>Date</MudTh>
-                <MudTh>Document</MudTh>
-                <MudTh>Type</MudTh>
-                <MudTh>Narration</MudTh>
-                <MudTh Style="text-align:right">Debit</MudTh>
-                <MudTh Style="text-align:right">Credit</MudTh>
-                <MudTh Style="text-align:right">Balance</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-                <MudTd Style="font-family:monospace">@context.DocNo</MudTd>
-                <MudTd>@context.DocType</MudTd>
-                <MudTd>@context.Narration</MudTd>
-                <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "—")</MudTd>
-                <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
-                <MudTd Style="text-align:right;font-weight:600">@context.RunningBalance.ToString("N2")</MudTd>
-            </RowTemplate>
-            <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No posted documents for this customer.</MudText></NoRecordsContent>
-        </MudTable>
-    </MudPaper>
-}
+<style>
+    .customer-list-pane { max-height: calc(100vh - 180px); overflow-y: auto; }
+    .customer-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .customer-row:hover { background: var(--mud-palette-action-default-hover); }
+    .customer-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .customer-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .customer-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+</style>
 
 @code {
-    private List<CustomerSummary>? _summaries;
-    private CustomerSummary? _statementFor;
-    private List<StatementRow> _statement = new();
-    private bool _salespersonEnabled;
+    [Parameter] public int? Id { get; set; }
 
-    protected override async Task OnInitializedAsync()
+    private List<CustomerSummary>? _summaries;
+    private int? _selectedId;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _summaries is { Count: > 0 }) _selectedId = _summaries[0].Id;
+    }
+
+    private async Task Load()
     {
         _summaries = await CustomerSvc.GetSummariesAsync();
-        try
-        {
-            var company = await CompanySvc.GetAsync();
-            _salespersonEnabled = company.SalespersonEnabled;
-        }
-        catch (PostingException) { _salespersonEnabled = false; }
+        if (_selectedId is null && _summaries.Count > 0) _selectedId = Id ?? _summaries[0].Id;
+    }
+
+    private void SelectRow(CustomerSummary c)
+    {
+        _selectedId = c.Id;
+        Nav.NavigateTo($"/customers/{c.Id}");
     }
 
     private async Task OpenNewForm()
@@ -112,25 +97,14 @@
         var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
         var dialog = await DialogService.ShowAsync<NewCustomerDialog>("New Customer", options);
         var result = await dialog.Result;
-        if (result is { Canceled: false }) _summaries = await CustomerSvc.GetSummariesAsync();
-    }
-
-    private async Task OpenEditForm(int customerId)
-    {
-        var existing = await CustomerSvc.GetByIdAsync(customerId);
-        if (existing is null) return;
-
-        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
-        var parameters = new DialogParameters<NewCustomerDialog> { { x => x.Existing, existing } };
-        var dialog = await DialogService.ShowAsync<NewCustomerDialog>("Edit Customer", parameters, options);
-        var result = await dialog.Result;
-        if (result is { Canceled: false }) _summaries = await CustomerSvc.GetSummariesAsync();
-    }
-
-    private async Task RowClicked(TableRowClickEventArgs<CustomerSummary> args)
-    {
-        if (args.Item is null) return;
-        _statementFor = args.Item;
-        _statement = await CustomerSvc.GetStatementAsync(args.Item.Id);
+        if (result is { Canceled: false })
+        {
+            await Load();
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/customers/{newId}");
+            }
+        }
     }
 }

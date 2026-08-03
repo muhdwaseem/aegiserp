@@ -1,0 +1,366 @@
+@using AegisErp.Web.Components.Dialogs
+@inject CustomerService CustomerSvc
+@inject SalesInvoiceService InvoiceSvc
+@inject ReceiptService ReceiptSvc
+@inject CreditNoteService CreditNoteSvc
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@if (_loaded && _customer is null)
+{
+    <MudAlert Severity="Severity.Error">Customer not found.</MudAlert>
+}
+else if (_customer is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+            <MudIcon Icon="@(_customer.CustomerType == CustomerType.Business ? Icons.Material.Filled.Business : Icons.Material.Filled.Person)" />
+        </MudAvatar>
+        <div>
+            <MudText Typo="Typo.h6">@_customer.Name</MudText>
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_customer.Code</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">·</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@(_customer.CustomerType == CustomerType.Business ? "Company" : "Individual")</MudText>
+            </MudStack>
+        </div>
+        <MudChip T="string" Size="Size.Small" Color="@(_customer.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+            @(_customer.IsActive ? "Active" : "Inactive")
+        </MudChip>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Assessment" OnClick="Report">Report</MudButton>
+        <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditCustomer">Edit</MudButton>
+        </AuthorizeView>
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">UNUSED CREDITS</MudText>
+                <MudText Typo="Typo.h6">@_summary.UnusedCredits.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">OUTSTANDING RECEIVABLES</MudText>
+                <MudText Typo="Typo.h6">@_summary.OutstandingReceivables.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">ADVANCE PAYMENT</MudText>
+                <MudText Typo="Typo.h6">@_summary.AdvancePayment.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="6" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">CREDIT LIMIT</MudText>
+                <MudText Typo="Typo.h6">@_summary.CreditLimit.ToString("N2")</MudText>
+                @if (_summary.PercentOfLimitUsed is decimal pct)
+                {
+                    <MudProgressLinear Value="@((double)(pct * 100))" Color="@(pct >= 1 ? Color.Error : Color.Primary)" Class="mt-1" Size="Size.Small" />
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@((pct * 100).ToString("N0"))% of limit used</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true" @bind-ActivePanelIndex="_activeTab">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Contact Information</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Email</MudText>
+                        <MudText Class="mb-2">@(_customer.Email ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Mobile</MudText>
+                        <MudText Class="mb-2">@(_customer.Mobile ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Work Phone</MudText>
+                        <MudText Class="mb-2">@(_customer.WorkPhone ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Contact Person</MudText>
+                        <MudText Class="mb-2">@(PrimaryContactName() ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Address</MudText>
+                        <MudText Class="mb-2">@(FormattedAddress() ?? "—")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Additional Details</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">TRN</MudText>
+                        <MudText Class="mb-2">@(_customer.Trn ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">P.O. Box</MudText>
+                        <MudText Class="mb-2">@(_customer.BillingZip ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Credit Limit</MudText>
+                        <MudText Class="mb-2">@_customer.CreditLimit.ToString("N2")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Created</MudText>
+                        <MudText Class="mb-2">@_customer.CreatedAtUtc.ToLocalTime().ToString("dd MMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Notes</MudText>
+                        <MudText Class="mb-2">@(_customer.Remarks ?? "—")</MudText>
+                    </MudItem>
+                </MudGrid>
+                <MudDivider Class="my-4" />
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle2">Opening Balance</MudText>
+                    <MudSpacer />
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="EditCustomer">@(_customer.OpeningBalance > 0 ? "Edit" : "Set")</MudButton>
+                </MudStack>
+                <MudText Class="mt-1 mud-text-secondary">
+                    @(_customer.OpeningBalance > 0 ? $"AED {_customer.OpeningBalance:N2}" : "No opening balance set.")
+                </MudText>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Billing">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Billing Address</MudText>
+                @if (string.IsNullOrWhiteSpace(FormattedAddress()))
+                {
+                    <MudText Class="mud-text-secondary">No billing address set — add one from Edit.</MudText>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(_customer.BillingAttention))
+                    {
+                        <MudText>@_customer.BillingAttention</MudText>
+                    }
+                    <MudText>@FormattedAddress()</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_customer.BillingPhone))
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">Phone: @_customer.BillingPhone</MudText>
+                    }
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Invoices">
+                <MudTable Items="_invoices" Dense="true" Bordered="true" Elevation="0" Hover="true" RowStyle="cursor:pointer"
+                          OnRowClick="@((TableRowClickEventArgs<SalesInvoiceRow> e) => { if (e.Item is not null) Nav.NavigateTo($"/sales-invoice/{e.Item.Invoice.Id}"); })">
+                    <HeaderContent>
+                        <MudTh>Invoice</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh Style="text-align:right">Total</MudTh>
+                        <MudTh Style="text-align:right">Balance</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd Style="font-family:monospace">@context.Invoice.InvoiceNo</MudTd>
+                        <MudTd>@context.Invoice.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd Style="text-align:right">@context.Invoice.TotalGross.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.Balance.ToString("N2")</MudTd>
+                        <MudTd>@context.Status</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No invoices yet.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Payments">
+                <MudTable Items="_receipts" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Receipt</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Mode</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd Style="font-family:monospace">@context.ReceiptNo</MudTd>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd>@context.PaymentMode</MudTd>
+                        <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No payments yet.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Credit Notes">
+                <MudTable Items="_creditNotes" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Credit Note</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Settlement</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd Style="font-family:monospace">@context.CreditNoteNo</MudTd>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd>@context.SettlementMethod</MudTd>
+                        <MudTd Style="text-align:right">@context.TotalGross.ToString("N2")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No credit notes yet.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Statement">
+                <MudTable Items="_statement" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Document</MudTh>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Narration</MudTh>
+                        <MudTh Style="text-align:right">Debit</MudTh>
+                        <MudTh Style="text-align:right">Credit</MudTh>
+                        <MudTh Style="text-align:right">Balance</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd Style="font-family:monospace">@context.DocNo</MudTd>
+                        <MudTd>@context.DocType</MudTd>
+                        <MudTd>@context.Narration</MudTd>
+                        <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "—")</MudTd>
+                        <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
+                        <MudTd Style="text-align:right;font-weight:600">@context.RunningBalance.ToString("N2")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No posted documents for this customer.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Attachments">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnDocumentSelected" Accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">Upload Document</MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">
+                    Up to @CustomerService.MaxDocumentsPerCustomer files, @(CustomerService.MaxDocumentBytes / (1024 * 1024)) MB each.
+                </MudText>
+
+                @if (_documents is { Count: > 0 })
+                {
+                    <MudStack Class="mt-3" Spacing="1">
+                        @foreach (var doc in _documents)
+                        {
+                            <MudPaper Elevation="0" Class="pa-2" Style="border:1px solid var(--mud-palette-lines-default)">
+                                <MudStack Row="true" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                    <MudText>@doc.FileName</MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">(@((doc.SizeBytes / 1024.0).ToString("N0")) KB)</MudText>
+                                    <MudSpacer />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="@(() => DownloadDocument(doc))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveDocument(doc))" />
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
+                }
+                else
+                {
+                    <MudText Class="mt-3 mud-text-secondary">No documents attached.</MudText>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    private const int StatementTabIndex = 5;
+
+    [Parameter, EditorRequired] public int CustomerId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private int _loadedForId = -1;
+    private int _activeTab;
+    private bool _loaded;
+    private Customer? _customer;
+    private CustomerAccountSummary _summary = new(0, 0, 0, 0);
+    private List<SalesInvoiceRow> _invoices = new();
+    private List<CustomerReceipt> _receipts = new();
+    private List<CreditNote> _creditNotes = new();
+    private List<StatementRow> _statement = new();
+    private List<CustomerDocumentInfo>? _documents;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (CustomerId != _loadedForId)
+        {
+            _loadedForId = CustomerId;
+            _activeTab = 0;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _customer = await CustomerSvc.GetByIdAsync(CustomerId);
+        _loaded = true;
+        if (_customer is null) return;
+
+        _summary = await CustomerSvc.GetAccountSummaryAsync(CustomerId);
+        _invoices = (await InvoiceSvc.GetAllAsync()).Where(r => r.Invoice.CustomerId == CustomerId).ToList();
+        _receipts = await ReceiptSvc.GetByCustomerAsync(CustomerId);
+        _creditNotes = await CreditNoteSvc.GetByCustomerAsync(CustomerId);
+        _statement = await CustomerSvc.GetStatementAsync(CustomerId);
+        _documents = await CustomerSvc.GetDocumentsAsync(CustomerId);
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
+    private string? PrimaryContactName()
+    {
+        var p = _customer!.ContactPersons.FirstOrDefault(c => c.IsPrimary) ?? _customer.ContactPersons.FirstOrDefault();
+        if (p is null) return null;
+        return string.Join(" ", new[] { p.Salutation, p.FirstName, p.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    }
+
+    private string? FormattedAddress()
+    {
+        var parts = new[]
+        {
+            _customer!.BillingAddressLine1, _customer.BillingAddressLine2,
+            _customer.BillingCity, _customer.BillingEmirate, _customer.BillingCountry,
+        }.Where(s => !string.IsNullOrWhiteSpace(s));
+        var joined = string.Join(", ", parts);
+        return string.IsNullOrWhiteSpace(joined) ? null : joined;
+    }
+
+    private async Task EditCustomer()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
+        var parameters = new DialogParameters<NewCustomerDialog> { { x => x.Existing, _customer } };
+        var dialog = await DialogService.ShowAsync<NewCustomerDialog>("Edit Customer", parameters, options);
+        if ((await dialog.Result) is { Canceled: false }) await NotifyChangedAsync();
+    }
+
+    private async Task Report()
+    {
+        _activeTab = StatementTabIndex;
+        StateHasChanged();
+        await Task.Delay(50);
+        await JS.InvokeVoidAsync("print");
+    }
+
+    private async Task OnDocumentSelected(IBrowserFile file)
+    {
+        if (file.Size > CustomerService.MaxDocumentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {CustomerService.MaxDocumentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(CustomerService.MaxDocumentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        try
+        {
+            await CustomerSvc.AddDocumentAsync(CustomerId, file.Name, file.ContentType, ms.ToArray(), DateTime.UtcNow);
+            _documents = await CustomerSvc.GetDocumentsAsync(CustomerId);
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DownloadDocument(CustomerDocumentInfo doc)
+    {
+        var full = await CustomerSvc.GetDocumentAsync(CustomerId, doc.Id);
+        if (full is null) return;
+        var base64 = Convert.ToBase64String(full.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", full.Value.FileName, full.Value.ContentType, base64);
+    }
+
+    private async Task RemoveDocument(CustomerDocumentInfo doc)
+    {
+        await CustomerSvc.RemoveDocumentAsync(CustomerId, doc.Id);
+        _documents = await CustomerSvc.GetDocumentsAsync(CustomerId);
+    }
+}
