@@ -1,188 +1,26 @@
 @page "/expenses"
 @page "/expenses/{Id:int?}"
 @attribute [Authorize(Roles = AppRoles.Posters)]
+@using AegisErp.Web.Components.Dialogs
 @inject DirectExpenseService ExpenseSvc
-@inject VendorService VendorSvc
-@inject CustomerService CustomerSvc
-@inject ChartOfAccountsService Coa
-@inject LedgerService Ledger
-@inject ItemService ItemSvc
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>Expenses · Aegis ERP</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-3">Expenses</MudText>
-<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
-    A direct cash/bank expense — no vendor invoice or Accounts Payable involved. Posts Dr expense account(s) / Cr the account paid through.
-</MudText>
-
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudGrid>
-        <MudItem xs="12" sm="3">
-            <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Date" />
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSelect T="int" @bind-Value="_periodId" Label="Period" Dense="true">
-                @if (_periods is not null)
-                {
-                    @foreach (var p in _periods)
-                    {
-                        <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
-                    }
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudSelect T="int" @bind-Value="_bankAccountId" Label="Paid Through" Dense="true">
-                <MudSelectItem Value="0">— select account —</MudSelectItem>
-                @if (_bankAccounts is not null)
-                {
-                    @foreach (var a in _bankAccounts)
-                    {
-                        <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
-                    }
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="3">
-            <MudTextField @bind-Value="_reference" Label="Reference#" />
-        </MudItem>
-
-        @if (!_itemized)
-        {
-            <MudItem xs="12" sm="5">
-                <MudSelect T="int" @bind-Value="_singleExpenseAccountId" Label="Expense Account" Dense="true">
-                    <MudSelectItem Value="0">— select account —</MudSelectItem>
-                    @if (_expenseAccounts is not null)
-                    {
-                        @foreach (var a in _expenseAccounts)
-                        {
-                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
-                        }
-                    }
-                </MudSelect>
-                <MudLink Typo="Typo.caption" Class="mt-1 d-inline-block" OnClick="EnableItemize">Itemize</MudLink>
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudSelect T="int?" @bind-Value="_singleCostCenterId" Label="Cost Center" Dense="true" Clearable="true">
-                    @if (_costCenters is not null)
-                    {
-                        @foreach (var c in _costCenters)
-                        {
-                            <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
-                        }
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="3">
-                <MudNumericField T="decimal" @bind-Value="_singleAmount" Label="Amount (AED)" Min="0" HideSpinButtons="true" />
-            </MudItem>
-        }
-        else
-        {
-            <MudItem xs="12">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
-                    <MudText Typo="Typo.subtitle2">Itemized lines</MudText>
-                    <MudSpacer />
-                    <MudLink Typo="Typo.caption" OnClick="DisableItemize">Use a single account instead</MudLink>
-                </MudStack>
-                <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0">
-                    <HeaderContent>
-                        <MudTh Style="width:160px">Item</MudTh>
-                        <MudTh>Expense Account</MudTh>
-                        <MudTh>Cost Center</MudTh>
-                        <MudTh>Description</MudTh>
-                        <MudTh Style="width:120px;text-align:right">Amount</MudTh>
-                        <MudTh Style="width:48px"></MudTh>
-                    </HeaderContent>
-                    <RowTemplate>
-                        <MudTd>
-                            <MudSelect T="int" Value="context.ItemId ?? 0" ValueChanged="v => OnItemChanged(context, v)" Dense="true" Margin="Margin.Dense" Clearable="true">
-                                <MudSelectItem Value="0">— none —</MudSelectItem>
-                                @if (_items is not null)
-                                {
-                                    @foreach (var it in _items)
-                                    {
-                                        <MudSelectItem Value="it.Id">@it.Code — @it.Name</MudSelectItem>
-                                    }
-                                }
-                            </MudSelect>
-                        </MudTd>
-                        <MudTd>
-                            <MudSelect T="int" @bind-Value="context.ExpenseAccountId" Dense="true" Margin="Margin.Dense">
-                                <MudSelectItem Value="0">— select —</MudSelectItem>
-                                @if (_expenseAccounts is not null)
-                                {
-                                    @foreach (var a in _expenseAccounts)
-                                    {
-                                        <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
-                                    }
-                                }
-                            </MudSelect>
-                        </MudTd>
-                        <MudTd>
-                            <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" Clearable="true">
-                                @if (_costCenters is not null)
-                                {
-                                    @foreach (var c in _costCenters)
-                                    {
-                                        <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
-                                    }
-                                }
-                            </MudSelect>
-                        </MudTd>
-                        <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" /></MudTd>
-                        <MudTd Style="text-align:right">
-                            <MudNumericField T="decimal" @bind-Value="context.Amount" Min="0" HideSpinButtons="true" Margin="Margin.Dense" />
-                        </MudTd>
-                        <MudTd>
-                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                           OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
-                        </MudTd>
-                    </RowTemplate>
-                </MudTable>
-                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
-                    <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
-                    <MudSpacer />
-                    <MudText>Total: <b>AED @TotalAmount.ToString("N2")</b></MudText>
-                </MudStack>
-            </MudItem>
-        }
-
-        <MudItem xs="12" sm="4">
-            <MudSelect T="int" @bind-Value="_vendorId" Label="Vendor (optional)" Dense="true">
-                <MudSelectItem Value="0">— none —</MudSelectItem>
-                @if (_vendors is not null)
-                {
-                    @foreach (var v in _vendors)
-                    {
-                        <MudSelectItem Value="v.Id">@v.Code — @v.Name</MudSelectItem>
-                    }
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4">
-            <MudSelect T="int" @bind-Value="_customerId" Label="Customer Name (optional)" Dense="true">
-                <MudSelectItem Value="0">— none —</MudSelectItem>
-                @if (_customers is not null)
-                {
-                    @foreach (var c in _customers)
-                    {
-                        <MudSelectItem Value="c.Id">@c.Code — @c.Name</MudSelectItem>
-                    }
-                }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="4" Class="d-flex align-center">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PostAdd" FullWidth="true"
-                       Disabled="@(!CanPost || _posting)" OnClick="Post">Post Expense</MudButton>
-        </MudItem>
-        <MudItem xs="12">
-            <MudTextField @bind-Value="_narration" Label="Notes" Lines="2" Placeholder="Max. 500 characters" MaxLength="500" />
-        </MudItem>
-    </MudGrid>
-</MudPaper>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <div>
+        <MudText Typo="Typo.h5">Expenses</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            A direct cash/bank expense — no vendor invoice or Accounts Payable involved. Posts Dr expense account(s) / Cr the account paid through.
+        </MudText>
+    </div>
+    <MudSpacer />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNew">
+        New Expense
+    </MudButton>
+</MudStack>
 
 <MudText Typo="Typo.subtitle1" Class="mb-2">Expenses</MudText>
 <MudGrid>
@@ -238,58 +76,15 @@
 </style>
 
 @code {
-    private List<Vendor>? _vendors;
-    private List<Customer>? _customers;
-    private List<Account>? _bankAccounts;
-    private List<Account>? _expenseAccounts;
-    private List<CostCenter>? _costCenters;
-    private List<FiscalPeriod>? _periods;
     private List<DirectExpense>? _recent;
-    private List<Item>? _items;
     private int? _selectedId;
 
     [Parameter] public int? Id { get; set; }
 
-    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
-    private string _userName = "System Admin";
-
-    private int _vendorId;
-    private int _customerId;
-    private int _bankAccountId;
-    private DateTime? _date = DateTime.Today;
-    private int _periodId;
-    private string? _reference;
-    private string? _narration;
-    private bool _posting;
-
-    private bool _itemized;
-    private int _singleExpenseAccountId;
-    private int? _singleCostCenterId;
-    private decimal _singleAmount;
-    private readonly List<LineVm> _lines = new() { new() };
-
-    private decimal TotalAmount => _itemized ? _lines.Sum(l => l.Amount) : _singleAmount;
-
-    private bool CanPost => _bankAccountId > 0 && _periodId > 0 && TotalAmount > 0
-        && (_itemized
-            ? _lines.All(l => l.ExpenseAccountId > 0 && l.Amount > 0)
-            : _singleExpenseAccountId > 0);
-
     protected override async Task OnInitializedAsync()
     {
-        _vendors = await VendorSvc.GetAllAsync(activeOnly: true);
-        _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
-        var accounts = await Coa.GetAllAsync(postableOnly: true);
-        _bankAccounts = accounts.Where(a => a.Type == AccountType.Asset && a.Code.StartsWith("110")).ToList();
-        _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense).ToList();
-        _costCenters = await Coa.GetCostCentersAsync();
-        _periods = await Ledger.GetPeriodsAsync();
-        _items = await ItemSvc.GetAllAsync(activeOnly: true);
-        SyncPeriodToDate();
         _recent = await ExpenseSvc.GetRecentAsync(50);
         if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
-        if (AuthState is not null)
-            _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
     }
 
     protected override void OnParametersSet()
@@ -304,86 +99,7 @@
         Nav.NavigateTo($"/expenses/{e.Id}");
     }
 
-    private void EnableItemize()
-    {
-        _itemized = true;
-        if (_singleExpenseAccountId > 0 || _singleAmount > 0)
-            _lines[0] = new LineVm { ExpenseAccountId = _singleExpenseAccountId, CostCenterId = _singleCostCenterId, Amount = _singleAmount };
-    }
-
-    private void DisableItemize()
-    {
-        _itemized = false;
-        var first = _lines.FirstOrDefault();
-        if (first is not null)
-        {
-            _singleExpenseAccountId = first.ExpenseAccountId;
-            _singleCostCenterId = first.CostCenterId;
-            _singleAmount = _lines.Sum(l => l.Amount);
-        }
-        _lines.Clear();
-        _lines.Add(new());
-    }
-
-    private void AddLine() => _lines.Add(new());
-    private void RemoveLine(LineVm l) { if (_lines.Count > 1) _lines.Remove(l); }
-
-    /// <summary>Picking an item pre-fills its purchase account, description and cost price — still fully editable afterward.</summary>
-    private void OnItemChanged(LineVm line, int itemId)
-    {
-        line.ItemId = itemId == 0 ? null : itemId;
-        var item = _items?.FirstOrDefault(i => i.Id == itemId);
-        if (item is null) return;
-
-        if (item.PurchaseAccountId is int accId) line.ExpenseAccountId = accId;
-        line.Description = item.PurchaseDescription ?? item.Name;
-        if (item.CostPrice is decimal cost) line.Amount = cost;
-    }
-
-    private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
-
-    private void SyncPeriodToDate()
-    {
-        if (_periods is null || _date is null) return;
-        var dd = DateOnly.FromDateTime(_date.Value);
-        var match = _periods.FirstOrDefault(p => dd >= p.StartDate && dd <= p.EndDate);
-        if (match is not null) _periodId = match.Id;
-        else if (_periodId == 0) _periodId = _periods.LastOrDefault()?.Id ?? 0;
-    }
-
-    private async Task Post()
-    {
-        _posting = true;
-        try
-        {
-            var inputs = _itemized
-                ? _lines.Select(l => new DirectExpenseLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, l.Amount, l.ItemId))
-                : new[] { new DirectExpenseLineInput(_singleExpenseAccountId, _singleCostCenterId, null, _singleAmount) };
-
-            var e = await ExpenseSvc.CreateAndPostAsync(
-                _vendorId > 0 ? _vendorId : null, _customerId > 0 ? _customerId : null,
-                DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _bankAccountId,
-                _reference, _narration, _userName, DateTime.UtcNow, inputs);
-
-            Snackbar.Add($"Posted {e.ExpenseNo} — GL voucher generated.", Severity.Success);
-            ResetForm();
-            _recent = await ExpenseSvc.GetRecentAsync(50);
-            _selectedId = e.Id;
-            Nav.NavigateTo($"/expenses/{e.Id}");
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally { _posting = false; }
-    }
-
-    private void ResetForm()
-    {
-        _vendorId = 0; _customerId = 0; _reference = null; _narration = null;
-        _itemized = false; _singleExpenseAccountId = 0; _singleCostCenterId = null; _singleAmount = 0;
-        _lines.Clear(); _lines.Add(new());
-    }
+    private async Task RefreshList() => _recent = await ExpenseSvc.GetRecentAsync(50);
 
     private static string AccountLabel(DirectExpense e)
     {
@@ -391,12 +107,19 @@
         return names.Count == 1 ? names[0] : $"{names.Count} accounts";
     }
 
-    private class LineVm
+    private async Task OpenNew()
     {
-        public int? ItemId { get; set; }
-        public int ExpenseAccountId { get; set; }
-        public int? CostCenterId { get; set; }
-        public string? Description { get; set; }
-        public decimal Amount { get; set; }
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewDirectExpenseDialog>("New Expense", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await RefreshList();
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/expenses/{newId}");
+            }
+        }
     }
 }
