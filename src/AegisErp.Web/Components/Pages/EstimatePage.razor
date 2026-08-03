@@ -1,9 +1,10 @@
 @page "/estimate"
+@page "/estimate/{Id:int?}"
 @attribute [Authorize]
 @inject EstimateService EstimateSvc
 @inject CustomerService CustomerSvc
 @inject ChartOfAccountsService Coa
-@inject LedgerService Ledger
+@inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>Estimate / Quotation · Aegis ERP</PageTitle>
@@ -104,58 +105,71 @@
     </MudPaper>
 </AuthorizeView>
 
-@if (_recent is not null && _recent.Count > 0)
-{
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent quotations</MudText>
-    <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true" T="Estimate">
-        <HeaderContent>
-            <MudTh>Estimate</MudTh>
-            <MudTh>Date</MudTh>
-            <MudTh>Valid Until</MudTh>
-            <MudTh>Customer</MudTh>
-            <MudTh Style="text-align:right">Total</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh Style="width:280px">Actions</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd Style="font-family:monospace">@context.EstimateNo</MudTd>
-            <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-            <MudTd>@context.ValidUntil.ToString("yyyy-MM-dd")</MudTd>
-            <MudTd>@context.Customer.Name</MudTd>
-            <MudTd Style="text-align:right;font-weight:600">@context.TotalGross.ToString("N2")</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-            <MudTd>
-                <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
-                    @if (context.Status == DocumentStatus.Draft)
-                    {
-                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SetStatus(context, DocumentStatus.Sent))">Mark Sent</MudButton>
-                    }
-                    @if (context.Status is DocumentStatus.Draft or DocumentStatus.Sent)
-                    {
-                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => SetStatus(context, DocumentStatus.Accepted))">Accept</MudButton>
-                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@(() => SetStatus(context, DocumentStatus.Declined))">Decline</MudButton>
-                    }
-                    @if (context.Status == DocumentStatus.Accepted)
-                    {
-                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ReceiptLong"
-                                   Disabled="_converting" OnClick="@(() => Convert(context))">Convert to Invoice</MudButton>
-                    }
-                    @if (context.Status == DocumentStatus.Converted && context.ConvertedInvoice is not null)
-                    {
-                        <MudText Typo="Typo.caption" Style="font-family:monospace">→ @context.ConvertedInvoice.InvoiceNo</MudText>
-                    }
-                </AuthorizeView>
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+<MudText Typo="Typo.subtitle1" Class="mb-2">Quotations</MudText>
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="est-list-pane" Elevation="1">
+            @if (_recent is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_recent.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No quotations yet.</MudText>
+            }
+            else
+            {
+                @foreach (var e in _recent)
+                {
+                    <div class="est-row @(e.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(e))">
+                        <div class="est-row-top">
+                            <span class="est-row-name">@e.Customer.Name</span>
+                            <span class="est-row-amount">@e.TotalGross.ToString("N2")</span>
+                        </div>
+                        <div class="est-row-meta">@e.EstimateNo · @e.Date.ToString("dd MMM yyyy")</div>
+                        <div class="est-row-status">
+                            <MudChip T="string" Size="Size.Small" Color="@StatusColor(e.Status)" Variant="Variant.Text">@e.Status</MudChip>
+                        </div>
+                    </div>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <EstimateDetailPanel @key="id" EstimateId="id" OnChanged="RefreshList" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.RequestQuote" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select a quotation on the left to view its details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+<style>
+    .est-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .est-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .est-row:hover { background: var(--mud-palette-action-default-hover); }
+    .est-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .est-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .est-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .est-row-amount { font-weight: 600; white-space: nowrap; }
+    .est-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+    .est-row-status { margin-top: 4px; }
+</style>
 
 @code {
     private List<Customer>? _customers;
     private List<Account>? _revenueAccounts;
     private List<CostCenter>? _costCenters;
-    private List<FiscalPeriod>? _periods;
     private List<Estimate>? _recent;
+    private int? _selectedId;
+
+    [Parameter] public int? Id { get; set; }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
@@ -165,7 +179,6 @@
     private DateTime? _validUntil = DateTime.Today.AddDays(30);
     private string? _narration;
     private bool _saving;
-    private bool _converting;
 
     private readonly List<LineVm> _lines = new() { new() };
 
@@ -179,11 +192,25 @@
         var accounts = await Coa.GetAllAsync(postableOnly: true);
         _revenueAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
         _costCenters = await Coa.GetCostCentersAsync();
-        _periods = await Ledger.GetPeriodsAsync();
-        _recent = await EstimateSvc.GetRecentAsync(10);
+        _recent = await EstimateSvc.GetRecentAsync(50);
+        if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
     }
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _recent is { Count: > 0 }) _selectedId = _recent[0].Id;
+    }
+
+    private void SelectRow(Estimate e)
+    {
+        _selectedId = e.Id;
+        Nav.NavigateTo($"/estimate/{e.Id}");
+    }
+
+    private async Task RefreshList() => _recent = await EstimateSvc.GetRecentAsync(50);
 
     private void OnDateChanged(DateTime? d)
     {
@@ -220,47 +247,15 @@
             Snackbar.Add($"Saved quotation {est.EstimateNo}.", Severity.Success);
             _lines.Clear(); _lines.Add(new());
             _narration = null; _customerId = 0;
-            _recent = await EstimateSvc.GetRecentAsync(10);
+            await RefreshList();
+            _selectedId = est.Id;
+            Nav.NavigateTo($"/estimate/{est.Id}");
         }
         catch (PostingException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
         }
         finally { _saving = false; }
-    }
-
-    private async Task SetStatus(Estimate est, DocumentStatus status)
-    {
-        try
-        {
-            await EstimateSvc.SetStatusAsync(est.Id, status);
-            _recent = await EstimateSvc.GetRecentAsync(10);
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-    }
-
-    private async Task Convert(Estimate est)
-    {
-        _converting = true;
-        try
-        {
-            var today = DateOnly.FromDateTime(DateTime.Today);
-            var period = _periods?.FirstOrDefault(p => today >= p.StartDate && today <= p.EndDate)
-                         ?? _periods?.LastOrDefault();
-            if (period is null) { Snackbar.Add("No fiscal period available for conversion.", Severity.Error); return; }
-
-            var inv = await EstimateSvc.ConvertToInvoiceAsync(est.Id, period.Id, _userName, DateTime.UtcNow);
-            Snackbar.Add($"Converted {est.EstimateNo} → sales invoice {inv.InvoiceNo} (posted).", Severity.Success);
-            _recent = await EstimateSvc.GetRecentAsync(10);
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally { _converting = false; }
     }
 
     private class LineVm

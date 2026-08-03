@@ -27,6 +27,15 @@ public class EstimateService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>One estimate with full detail, for the estimate detail view.</summary>
+    public async Task<Estimate?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.Estimates.AsNoTracking()
+            .Include(e => e.Customer).Include(e => e.Lines).Include(e => e.ConvertedInvoice)
+            .FirstOrDefaultAsync(e => e.Id == id);
+    }
+
     /// <summary>Creates a quotation (non-posting). Validity defaults to 30 days if not given.</summary>
     public async Task<Estimate> CreateAsync(
         int customerId, DateOnly date, DateOnly validUntil, string? narration,

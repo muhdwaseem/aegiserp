@@ -1,0 +1,173 @@
+@inject EstimateService EstimateSvc
+@inject LedgerService Ledger
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+@if (_loaded && _estimate is null)
+{
+    <MudAlert Severity="Severity.Error">Estimate not found.</MudAlert>
+}
+else if (_estimate is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">@_estimate.EstimateNo</MudText>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_estimate.Status)" Variant="Variant.Text">@_estimate.Status</MudChip>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Customer</MudText>
+                        <MudText Class="mb-2">@_estimate.Customer.Name</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Date</MudText>
+                        <MudText Class="mb-2">@_estimate.Date.ToString("dd MMM yyyy")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Valid Until</MudText>
+                        <MudText Class="mb-2">@_estimate.ValidUntil.ToString("dd MMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Total</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2">AED @_estimate.TotalGross.ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+                @if (!string.IsNullOrWhiteSpace(_estimate.Narration))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">Narration</MudText>
+                    <MudText>@_estimate.Narration</MudText>
+                }
+
+                <MudDivider Class="my-4" />
+                <MudTable Items="_estimate.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Description</MudTh>
+                        <MudTh Style="text-align:right">Qty</MudTh>
+                        <MudTh Style="text-align:right">Unit Price</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Description</MudTd>
+                        <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+                <MudStack Class="mt-3" AlignItems="AlignItems.End">
+                    <MudText Typo="Typo.h6">Total: AED @_estimate.TotalGross.ToString("N2")</MudText>
+                </MudStack>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Status &amp; Conversion">
+                <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+                    <Authorized>
+                        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                            @if (_estimate.Status == DocumentStatus.Draft)
+                            {
+                                <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(DocumentStatus.Sent))">Mark Sent</MudButton>
+                            }
+                            @if (_estimate.Status is DocumentStatus.Draft or DocumentStatus.Sent)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="@(() => SetStatus(DocumentStatus.Accepted))">Accept</MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => SetStatus(DocumentStatus.Declined))">Decline</MudButton>
+                            }
+                            @if (_estimate.Status == DocumentStatus.Accepted)
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ReceiptLong"
+                                           Disabled="_converting" OnClick="Convert">Convert to Invoice</MudButton>
+                            }
+                        </MudStack>
+                    </Authorized>
+                </AuthorizeView>
+
+                @if (_estimate.Status == DocumentStatus.Converted && _estimate.ConvertedInvoice is not null)
+                {
+                    <MudText Class="mt-3">
+                        Converted to <MudLink Href="@($"/sales-invoice/{_estimate.ConvertedInvoice.Id}")">@_estimate.ConvertedInvoice.InvoiceNo</MudLink>
+                    </MudText>
+                }
+                else if (_estimate.Status == DocumentStatus.Declined)
+                {
+                    <MudText Class="mt-3 mud-text-secondary">This quotation was declined.</MudText>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    [Parameter, EditorRequired] public int EstimateId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private int _loadedForId = -1;
+    private bool _loaded;
+    private bool _converting;
+    private Estimate? _estimate;
+    private List<FiscalPeriod>? _periods;
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (EstimateId != _loadedForId)
+        {
+            _loadedForId = EstimateId;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _estimate = await EstimateSvc.GetByIdAsync(EstimateId);
+        _loaded = true;
+        _periods ??= await Ledger.GetPeriodsAsync();
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
+    private async Task<string> CurrentUserAsync() =>
+        AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+
+    private async Task SetStatus(DocumentStatus status)
+    {
+        try
+        {
+            await EstimateSvc.SetStatusAsync(EstimateId, status);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task Convert()
+    {
+        _converting = true;
+        try
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var period = _periods?.FirstOrDefault(p => today >= p.StartDate && today <= p.EndDate)
+                         ?? _periods?.LastOrDefault();
+            if (period is null) { Snackbar.Add("No fiscal period available for conversion.", Severity.Error); return; }
+
+            var userName = await CurrentUserAsync();
+            var inv = await EstimateSvc.ConvertToInvoiceAsync(EstimateId, period.Id, userName, DateTime.UtcNow);
+            Snackbar.Add($"Converted {_estimate!.EstimateNo} → sales invoice {inv.InvoiceNo} (posted).", Severity.Success);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _converting = false; }
+    }
+
+    private static Color StatusColor(DocumentStatus s) => s switch
+    {
+        DocumentStatus.Accepted => Color.Success,
+        DocumentStatus.Declined => Color.Error,
+        DocumentStatus.Converted => Color.Primary,
+        DocumentStatus.Sent => Color.Info,
+        _ => Color.Default
+    };
+}

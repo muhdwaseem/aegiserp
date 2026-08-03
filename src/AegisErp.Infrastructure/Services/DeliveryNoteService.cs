@@ -21,6 +21,15 @@ public class DeliveryNoteService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>One delivery note with full detail, for the delivery note detail view.</summary>
+    public async Task<DeliveryNote?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.DeliveryNotes.AsNoTracking()
+            .Include(n => n.Customer).Include(n => n.Lines).Include(n => n.SalesInvoice)
+            .FirstOrDefaultAsync(n => n.Id == id);
+    }
+
     /// <summary>Creates a delivery note (non-posting document — records what was dispatched).</summary>
     public async Task<DeliveryNote> CreateAsync(
         int customerId, int? salesInvoiceId, DateOnly date, string? deliveryAddress, string? narration,

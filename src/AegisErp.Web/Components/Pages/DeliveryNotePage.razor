@@ -1,7 +1,9 @@
 @page "/delivery-note"
+@page "/delivery-note/{Id:int?}"
 @attribute [Authorize]
 @inject DeliveryNoteService DeliveryNoteSvc
 @inject CustomerService CustomerSvc
+@inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>Delivery Note · Aegis ERP</PageTitle>
@@ -75,46 +77,70 @@
     </MudPaper>
 </AuthorizeView>
 
-@if (_recent is not null && _recent.Count > 0)
-{
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent delivery notes</MudText>
-    <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true" T="DeliveryNote">
-        <HeaderContent>
-            <MudTh>Delivery Note</MudTh>
-            <MudTh>Date</MudTh>
-            <MudTh>Customer</MudTh>
-            <MudTh>Related Invoice</MudTh>
-            <MudTh Style="text-align:right">Total Qty</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh Style="width:160px">Actions</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd Style="font-family:monospace">@context.DeliveryNoteNo</MudTd>
-            <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-            <MudTd>@context.Customer.Name</MudTd>
-            <MudTd Style="font-family:monospace;font-size:11.5px">@(context.SalesInvoice?.InvoiceNo ?? "—")</MudTd>
-            <MudTd Style="text-align:right;font-weight:600">@context.TotalQuantity.ToString("N0")</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="@(context.Status == DocumentStatus.Delivered ? Color.Success : Color.Default)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-            <MudTd>
-                <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
-                    @if (context.Status != DocumentStatus.Delivered)
-                    {
-                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="@(() => SetStatus(context, DocumentStatus.Delivered))">Mark Delivered</MudButton>
-                    }
-                    else
-                    {
-                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => SetStatus(context, DocumentStatus.Draft))">Reopen</MudButton>
-                    }
-                </AuthorizeView>
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+<MudText Typo="Typo.subtitle1" Class="mb-2">Delivery Notes</MudText>
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="dlv-list-pane" Elevation="1">
+            @if (_recent is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_recent.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No delivery notes yet.</MudText>
+            }
+            else
+            {
+                @foreach (var n in _recent)
+                {
+                    <div class="dlv-row @(n.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(n))">
+                        <div class="dlv-row-top">
+                            <span class="dlv-row-name">@n.Customer.Name</span>
+                            <span class="dlv-row-qty">Qty @n.TotalQuantity.ToString("N0")</span>
+                        </div>
+                        <div class="dlv-row-meta">@n.DeliveryNoteNo · @n.Date.ToString("dd MMM yyyy")</div>
+                        <div class="dlv-row-status">
+                            <MudChip T="string" Size="Size.Small" Color="@(n.Status == DocumentStatus.Delivered ? Color.Success : Color.Default)" Variant="Variant.Text">@n.Status</MudChip>
+                        </div>
+                    </div>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <DeliveryNoteDetailPanel @key="id" DeliveryNoteId="id" OnChanged="RefreshList" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select a delivery note on the left to view its details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+<style>
+    .dlv-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .dlv-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .dlv-row:hover { background: var(--mud-palette-action-default-hover); }
+    .dlv-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .dlv-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .dlv-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dlv-row-qty { font-weight: 600; white-space: nowrap; }
+    .dlv-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+    .dlv-row-status { margin-top: 4px; }
+</style>
 
 @code {
     private List<Customer>? _customers;
     private List<DeliveryNote>? _recent;
     private List<OpenInvoice> _openInvoices = new();
+    private int? _selectedId;
+
+    [Parameter] public int? Id { get; set; }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
@@ -134,10 +160,25 @@
     protected override async Task OnInitializedAsync()
     {
         _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
-        _recent = await DeliveryNoteSvc.GetRecentAsync(10);
+        _recent = await DeliveryNoteSvc.GetRecentAsync(50);
+        if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
     }
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _recent is { Count: > 0 }) _selectedId = _recent[0].Id;
+    }
+
+    private void SelectRow(DeliveryNote n)
+    {
+        _selectedId = n.Id;
+        Nav.NavigateTo($"/delivery-note/{n.Id}");
+    }
+
+    private async Task RefreshList() => _recent = await DeliveryNoteSvc.GetRecentAsync(50);
 
     private async Task OnCustomerChanged(int id)
     {
@@ -164,26 +205,15 @@
             Snackbar.Add($"Saved delivery note {note.DeliveryNoteNo}.", Severity.Success);
             _lines.Clear(); _lines.Add(new());
             _narration = null; _deliveryAddress = null; _customerId = 0; _invoiceId = 0; _openInvoices = new();
-            _recent = await DeliveryNoteSvc.GetRecentAsync(10);
+            await RefreshList();
+            _selectedId = note.Id;
+            Nav.NavigateTo($"/delivery-note/{note.Id}");
         }
         catch (PostingException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
         }
         finally { _saving = false; }
-    }
-
-    private async Task SetStatus(DeliveryNote note, DocumentStatus status)
-    {
-        try
-        {
-            await DeliveryNoteSvc.SetStatusAsync(note.Id, status);
-            _recent = await DeliveryNoteSvc.GetRecentAsync(10);
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
     }
 
     private class LineVm
