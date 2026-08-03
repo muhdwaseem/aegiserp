@@ -198,11 +198,3 @@ h1:focus {
     border-color: var(--mud-palette-primary);
 }
 
-/* MudBlazor's popover positioning JS sizes the calendar/time/color picker popup to match the
-   width of whatever input triggered it, instead of its own natural size — on a narrow field
-   (e.g. our 170px date filters) that clips the calendar to 3-4 weekday columns instead of 7.
-   .mud-picker-content itself wants min-width:310px but is capped by the popover paper's
-   (JS-set, inline, no !important) width, so an !important override here reliably wins. */
-.mud-picker-popover-paper {
-    width: 328px !important;
-}

@@ -38,8 +38,15 @@
             <MudSelectItem Value="@("Service")">Service</MudSelectItem>
             <MudSelectItem Value="@("Goods")">Goods</MudSelectItem>
         </MudSelect>
-        <MudDatePicker @bind-Date="_invoiceDateFrom" Label="Invoice date from" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" />
-        <MudDatePicker @bind-Date="_invoiceDateTo" Label="Invoice date to" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" />
+        @* Width is constrained via a wrapping div, not MudDatePicker's own Style param — MudBlazor
+           forwards a picker's Style onto its calendar popup paper too, which would clip the
+           calendar down to the field's own width instead of just sizing the input. *@
+        <div style="max-width:170px">
+            <MudDatePicker @bind-Date="_invoiceDateFrom" Label="Invoice date from" Margin="Margin.Dense" Variant="Variant.Outlined" />
+        </div>
+        <div style="max-width:170px">
+            <MudDatePicker @bind-Date="_invoiceDateTo" Label="Invoice date to" Margin="Margin.Dense" Variant="Variant.Outlined" />
+        </div>
     </MudStack>
 </MudPaper>
 
