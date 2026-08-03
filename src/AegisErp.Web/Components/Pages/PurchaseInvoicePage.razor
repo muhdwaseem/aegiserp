@@ -1,4 +1,5 @@
 @page "/purchase-invoice"
+@page "/purchase-invoice/{Id:int?}"
 @attribute [Authorize(Roles = AppRoles.Posters)]
 @using AegisErp.Web.Components.Dialogs
 @inject PurchaseInvoiceService InvoiceSvc
@@ -24,48 +25,101 @@
     </MudButton>
 </MudStack>
 
-<MudTable Items="_invoices" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_invoices is null"
-          T="PurchaseInvoice" OnRowClick="@((TableRowClickEventArgs<PurchaseInvoice> e) => { if (e.Item is not null) Nav.NavigateTo($"/purchase-invoice/{e.Item.Id}"); })" RowStyle="cursor:pointer">
-    <HeaderContent>
-        <MudTh>Invoice</MudTh>
-        <MudTh>Vendor Ref</MudTh>
-        <MudTh>Date</MudTh>
-        <MudTh>Due</MudTh>
-        <MudTh>Vendor</MudTh>
-        <MudTh Style="text-align:right">Net</MudTh>
-        <MudTh Style="text-align:right">VAT</MudTh>
-        <MudTh Style="text-align:right">Total</MudTh>
-        <MudTh>GL Voucher</MudTh>
-        <MudTh>Status</MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd Style="font-family:monospace">@context.InvoiceNo</MudTd>
-        <MudTd Style="font-family:monospace;font-size:11.5px">@context.VendorRef</MudTd>
-        <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-        <MudTd>@context.DueDate.ToString("yyyy-MM-dd")</MudTd>
-        <MudTd>@context.Vendor.Name</MudTd>
-        <MudTd Style="text-align:right">@context.TotalNet.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right">@context.TotalVat.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right;font-weight:600">@context.TotalGross.ToString("N2")</MudTd>
-        <MudTd Style="font-family:monospace;font-size:11.5px">@context.JournalVoucher?.VoucherNo</MudTd>
-        <MudTd><MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-    </RowTemplate>
-    <NoRecordsContent>
-        <MudText Class="pa-4 mud-text-secondary">No invoices yet — click "New Invoice" to create one.</MudText>
-    </NoRecordsContent>
-</MudTable>
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="invoice-list-pane" Elevation="1">
+            @if (_invoices is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_invoices.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No invoices yet — click "New Invoice" to create one.</MudText>
+            }
+            else
+            {
+                @foreach (var inv in _invoices)
+                {
+                    <div class="invoice-row @(inv.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(inv))">
+                        <div class="invoice-row-top">
+                            <span class="invoice-row-customer">@inv.Vendor.Name</span>
+                            <span class="invoice-row-amount">AED @inv.TotalGross.ToString("N2")</span>
+                        </div>
+                        <div class="invoice-row-meta">@inv.InvoiceNo · @inv.Date.ToString("dd MMM yyyy")</div>
+                        <div class="invoice-row-status">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Text">@inv.Status</MudChip>
+                        </div>
+                    </div>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <PurchaseInvoiceDetailPanel @key="id" InvoiceId="id" OnChanged="Load" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select an invoice on the left to view its details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+<style>
+    .invoice-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .invoice-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .invoice-row:hover { background: var(--mud-palette-action-default-hover); }
+    .invoice-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .invoice-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .invoice-row-customer { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .invoice-row-amount { font-weight: 600; white-space: nowrap; }
+    .invoice-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+    .invoice-row-status { margin-top: 4px; }
+</style>
 
 @code {
+    [Parameter] public int? Id { get; set; }
+
     private List<PurchaseInvoice>? _invoices;
+    private int? _selectedId;
 
     protected override async Task OnInitializedAsync() => await Load();
 
-    private async Task Load() => _invoices = await InvoiceSvc.GetAllAsync();
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _invoices is { Count: > 0 }) _selectedId = _invoices[0].Id;
+    }
+
+    private async Task Load()
+    {
+        _invoices = await InvoiceSvc.GetAllAsync();
+        if (_selectedId is null && _invoices.Count > 0) _selectedId = Id ?? _invoices[0].Id;
+    }
+
+    private void SelectRow(PurchaseInvoice inv)
+    {
+        _selectedId = inv.Id;
+        Nav.NavigateTo($"/purchase-invoice/{inv.Id}");
+    }
 
     private async Task OpenNew()
     {
         var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
         var dialog = await DialogService.ShowAsync<NewPurchaseInvoiceDialog>("New Purchase Invoice", options);
-        if ((await dialog.Result) is { Canceled: false }) await Load();
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/purchase-invoice/{newId}");
+            }
+        }
     }
 }

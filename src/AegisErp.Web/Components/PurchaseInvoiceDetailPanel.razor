@@ -1,5 +1,3 @@
-@page "/purchase-invoice/{Id:int}"
-@attribute [Authorize(Roles = AppRoles.Posters)]
 @using AegisErp.Web.Components.Dialogs
 @inject PurchaseInvoiceService InvoiceSvc
 @inject CompanyService CompanySvc
@@ -8,17 +6,13 @@
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
 
-<PageTitle>@(_invoice?.InvoiceNo ?? "Invoice") · Aegis ERP</PageTitle>
-
 @if (_loaded && _invoice is null)
 {
     <MudAlert Severity="Severity.Error">Invoice not found.</MudAlert>
-    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="@(() => Nav.NavigateTo("purchase-invoice"))">Back to Purchase Invoices</MudButton>
 }
 else if (_invoice is not null)
 {
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3 invoice-print-hide" Wrap="Wrap.Wrap">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("purchase-invoice"))" />
         <MudText Typo="Typo.h5">@_invoice.InvoiceNo</MudText>
         <MudChip T="string" Size="Size.Small" Color="StatusColor(_status)" Variant="Variant.Text">@_status</MudChip>
         <MudSpacer />
@@ -129,8 +123,10 @@ else if (_invoice is not null)
 </style>
 
 @code {
-    [Parameter] public int Id { get; set; }
+    [Parameter, EditorRequired] public int InvoiceId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
 
+    private int _loadedForId = -1;
     private PurchaseInvoice? _invoice;
     private bool _loaded;
     private CompanySetup? _company;
@@ -138,21 +134,34 @@ else if (_invoice is not null)
     private ArStatus _status;
     private List<PurchaseInvoiceLineBalance>? _lineBalances;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnParametersSetAsync()
+    {
+        if (InvoiceId != _loadedForId)
+        {
+            _loadedForId = InvoiceId;
+            await Load();
+        }
+    }
 
     private async Task Load()
     {
-        _invoice = await InvoiceSvc.GetByIdAsync(Id);
+        _invoice = await InvoiceSvc.GetByIdAsync(InvoiceId);
         _loaded = true;
         if (_invoice is null) return;
 
-        _balance = await InvoiceSvc.GetOutstandingAsync(Id);
-        _lineBalances = await InvoiceSvc.GetLineBalancesAsync(Id);
+        _balance = await InvoiceSvc.GetOutstandingAsync(InvoiceId);
+        _lineBalances = await InvoiceSvc.GetLineBalancesAsync(InvoiceId);
         try { _company = await CompanySvc.GetAsync(); }
         catch (PostingException) { _company = null; }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         _status = _balance <= 0 ? ArStatus.Paid : _invoice.DueDate < today ? ArStatus.Overdue : ArStatus.Pending;
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
     }
 
     private async Task Clone()
@@ -162,12 +171,15 @@ else if (_invoice is not null)
         var dialog = await DialogService.ShowAsync<NewPurchaseInvoiceDialog>("New Purchase Invoice", parameters, options);
         var result = await dialog.Result;
         if (result is { Canceled: false } && result.Data is int newId)
+        {
             Nav.NavigateTo($"/purchase-invoice/{newId}");
+            await NotifyChangedAsync();
+        }
     }
 
-    private void RecordPayment() => Nav.NavigateTo($"/payment-voucher?vendorId={_invoice!.VendorId}&invoiceId={Id}");
+    private void RecordPayment() => Nav.NavigateTo($"/payment-voucher?vendorId={_invoice!.VendorId}&invoiceId={InvoiceId}");
     private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_invoice!.JournalVoucher!.VoucherNo)}");
-    private void CreateDebitNote() => Nav.NavigateTo($"/debit-note?invoiceId={Id}");
+    private void CreateDebitNote() => Nav.NavigateTo($"/debit-note?invoiceId={InvoiceId}");
 
     private async Task Print() => await JS.InvokeVoidAsync("print");
 
