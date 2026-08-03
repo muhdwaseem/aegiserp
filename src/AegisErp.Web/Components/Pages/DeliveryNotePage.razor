@@ -1,81 +1,28 @@
 @page "/delivery-note"
 @page "/delivery-note/{Id:int?}"
 @attribute [Authorize]
+@using AegisErp.Web.Components.Dialogs
 @inject DeliveryNoteService DeliveryNoteSvc
-@inject CustomerService CustomerSvc
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>Delivery Note · Aegis ERP</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-3">Delivery Note</MudText>
-<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
-    A non-posting document recording goods dispatched to a customer. It never touches the ledger.
-</MudText>
-
-<AuthorizeView Roles="@AppRoles.Posters" Context="edit">
-    <MudPaper Class="pa-4 mb-4" Elevation="1">
-        <MudGrid>
-            <MudItem xs="12" sm="4">
-                <MudSelect T="int" Value="_customerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true">
-                    <MudSelectItem Value="0">— select —</MudSelectItem>
-                    @if (_customers is not null)
-                    {
-                        @foreach (var c in _customers)
-                        {
-                            <MudSelectItem Value="c.Id">@c.Code — @c.Name</MudSelectItem>
-                        }
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudSelect T="int" @bind-Value="_invoiceId" Label="Related invoice (optional)" Dense="true">
-                    <MudSelectItem Value="0">— none —</MudSelectItem>
-                    @foreach (var inv in _openInvoices)
-                    {
-                        <MudSelectItem Value="inv.Id">@inv.InvoiceNo</MudSelectItem>
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudDatePicker @bind-Date="_date" Label="Delivery date" />
-            </MudItem>
-            <MudItem xs="12" sm="8">
-                <MudTextField @bind-Value="_deliveryAddress" Label="Delivery address" Placeholder="Optional" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Optional" />
-            </MudItem>
-        </MudGrid>
-
-        <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-3 mb-2">
-            <HeaderContent>
-                <MudTh Style="width:40px">#</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh Style="width:120px">Unit</MudTh>
-                <MudTh Style="width:120px;text-align:right">Quantity</MudTh>
-                <MudTh Style="width:48px"></MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
-                <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Item delivered" /></MudTd>
-                <MudTd><MudTextField @bind-Value="context.Unit" Margin="Margin.Dense" Placeholder="pcs / box / kg" /></MudTd>
-                <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
-                <MudTd>
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
-
-        <MudStack Row="true" AlignItems="AlignItems.Center">
-            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
-            <MudSpacer />
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
-                       Disabled="@(!CanSave || _saving)" OnClick="Save">Save Delivery Note</MudButton>
-        </MudStack>
-    </MudPaper>
-</AuthorizeView>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <div>
+        <MudText Typo="Typo.h5">Delivery Note</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            A non-posting document recording goods dispatched to a customer. It never touches the ledger.
+        </MudText>
+    </div>
+    <MudSpacer />
+    <AuthorizeView Roles="@AppRoles.Posters">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNew">
+            New Delivery Note
+        </MudButton>
+    </AuthorizeView>
+</MudStack>
 
 <MudText Typo="Typo.subtitle1" Class="mb-2">Delivery Notes</MudText>
 <MudGrid>
@@ -135,35 +82,15 @@
 </style>
 
 @code {
-    private List<Customer>? _customers;
     private List<DeliveryNote>? _recent;
-    private List<OpenInvoice> _openInvoices = new();
     private int? _selectedId;
 
     [Parameter] public int? Id { get; set; }
 
-    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
-    private string _userName = "System Admin";
-
-    private int _customerId;
-    private int _invoiceId;
-    private DateTime? _date = DateTime.Today;
-    private string? _deliveryAddress;
-    private string? _narration;
-    private bool _saving;
-
-    private readonly List<LineVm> _lines = new() { new() };
-
-    private bool CanSave => _customerId > 0
-                            && _lines.All(l => l.Quantity > 0 && !string.IsNullOrWhiteSpace(l.Description));
-
     protected override async Task OnInitializedAsync()
     {
-        _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
         _recent = await DeliveryNoteSvc.GetRecentAsync(50);
         if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
-        if (AuthState is not null)
-            _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
     }
 
     protected override void OnParametersSet()
@@ -180,46 +107,19 @@
 
     private async Task RefreshList() => _recent = await DeliveryNoteSvc.GetRecentAsync(50);
 
-    private async Task OnCustomerChanged(int id)
+    private async Task OpenNew()
     {
-        _customerId = id;
-        _invoiceId = 0;
-        _openInvoices = id > 0 ? await CustomerSvc.GetOpenInvoicesAsync(id) : new();
-    }
-
-    private void AddLine() => _lines.Add(new());
-    private void RemoveLine(LineVm l) { if (_lines.Count > 1) _lines.Remove(l); }
-
-    private async Task Save()
-    {
-        _saving = true;
-        try
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewDeliveryNoteDialog>("New Delivery Note", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
         {
-            var inputs = _lines.Select(l => new DeliveryLineInput(l.Description, l.Unit, l.Quantity));
-
-            var note = await DeliveryNoteSvc.CreateAsync(
-                _customerId, _invoiceId > 0 ? _invoiceId : null,
-                DateOnly.FromDateTime(_date ?? DateTime.Today), _deliveryAddress, _narration,
-                _userName, inputs, DateTime.UtcNow);
-
-            Snackbar.Add($"Saved delivery note {note.DeliveryNoteNo}.", Severity.Success);
-            _lines.Clear(); _lines.Add(new());
-            _narration = null; _deliveryAddress = null; _customerId = 0; _invoiceId = 0; _openInvoices = new();
             await RefreshList();
-            _selectedId = note.Id;
-            Nav.NavigateTo($"/delivery-note/{note.Id}");
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/delivery-note/{newId}");
+            }
         }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally { _saving = false; }
-    }
-
-    private class LineVm
-    {
-        public string Description { get; set; } = "";
-        public string? Unit { get; set; }
-        public decimal Quantity { get; set; } = 1;
     }
 }

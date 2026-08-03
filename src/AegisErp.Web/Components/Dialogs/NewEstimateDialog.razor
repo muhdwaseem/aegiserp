@@ -1,0 +1,184 @@
+@inject EstimateService EstimateSvc
+@inject CustomerService CustomerSvc
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">New Quotation</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">Non-posting — never touches the ledger</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_customerId" Label="Customer" Dense="true">
+                    <MudSelectItem Value="0">— select —</MudSelectItem>
+                    @if (_customers is not null)
+                    {
+                        @foreach (var c in _customers)
+                        {
+                            <MudSelectItem Value="c.Id">@c.Code — @c.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Estimate date" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudDatePicker @bind-Date="_validUntil" Label="Valid until" />
+            </MudItem>
+            <MudItem xs="12" sm="2" />
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Defaults to 'Quotation — customer'" />
+            </MudItem>
+        </MudGrid>
+
+        <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-3 mb-2">
+            <HeaderContent>
+                <MudTh Style="width:40px">#</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh>Revenue Account</MudTh>
+                <MudTh>Cost Center</MudTh>
+                <MudTh Style="width:90px;text-align:right">Qty</MudTh>
+                <MudTh Style="width:120px;text-align:right">Unit Price</MudTh>
+                <MudTh Style="width:100px">VAT</MudTh>
+                <MudTh Style="width:120px;text-align:right">Line Total</MudTh>
+                <MudTh Style="width:48px"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
+                <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service / item" /></MudTd>
+                <MudTd>
+                    <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
+                        <MudSelectItem Value="0">— select —</MudSelectItem>
+                        @if (_revenueAccounts is not null)
+                        {
+                            @foreach (var a in _revenueAccounts)
+                            {
+                                <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudTd>
+                <MudTd>
+                    <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" Clearable="true">
+                        @if (_costCenters is not null)
+                        {
+                            @foreach (var c in _costCenters)
+                            {
+                                <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                <MudTd>
+                    <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                        <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                        <MudSelectItem Value="0m">0%</MudSelectItem>
+                    </MudSelect>
+                </MudTd>
+                <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <MudStack Row="true" AlignItems="AlignItems.Center">
+            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
+            <MudSpacer />
+            <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Save"
+                   Disabled="@(!CanSave || _saving)" OnClick="Save">Save Quotation</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    [Parameter] public int? CustomerId { get; set; }
+
+    private List<Customer>? _customers;
+    private List<Account>? _revenueAccounts;
+    private List<CostCenter>? _costCenters;
+
+    private int _customerId;
+    private DateTime? _date = DateTime.Today;
+    private DateTime? _validUntil = DateTime.Today.AddDays(30);
+    private string? _narration;
+    private bool _saving;
+
+    private readonly List<LineVm> _lines = new() { new() };
+
+    private decimal TotalGross => _lines.Sum(l => l.Gross);
+    private bool CanSave => _customerId > 0 && TotalGross > 0
+                            && _lines.All(l => l.RevenueAccountId > 0 && !string.IsNullOrWhiteSpace(l.Description));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _revenueAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
+        _costCenters = await Coa.GetCostCentersAsync();
+        if (CustomerId is int custId) _customerId = custId;
+    }
+
+    private void OnDateChanged(DateTime? d)
+    {
+        _date = d;
+        if (d is not null && (_validUntil is null || _validUntil < d))
+            _validUntil = d.Value.AddDays(30);
+    }
+
+    private void AddLine() => _lines.Add(new());
+    private void RemoveLine(LineVm l) { if (_lines.Count > 1) _lines.Remove(l); }
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            var inputs = _lines.Select(l => new EstimateLineInput(
+                l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate));
+
+            var est = await EstimateSvc.CreateAsync(
+                _customerId, DateOnly.FromDateTime(_date ?? DateTime.Today),
+                DateOnly.FromDateTime(_validUntil ?? DateTime.Today.AddDays(30)),
+                _narration, userName, inputs, DateTime.UtcNow);
+
+            Snackbar.Add($"Saved quotation {est.EstimateNo}.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(est.Id));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private class LineVm
+    {
+        public string Description { get; set; } = "";
+        public int RevenueAccountId { get; set; }
+        public int? CostCenterId { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public decimal UnitPrice { get; set; }
+        public decimal VatRate { get; set; } = 0.05m;
+
+        public decimal Net => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
+        public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
+        public decimal Gross => Net + Vat;
+    }
+}
