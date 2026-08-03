@@ -572,4 +572,47 @@ public class ApPostingTests : IDisposable
         var balancesB = await _invoices.GetLineBalancesAsync(invB.Id);
         Assert.Equal(0m, balancesB.Single().Balance);
     }
+
+    // --- Vendor detail: GetByIdAsync / GetByVendorAsync ---
+
+    [Fact]
+    public async Task VendorService_GetByIdAsync_returns_the_vendor()
+    {
+        var found = await _vendors.GetByIdAsync(_db.Vendor.Id);
+
+        Assert.NotNull(found);
+        Assert.Equal("Test Vendor", found!.Name);
+    }
+
+    [Fact]
+    public async Task VendorService_GetByIdAsync_returns_null_for_an_unknown_id()
+    {
+        Assert.Null(await _vendors.GetByIdAsync(999));
+    }
+
+    [Fact]
+    public async Task GetByVendorAsync_only_returns_that_vendors_payments_and_debit_notes()
+    {
+        var other = await _vendors.CreateAsync(new NewVendorInput("Other Supplier", null, "AED", 30, null, null, null, null));
+
+        var invMine = await PostInvoice();
+        await _payments.CreateAndPostAsync(_db.Vendor.Id, invMine.Id, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 1050, null, "tester", Now);
+
+        var invTheirs = await _invoices.CreateAndPostAsync(other.Id, "BILL-2", new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new PurchaseLineInput("Service", _db.Expense.Id, null, 1, 2000, 0.05m) }, Now);
+        await _payments.CreateAndPostAsync(other.Id, invTheirs.Id, new(2026, 5, 16), _db.May.Id, _db.Bank.Id, 2100, null, "tester", Now);
+
+        await _debitNotes.CreateAndPostAsync(_db.Vendor.Id, null, new(2026, 5, 17), _db.May.Id, "Return", null, "tester",
+            new[] { new DebitNoteLineInput("Return", _db.Expense.Id, null, 1, 100, 0.05m) }, Now);
+        await _debitNotes.CreateAndPostAsync(other.Id, null, new(2026, 5, 17), _db.May.Id, "Return", null, "tester",
+            new[] { new DebitNoteLineInput("Return", _db.Expense.Id, null, 1, 200, 0.05m) }, Now);
+
+        var payments = await _payments.GetByVendorAsync(_db.Vendor.Id);
+        var debitNotes = await _debitNotes.GetByVendorAsync(_db.Vendor.Id);
+
+        Assert.Single(payments);
+        Assert.Equal(1050m, payments[0].Amount);
+        Assert.Single(debitNotes);
+        Assert.Equal(105m, debitNotes[0].TotalGross); // 100 * 1.05
+    }
 }

@@ -1,0 +1,212 @@
+@inject VendorService VendorSvc
+@inject PurchaseInvoiceService InvoiceSvc
+@inject VendorPaymentService PaymentSvc
+@inject DebitNoteService DebitNoteSvc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (_loaded && _vendor is null)
+{
+    <MudAlert Severity="Severity.Error">Vendor not found.</MudAlert>
+}
+else if (_vendor is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" />
+        </MudAvatar>
+        <div>
+            <MudText Typo="Typo.h6">@_vendor.Name</MudText>
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_vendor.Code</MudText>
+                @if (!string.IsNullOrWhiteSpace(_vendor.Group))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">·</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@_vendor.Group</MudText>
+                }
+            </MudStack>
+        </div>
+        <MudChip T="string" Size="Size.Small" Color="@(_vendor.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+            @(_vendor.IsActive ? "Active" : "Inactive")
+        </MudChip>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Assessment" OnClick="Report">Report</MudButton>
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">TOTAL BILLED</MudText>
+                <MudText Typo="Typo.h6">@_summary.Billed.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">TOTAL PAID</MudText>
+                <MudText Typo="Typo.h6">@_summary.Paid.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">OUTSTANDING PAYABLE</MudText>
+                <MudText Typo="Typo.h6">@_summary.Outstanding.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true" @bind-ActivePanelIndex="_activeTab">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Contact Information</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Email</MudText>
+                        <MudText Class="mb-2">@(_vendor.Email ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Phone</MudText>
+                        <MudText Class="mb-2">@(_vendor.Phone ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Address</MudText>
+                        <MudText Class="mb-2">@(_vendor.Address ?? "—")</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.subtitle2" Class="mb-2">Additional Details</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">TRN</MudText>
+                        <MudText Class="mb-2">@(_vendor.Trn ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Currency</MudText>
+                        <MudText Class="mb-2">@_vendor.Currency</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Payment Terms</MudText>
+                        <MudText Class="mb-2">@(_vendor.PaymentTermsDays == 0 ? "Immediate" : $"Net {_vendor.PaymentTermsDays}")</MudText>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Bills">
+                <MudTable Items="_invoices" Dense="true" Bordered="true" Elevation="0" Hover="true" RowStyle="cursor:pointer"
+                          OnRowClick="@((TableRowClickEventArgs<PurchaseInvoice> e) => { if (e.Item is not null) Nav.NavigateTo($"/purchase-invoice/{e.Item.Id}"); })">
+                    <HeaderContent>
+                        <MudTh>Invoice</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh Style="text-align:right">Total</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd Style="font-family:monospace">@context.InvoiceNo</MudTd>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd Style="text-align:right">@context.TotalGross.ToString("N2")</MudTd>
+                        <MudTd>@context.Status</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No bills yet.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Payments">
+                <MudTable Items="_payments" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Payment</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Mode</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd Style="font-family:monospace">@context.PaymentNo</MudTd>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd>@context.PaymentMode</MudTd>
+                        <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No payments yet.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Debit Notes">
+                <MudTable Items="_debitNotes" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Debit Note</MudTh>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Reason</MudTh>
+                        <MudTh Style="text-align:right">Amount</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd Style="font-family:monospace">@context.DebitNoteNo</MudTd>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd>@context.Reason</MudTd>
+                        <MudTd Style="text-align:right">@context.TotalGross.ToString("N2")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No debit notes yet.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Statement">
+                <MudTable Items="_statement" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Date</MudTh>
+                        <MudTh>Document</MudTh>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Narration</MudTh>
+                        <MudTh Style="text-align:right">Debit</MudTh>
+                        <MudTh Style="text-align:right">Credit</MudTh>
+                        <MudTh Style="text-align:right">Balance</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                        <MudTd Style="font-family:monospace">@context.DocNo</MudTd>
+                        <MudTd>@context.DocType</MudTd>
+                        <MudTd>@context.Narration</MudTd>
+                        <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "—")</MudTd>
+                        <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
+                        <MudTd Style="text-align:right;font-weight:600">@context.RunningBalance.ToString("N2")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No posted documents for this vendor.</MudText></NoRecordsContent>
+                </MudTable>
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    private const int StatementTabIndex = 4;
+
+    [Parameter, EditorRequired] public int VendorId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private int _loadedForId = -1;
+    private int _activeTab;
+    private bool _loaded;
+    private Vendor? _vendor;
+    private VendorSummary _summary = new(0, "", "", null, 0, 0, 0, 0);
+    private List<PurchaseInvoice> _invoices = new();
+    private List<VendorPayment> _payments = new();
+    private List<DebitNote> _debitNotes = new();
+    private List<StatementRow> _statement = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (VendorId != _loadedForId)
+        {
+            _loadedForId = VendorId;
+            _activeTab = 0;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _vendor = await VendorSvc.GetByIdAsync(VendorId);
+        _loaded = true;
+        if (_vendor is null) return;
+
+        _summary = (await VendorSvc.GetSummariesAsync()).FirstOrDefault(v => v.Id == VendorId)
+                   ?? new VendorSummary(VendorId, _vendor.Code, _vendor.Name, _vendor.Trn, _vendor.PaymentTermsDays, 0, 0, 0);
+        _invoices = (await InvoiceSvc.GetAllAsync()).Where(i => i.VendorId == VendorId).ToList();
+        _payments = await PaymentSvc.GetByVendorAsync(VendorId);
+        _debitNotes = await DebitNoteSvc.GetByVendorAsync(VendorId);
+        _statement = await VendorSvc.GetStatementAsync(VendorId);
+    }
+
+    private async Task Report()
+    {
+        _activeTab = StatementTabIndex;
+        StateHasChanged();
+        await Task.Delay(50);
+        await JS.InvokeVoidAsync("print");
+    }
+}

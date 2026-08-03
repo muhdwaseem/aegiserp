@@ -27,6 +27,17 @@ public class VendorPaymentService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>Every payment for one vendor, for the vendor detail view's Payments tab.</summary>
+    public async Task<List<VendorPayment>> GetByVendorAsync(int vendorId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.VendorPayments.AsNoTracking()
+            .Include(p => p.BankAccount).Include(p => p.PurchaseInvoice)
+            .Where(p => p.VendorId == vendorId)
+            .OrderByDescending(p => p.Date).ThenByDescending(p => p.Id)
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Creates and posts a vendor payment in one transaction, generating the GL voucher
     /// (Dr Accounts Payable / Cr bank). Two ways to target invoices:

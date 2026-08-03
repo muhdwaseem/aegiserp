@@ -22,6 +22,13 @@ public class VendorService
         return await q.ToListAsync();
     }
 
+    /// <summary>One vendor, for the vendor detail view.</summary>
+    public async Task<Vendor?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.Vendors.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
+    }
+
     public async Task<Vendor> CreateAsync(NewVendorInput input)
     {
         if (string.IsNullOrWhiteSpace(input.Name)) throw new PostingException("Vendor name is required.");

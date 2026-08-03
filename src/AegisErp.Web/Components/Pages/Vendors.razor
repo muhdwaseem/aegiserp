@@ -1,6 +1,8 @@
 @page "/vendors"
+@page "/vendors/{Id:int?}"
 @attribute [Authorize]
 @inject VendorService VendorSvc
+@inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
 <PageTitle>Vendors · Aegis ERP</PageTitle>
@@ -61,69 +63,63 @@
     </MudPaper>
 }
 
-<MudTable Items="_summaries" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_summaries is null"
-          T="VendorSummary" OnRowClick="RowClicked" RowClass="cursor-pointer">
-    <HeaderContent>
-        <MudTh>Code</MudTh>
-        <MudTh>Name</MudTh>
-        <MudTh>TRN</MudTh>
-        <MudTh>Terms</MudTh>
-        <MudTh Style="text-align:right">Billed</MudTh>
-        <MudTh Style="text-align:right">Paid</MudTh>
-        <MudTh Style="text-align:right">Outstanding</MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd Style="font-family:monospace">@context.Code</MudTd>
-        <MudTd>@context.Name</MudTd>
-        <MudTd Style="font-family:monospace;font-size:11.5px">@context.Trn</MudTd>
-        <MudTd>@context.PaymentTermsDays d</MudTd>
-        <MudTd Style="text-align:right">@context.Billed.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right">@context.Paid.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right;font-weight:600" Class="@(context.Outstanding > 0 ? "mud-error-text" : "mud-success-text")">
-            @context.Outstanding.ToString("N2")
-        </MudTd>
-    </RowTemplate>
-</MudTable>
-<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
-    Subledger totals reflect posted AP documents; the GL opening balance on Accounts Payable is not attributed to vendors. Click a row for the statement.
-</MudText>
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="vendor-list-pane" Elevation="1">
+            @if (_summaries is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_summaries.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No vendors yet.</MudText>
+            }
+            else
+            {
+                @foreach (var v in _summaries)
+                {
+                    <div class="vendor-row @(v.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(v))">
+                        <div class="vendor-row-top">
+                            <span class="vendor-row-name">@v.Name</span>
+                            <span class="vendor-row-amount">@v.Outstanding.ToString("N2")</span>
+                        </div>
+                        <div class="vendor-row-meta">@v.Code</div>
+                    </div>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <VendorDetailPanel @key="id" VendorId="id" OnChanged="Load" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.LocalShipping" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select a vendor on the left to view their details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
 
-@if (_statementFor is not null)
-{
-    <MudPaper Class="pa-4 mt-4" Elevation="2">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
-            <MudText Typo="Typo.subtitle1">Statement — @_statementFor.Name (@_statementFor.Code)</MudText>
-            <MudSpacer />
-            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _statementFor = null)" />
-        </MudStack>
-        <MudTable Items="_statement" Dense="true" Bordered="true" Striped="true">
-            <HeaderContent>
-                <MudTh>Date</MudTh>
-                <MudTh>Document</MudTh>
-                <MudTh>Type</MudTh>
-                <MudTh>Narration</MudTh>
-                <MudTh Style="text-align:right">Debit</MudTh>
-                <MudTh Style="text-align:right">Credit</MudTh>
-                <MudTh Style="text-align:right">Balance</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-                <MudTd Style="font-family:monospace">@context.DocNo</MudTd>
-                <MudTd>@context.DocType</MudTd>
-                <MudTd>@context.Narration</MudTd>
-                <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "—")</MudTd>
-                <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
-                <MudTd Style="text-align:right;font-weight:600">@context.RunningBalance.ToString("N2")</MudTd>
-            </RowTemplate>
-            <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No posted documents for this vendor.</MudText></NoRecordsContent>
-        </MudTable>
-    </MudPaper>
-}
+<style>
+    .vendor-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .vendor-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .vendor-row:hover { background: var(--mud-palette-action-default-hover); }
+    .vendor-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .vendor-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .vendor-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vendor-row-amount { font-weight: 600; white-space: nowrap; }
+    .vendor-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+</style>
 
 @code {
+    [Parameter] public int? Id { get; set; }
+
     private List<VendorSummary>? _summaries;
-    private VendorSummary? _statementFor;
-    private List<StatementRow> _statement = new();
+    private int? _selectedId;
 
     private bool _showForm;
     private string _nextCode = "";
@@ -136,7 +132,25 @@
     private string? _address;
     private int _terms = 30;
 
-    protected override async Task OnInitializedAsync() => _summaries = await VendorSvc.GetSummariesAsync();
+    protected override async Task OnInitializedAsync() => await Load();
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _summaries is { Count: > 0 }) _selectedId = _summaries[0].Id;
+    }
+
+    private async Task Load()
+    {
+        _summaries = await VendorSvc.GetSummariesAsync();
+        if (_selectedId is null && _summaries.Count > 0) _selectedId = Id ?? _summaries[0].Id;
+    }
+
+    private void SelectRow(VendorSummary v)
+    {
+        _selectedId = v.Id;
+        Nav.NavigateTo($"/vendors/{v.Id}");
+    }
 
     private async Task OpenForm()
     {
@@ -153,18 +167,13 @@
             Snackbar.Add($"Vendor {v.Code} created.", Severity.Success);
             _name = ""; _group = null; _currency = "AED";
             _trn = _email = _phone = _address = null; _terms = 30; _showForm = false;
-            _summaries = await VendorSvc.GetSummariesAsync();
+            await Load();
+            _selectedId = v.Id;
+            Nav.NavigateTo($"/vendors/{v.Id}");
         }
         catch (PostingException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
         }
-    }
-
-    private async Task RowClicked(TableRowClickEventArgs<VendorSummary> args)
-    {
-        if (args.Item is null) return;
-        _statementFor = args.Item;
-        _statement = await VendorSvc.GetStatementAsync(args.Item.Id);
     }
 }
