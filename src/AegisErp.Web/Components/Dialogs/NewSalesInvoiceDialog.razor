@@ -272,10 +272,31 @@
         line.Description = item.SalesDescription ?? item.Name;
         line.UnitPrice = item.SellingPrice;
         line.Uom = item.Unit;
-        if (item.TaxCode is not null) line.VatRate = item.TaxCode.Rate;
+        line.VatRate = item.TaxCode?.Rate ?? line.VatRate;
+        if (CustomerIsZeroRated) line.VatRate = 0m; // export / designated-zone customer overrides the item's own tax code
 
         var lastAccountId = await InvoiceSvc.GetLastRevenueAccountForItemAsync(itemId);
         line.RevenueAccountId = lastAccountId ?? item.SalesAccountId ?? 0;
+    }
+
+    /// <summary>
+    /// True only for the Tax Treatments that actually justify 0% VAT under UAE VAT law — an export
+    /// outside the GCC, or a designated-zone customer. "Non VAT Registered" alone does NOT belong
+    /// here: a domestic UAE supply still carries standard VAT regardless of the customer's own
+    /// registration status, so it must not default to zero-rated.
+    /// </summary>
+    private bool CustomerIsZeroRated =>
+        _customers?.FirstOrDefault(c => c.Id == _customerId)?.TaxTreatment is
+            TaxTreatment.NonGcc or TaxTreatment.VatRegisteredDesignatedZone or TaxTreatment.NonVatRegisteredDesignatedZone;
+
+    /// <summary>Resets the VAT rate on any still-blank line (no description, no item picked yet) to
+    /// match the newly selected customer's zero-rating status — lines the user has already started
+    /// filling in are left untouched.</summary>
+    private void ApplyZeroRateDefaultToBlankLines()
+    {
+        var rate = CustomerIsZeroRated ? 0m : 0.05m;
+        foreach (var l in _lines.Where(l => l.ItemId is null && string.IsNullOrWhiteSpace(l.Description)))
+            l.VatRate = rate;
     }
 
     private async Task OnLineFileSelected(LineVm line, IBrowserFile file)
@@ -306,6 +327,7 @@
         _customerId = id;
         var c = _customers?.FirstOrDefault(x => x.Id == id);
         if (c is not null) _paymentTermsDays = c.PaymentTermsDays;
+        ApplyZeroRateDefaultToBlankLines();
         UpdateDueLabel();
     }
 
@@ -335,7 +357,7 @@
             : DateOnly.FromDateTime(_date.Value).AddDays(_paymentTermsDays).ToString("yyyy-MM-dd");
     }
 
-    private void AddLine() => _lines.Add(new());
+    private void AddLine() => _lines.Add(new() { VatRate = CustomerIsZeroRated ? 0m : 0.05m });
     private void RemoveLine(LineVm l) { if (_lines.Count > 1) _lines.Remove(l); }
 
     private async Task Post()
