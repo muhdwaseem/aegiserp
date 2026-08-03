@@ -38,14 +38,14 @@
             <MudSelectItem Value="@("Service")">Service</MudSelectItem>
             <MudSelectItem Value="@("Goods")">Goods</MudSelectItem>
         </MudSelect>
-        @* Width is constrained via a wrapping div, not MudDatePicker's own Style param — MudBlazor
-           forwards a picker's Style onto its calendar popup paper too, which would clip the
-           calendar down to the field's own width instead of just sizing the input. *@
+        @* PickerVariant.Dialog opens the calendar as a real modal dialog instead of an anchored
+           popover — the popover variant kept rendering a clipped calendar (its width tracked the
+           narrow trigger field) no matter how the field itself was sized/styled. *@
         <div style="max-width:170px">
-            <MudDatePicker @bind-Date="_invoiceDateFrom" Label="Invoice date from" Margin="Margin.Dense" Variant="Variant.Outlined" />
+            <MudDatePicker @bind-Date="_invoiceDateFrom" Label="Invoice date from" Margin="Margin.Dense" Variant="Variant.Outlined" PickerVariant="PickerVariant.Dialog" />
         </div>
         <div style="max-width:170px">
-            <MudDatePicker @bind-Date="_invoiceDateTo" Label="Invoice date to" Margin="Margin.Dense" Variant="Variant.Outlined" />
+            <MudDatePicker @bind-Date="_invoiceDateTo" Label="Invoice date to" Margin="Margin.Dense" Variant="Variant.Outlined" PickerVariant="PickerVariant.Dialog" />
         </div>
     </MudStack>
 </MudPaper>
