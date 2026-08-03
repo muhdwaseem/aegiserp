@@ -206,11 +206,3 @@ h1:focus {
 .mud-picker-popover-paper {
     width: 328px !important;
 }
-/* Popovers also anchor relative to the input, which clips them at a viewport edge — center on
-   screen instead, so pickers near the edge (like our date filters) are never cut off there either. */
-.mud-popover:has(.mud-picker) {
-    position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    transform: translate(-50%, -50%) !important;
-}
