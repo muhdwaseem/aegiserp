@@ -8,6 +8,12 @@ public record CustomerSummary(
     int Id, string Code, string Name, string? Trn, int PaymentTermsDays,
     decimal Invoiced, decimal Received, decimal Outstanding, string? Salesperson = null);
 
+/// <summary>The four headline figures on the customer detail view.</summary>
+public record CustomerAccountSummary(decimal UnusedCredits, decimal OutstandingReceivables, decimal AdvancePayment, decimal CreditLimit)
+{
+    public decimal? PercentOfLimitUsed => CreditLimit > 0 ? OutstandingReceivables / CreditLimit : null;
+}
+
 /// <summary>One row in a customer statement: an invoice (debit) or receipt (credit).</summary>
 public record StatementRow(
     DateOnly Date, string DocNo, string DocType, string Narration,

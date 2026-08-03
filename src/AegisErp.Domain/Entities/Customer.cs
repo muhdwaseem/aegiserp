@@ -11,6 +11,8 @@ public class Customer : ICompanyScoped
     /// <summary>Human-facing customer number, e.g. "C-0001". Unique within the company.</summary>
     public string Code { get; set; } = string.Empty;
 
+    public DateTime CreatedAtUtc { get; set; }
+
     // ── Identity ──
     public CustomerType CustomerType { get; set; } = CustomerType.Business;
     public string? Salutation { get; set; }

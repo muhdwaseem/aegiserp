@@ -248,4 +248,66 @@ public class CreditNotePostingTests : IDisposable
         var available = await _creditNotes.GetAvailableCreditAsync(_db.Customer.Id);
         Assert.Empty(available);
     }
+
+    // --- Customer detail: GetAccountSummaryAsync / GetByCustomerAsync ---
+
+    [Fact]
+    public async Task GetAccountSummaryAsync_computes_unused_credits_outstanding_and_advance_payment()
+    {
+        var inv = await PostInvoice(price: 1000, vat: 0.05m); // gross 1050
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 15), _db.May.Id,
+            _db.Bank.Id, 400, null, "tester", Now); // allocated to the invoice
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 16), _db.May.Id,
+            _db.Bank.Id, 300, null, "tester", Now); // on-account
+        await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 17), _db.May.Id,
+            "Goodwill", null, "tester",
+            new[] { new CreditNoteLineInput("Goodwill credit", _db.Revenue.Id, null, 1, 200, 0.05m) }, Now); // gross 210, on-account
+
+        var summary = await _customers.GetAccountSummaryAsync(_db.Customer.Id);
+
+        Assert.Equal(210m, summary.UnusedCredits);
+        Assert.Equal(300m, summary.AdvancePayment);
+        Assert.Equal(140m, summary.OutstandingReceivables); // 1050 - 700 - 210
+    }
+
+    [Fact]
+    public async Task GetAccountSummaryAsync_reports_percent_of_limit_used()
+    {
+        await _customers.UpdateAsync(_db.Customer.Id,
+            new NewCustomerInput(_db.Customer.Name, null, "AED", 2000, 30, null, null, null, null));
+        await PostInvoice(price: 1000, vat: 0.05m); // gross 1050, fully outstanding
+
+        var summary = await _customers.GetAccountSummaryAsync(_db.Customer.Id);
+
+        Assert.Equal(2000m, summary.CreditLimit);
+        Assert.Equal(1050m / 2000m, summary.PercentOfLimitUsed);
+    }
+
+    [Fact]
+    public async Task Percent_of_limit_used_is_null_when_no_limit_set()
+    {
+        var summary = await _customers.GetAccountSummaryAsync(_db.Customer.Id);
+        Assert.Null(summary.PercentOfLimitUsed);
+    }
+
+    [Fact]
+    public async Task GetByCustomerAsync_only_returns_that_customers_receipts_and_credit_notes()
+    {
+        var other = await _customers.CreateAsync(new NewCustomerInput("Other Co", null, "AED", 0, 30, null, null, null, null));
+
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 100, null, "tester", Now);
+        await _receipts.CreateAndPostAsync(other.Id, null, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 200, null, "tester", Now);
+        await _creditNotes.CreateAndPostAsync(_db.Customer.Id, null, new(2026, 5, 16), _db.May.Id, "R", null, "tester",
+            new[] { new CreditNoteLineInput("x", _db.Revenue.Id, null, 1, 50, 0.05m) }, Now);
+        await _creditNotes.CreateAndPostAsync(other.Id, null, new(2026, 5, 16), _db.May.Id, "R", null, "tester",
+            new[] { new CreditNoteLineInput("y", _db.Revenue.Id, null, 1, 60, 0.05m) }, Now);
+
+        var receipts = await _receipts.GetByCustomerAsync(_db.Customer.Id);
+        var credits = await _creditNotes.GetByCustomerAsync(_db.Customer.Id);
+
+        Assert.Single(receipts);
+        Assert.Equal(100m, receipts[0].Amount);
+        Assert.Single(credits);
+        Assert.Equal(52.5m, credits[0].TotalGross); // 50 * 1.05
+    }
 }

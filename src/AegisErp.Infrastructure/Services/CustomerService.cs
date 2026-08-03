@@ -89,7 +89,7 @@ public class CustomerService
             if (code.StartsWith("C-") && int.TryParse(code.AsSpan(2), out var n) && n > max)
                 max = n;
 
-        var customer = new Customer { Code = $"C-{max + 1:0000}" };
+        var customer = new Customer { Code = $"C-{max + 1:0000}", CreatedAtUtc = nowUtc ?? DateTime.UtcNow };
         LogSalespersonChangeIfNeeded(customer, input.Salesperson, changedBy, nowUtc ?? DateTime.UtcNow);
         ApplyScalarFields(customer, input);
         foreach (var p in BuildContactPersons(contactPersons ?? Enumerable.Empty<ContactPersonInput>()))
@@ -395,6 +395,36 @@ public class CustomerService
             return new CustomerSummary(c.Id, c.Code, c.Name, c.Trn, c.PaymentTermsDays,
                 invoiced, received, invoiced - received - credited, c.Salesperson);
         }).ToList();
+    }
+
+    /// <summary>
+    /// The four figures shown on the customer detail header: available credit-note balance,
+    /// net outstanding receivables (same formula as <see cref="GetSummariesAsync"/>), unallocated
+    /// ("on account") receipts, and the customer's own credit limit.
+    /// </summary>
+    public async Task<CustomerAccountSummary> GetAccountSummaryAsync(int customerId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var customer = await db.Customers.AsNoTracking().FirstOrDefaultAsync(c => c.Id == customerId)
+            ?? throw new PostingException("Customer not found.");
+
+        var invoices = (await PostedInvoicesAsync(db)).Where(i => i.CustomerId == customerId).ToList();
+        var receipts = (await PostedReceiptsAsync(db)).Where(r => r.CustomerId == customerId).ToList();
+        var credits = (await PostedCreditNotesAsync(db)).Where(n => n.CustomerId == customerId).ToList();
+        var (_, receiptIdsWithAllocations) = await AllocationsForAsync(db, receipts.Select(r => r.Id).ToList());
+
+        var invoiced = invoices.Sum(i => i.TotalGross);
+        var received = receipts.Sum(r => r.Amount);
+        var creditedTotal = credits.Sum(n => n.TotalGross);
+        var outstandingReceivables = Math.Max(0, invoiced - received - creditedTotal);
+
+        // A receipt is either 100% on-account or 100% applied — see the identical reasoning in GetAgingAsync.
+        var advancePayment = receipts.Where(r => !receiptIdsWithAllocations.Contains(r.Id)).Sum(r => r.Amount);
+        var unusedCredits = credits
+            .Where(n => n.SettlementMethod == CreditNoteSettlementMethod.CreditOnAccount)
+            .Sum(n => n.TotalGross - n.Allocations.Sum(a => a.Amount));
+
+        return new CustomerAccountSummary(unusedCredits, outstandingReceivables, advancePayment, customer.CreditLimit);
     }
 
     /// <summary>Chronological invoice/receipt statement with running balance.</summary>

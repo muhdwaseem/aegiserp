@@ -27,6 +27,17 @@ public class ReceiptService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>Every receipt for one customer, for the customer detail view's Payments tab.</summary>
+    public async Task<List<CustomerReceipt>> GetByCustomerAsync(int customerId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.CustomerReceipts.AsNoTracking()
+            .Include(r => r.BankAccount).Include(r => r.SalesInvoice)
+            .Where(r => r.CustomerId == customerId)
+            .OrderByDescending(r => r.Date).ThenByDescending(r => r.Id)
+            .ToListAsync();
+    }
+
     /// <summary>
     /// Creates and posts a customer receipt in one transaction, generating the GL voucher
     /// (Dr bank / Cr Accounts Receivable). Two ways to target invoices:
