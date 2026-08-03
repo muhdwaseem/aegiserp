@@ -22,6 +22,17 @@ public class DirectExpenseService
             .Take(take).ToListAsync();
     }
 
+    /// <summary>One direct expense with full detail, for the expense detail view.</summary>
+    public async Task<DirectExpense?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.DirectExpenses.AsNoTracking()
+            .Include(x => x.Vendor).Include(x => x.Customer).Include(x => x.BankAccount)
+            .Include(x => x.Lines).ThenInclude(l => l.ExpenseAccount)
+            .Include(x => x.JournalVoucher)
+            .FirstOrDefaultAsync(x => x.Id == id);
+    }
+
     /// <summary>
     /// Creates and posts a direct expense in one transaction, generating the GL voucher
     /// (Dr each line's expense account for its amount / Cr the "paid through" bank account for
