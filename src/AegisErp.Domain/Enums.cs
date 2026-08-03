@@ -161,6 +161,15 @@ public enum CustomFieldType
     Checkbox = 5
 }
 
+/// <summary>How often a <see cref="Entities.RecurringInvoiceProfile"/> generates its next invoice.</summary>
+public enum RecurringFrequency
+{
+    Weekly = 1,
+    Monthly = 2,
+    Quarterly = 3,
+    Yearly = 4
+}
+
 public static class AccountTypeExtensions
 {
     /// <summary>Assets and expenses are debit-normal; liabilities, equity and income are credit-normal.</summary>
@@ -168,5 +177,18 @@ public static class AccountTypeExtensions
     {
         AccountType.Asset or AccountType.Expense => Domain.NormalBalance.Debit,
         _ => Domain.NormalBalance.Credit
+    };
+}
+
+public static class RecurringFrequencyExtensions
+{
+    /// <summary>The next generation date, <paramref name="repeatEvery"/> units of <paramref name="frequency"/> after <paramref name="from"/>.</summary>
+    public static DateOnly AddFrequency(this DateOnly from, RecurringFrequency frequency, int repeatEvery) => frequency switch
+    {
+        RecurringFrequency.Weekly => from.AddDays(7 * repeatEvery),
+        RecurringFrequency.Monthly => from.AddMonths(repeatEvery),
+        RecurringFrequency.Quarterly => from.AddMonths(3 * repeatEvery),
+        RecurringFrequency.Yearly => from.AddYears(repeatEvery),
+        _ => from.AddMonths(repeatEvery),
     };
 }

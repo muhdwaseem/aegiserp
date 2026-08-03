@@ -72,6 +72,9 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
     public DbSet<SalespersonAssignmentHistory> SalespersonAssignmentHistories => Set<SalespersonAssignmentHistory>();
+    public DbSet<InvoiceReminderLog> InvoiceReminderLogs => Set<InvoiceReminderLog>();
+    public DbSet<RecurringInvoiceProfile> RecurringInvoiceProfiles => Set<RecurringInvoiceProfile>();
+    public DbSet<RecurringInvoiceProfileLine> RecurringInvoiceProfileLines => Set<RecurringInvoiceProfileLine>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -266,6 +269,9 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(i => i.ApprovalNote).HasMaxLength(500);
             e.Property(i => i.AttachmentFileName).HasMaxLength(260);
             e.Property(i => i.AttachmentContentType).HasMaxLength(100);
+            e.Property(i => i.LockedBy).HasMaxLength(80);
+            e.Property(i => i.ShareToken).HasMaxLength(40);
+            e.HasIndex(i => i.ShareToken).IsUnique(); // multiple NULLs are fine — only generated tokens must be unique
             e.Ignore(i => i.TotalNet);
             e.Ignore(i => i.TotalVat);
             e.Ignore(i => i.TotalGross);
@@ -273,6 +279,31 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasOne(i => i.FiscalPeriod).WithMany().HasForeignKey(i => i.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(i => i.JournalVoucher).WithMany().HasForeignKey(i => i.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(i => i.Lines).WithOne(l => l.SalesInvoice).HasForeignKey(l => l.SalesInvoiceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(i => i.ReminderLogs).WithOne(r => r.SalesInvoice).HasForeignKey(r => r.SalesInvoiceId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<InvoiceReminderLog>(e =>
+        {
+            e.Property(r => r.SentBy).HasMaxLength(80);
+        });
+
+        b.Entity<RecurringInvoiceProfile>(e =>
+        {
+            e.Property(p => p.Frequency).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.Narration).HasMaxLength(400);
+            e.Property(p => p.CreatedBy).HasMaxLength(80);
+            e.HasOne(p => p.Customer).WithMany().HasForeignKey(p => p.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(p => p.Lines).WithOne(l => l.RecurringInvoiceProfile).HasForeignKey(l => l.RecurringInvoiceProfileId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<RecurringInvoiceProfileLine>(e =>
+        {
+            e.Property(l => l.Description).HasMaxLength(300).IsRequired();
+            e.Property(l => l.Quantity).HasPrecision(18, 3);
+            e.Property(l => l.UnitPrice).HasPrecision(18, 2);
+            e.Property(l => l.VatRate).HasPrecision(5, 4);
+            e.HasOne(l => l.RevenueAccount).WithMany().HasForeignKey(l => l.RevenueAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.CostCenter).WithMany().HasForeignKey(l => l.CostCenterId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<SalesInvoiceLine>(e =>
@@ -670,6 +701,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<Item>(b);
         ConfigureCompanyScope<CustomFieldDefinition>(b);
         ConfigureCompanyScope<TagGroup>(b);
+        ConfigureCompanyScope<RecurringInvoiceProfile>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()

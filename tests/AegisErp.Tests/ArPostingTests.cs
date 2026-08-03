@@ -1,6 +1,7 @@
 using AegisErp.Domain;
 using AegisErp.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AegisErp.Tests;
 
@@ -14,7 +15,7 @@ public class ArPostingTests : IDisposable
 
     public ArPostingTests()
     {
-        _invoices = new SalesInvoiceService(_db);
+        _invoices = new SalesInvoiceService(_db, new EmailService(Options.Create(new SmtpOptions())));
         _receipts = new ReceiptService(_db);
         _customers = new CustomerService(_db);
     }
@@ -903,5 +904,104 @@ public class ArPostingTests : IDisposable
 
         await Assert.ThrowsAsync<PostingException>(() =>
             _receipts.SetAttachmentAsync(r.Id, "big.jpg", "image/jpeg", tooBig));
+    }
+
+    // --- Lock Invoice: blocks further edits/void/attachment changes ---
+
+    [Fact]
+    public async Task Locking_a_draft_invoice_blocks_edit_void_and_post()
+    {
+        var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now);
+
+        await _invoices.LockAsync(draft.Id, "admin", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.UpdateDraftAsync(
+            draft.Id, _db.Customer.Id, new(2026, 5, 10), _db.May.Id, null,
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 2000, 0.05m) }));
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.PostDraftAsync(draft.Id, "tester", Now));
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.VoidDraftAsync(draft.Id, "tester", Now));
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _invoices.SetAttachmentAsync(draft.Id, "a.pdf", "application/pdf", new byte[] { 1 }));
+    }
+
+    [Fact]
+    public async Task Unlocking_an_invoice_restores_normal_behavior()
+    {
+        var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now);
+        await _invoices.LockAsync(draft.Id, "admin", Now);
+
+        await _invoices.UnlockAsync(draft.Id);
+        var posted = await _invoices.PostDraftAsync(draft.Id, "tester", Now);
+
+        Assert.Equal(VoucherStatus.Posted, posted.Status);
+    }
+
+    [Fact]
+    public async Task Locking_an_already_locked_invoice_is_rejected()
+    {
+        var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now);
+        await _invoices.LockAsync(draft.Id, "admin", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.LockAsync(draft.Id, "admin", Now));
+    }
+
+    // --- Reminders ---
+
+    [Fact]
+    public async Task Reminder_on_a_draft_invoice_is_rejected()
+    {
+        var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now);
+
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.SendReminderAsync(draft.Id, "tester", Now, isAutomated: false));
+    }
+
+    [Fact]
+    public async Task Reminder_on_a_fully_paid_invoice_is_rejected()
+    {
+        var inv = await PostInvoice(); // gross 1050
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 1050, null, "tester", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.SendReminderAsync(inv.Id, "tester", Now, isAutomated: false));
+    }
+
+    [Fact]
+    public async Task Reminder_without_a_customer_email_is_rejected()
+    {
+        var inv = await PostInvoice();
+        Assert.Null(inv.Customer.Email); // seeded test customer has no email
+
+        await Assert.ThrowsAsync<PostingException>(() => _invoices.SendReminderAsync(inv.Id, "tester", Now, isAutomated: false));
+        Assert.Null(await _invoices.GetLastReminderSentAtAsync(inv.Id));
+    }
+
+    // --- Share ---
+
+    [Fact]
+    public async Task Share_token_is_generated_once_and_stays_stable()
+    {
+        var inv = await PostInvoice();
+
+        var token1 = await _invoices.GetOrCreateShareTokenAsync(inv.Id);
+        var token2 = await _invoices.GetOrCreateShareTokenAsync(inv.Id);
+
+        Assert.False(string.IsNullOrWhiteSpace(token1));
+        Assert.Equal(token1, token2);
+    }
+
+    [Fact]
+    public async Task Shared_invoice_resolves_by_token_and_unknown_tokens_return_null()
+    {
+        var inv = await PostInvoice();
+        var token = await _invoices.GetOrCreateShareTokenAsync(inv.Id);
+
+        var found = await _invoices.GetBySharedTokenAsync(token);
+        Assert.NotNull(found);
+        Assert.Equal(inv.Id, found!.Id);
+
+        Assert.Null(await _invoices.GetBySharedTokenAsync("not-a-real-token"));
     }
 }

@@ -2,6 +2,7 @@ using AegisErp.Domain;
 using AegisErp.Domain.Entities;
 using AegisErp.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AegisErp.Tests;
 
@@ -19,7 +20,7 @@ public class MultiCompanyIsolationTests : IDisposable
 
     public MultiCompanyIsolationTests()
     {
-        _invoices = new SalesInvoiceService(_db);
+        _invoices = new SalesInvoiceService(_db, new EmailService(Options.Create(new SmtpOptions())));
         _customers = new CustomerService(_db);
         _coa = new ChartOfAccountsService(_db);
     }

@@ -1,6 +1,7 @@
 using AegisErp.Domain;
 using AegisErp.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AegisErp.Tests;
 
@@ -15,7 +16,7 @@ public class CreditNotePostingTests : IDisposable
 
     public CreditNotePostingTests()
     {
-        _invoices = new SalesInvoiceService(_db);
+        _invoices = new SalesInvoiceService(_db, new EmailService(Options.Create(new SmtpOptions())));
         _creditNotes = new CreditNoteService(_db);
         _receipts = new ReceiptService(_db);
         _customers = new CustomerService(_db);

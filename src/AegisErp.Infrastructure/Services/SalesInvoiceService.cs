@@ -16,7 +16,12 @@ public class SalesInvoiceService
     public const int MaxAttachmentBytes = 5 * 1024 * 1024;
 
     private readonly IDbContextFactory<AegisDbContext> _dbf;
-    public SalesInvoiceService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
+    private readonly EmailService _emailSvc;
+    public SalesInvoiceService(IDbContextFactory<AegisDbContext> dbf, EmailService emailSvc)
+    {
+        _dbf = dbf;
+        _emailSvc = emailSvc;
+    }
 
     public async Task<List<SalesInvoice>> GetRecentAsync(int take = 50)
     {
@@ -150,8 +155,11 @@ public class SalesInvoiceService
     /// </summary>
     private static async Task<string> NextInvoiceNoAsync(AegisDbContext db, int year)
     {
+        var prefix = db.CurrentCompanyId is int companyId
+            ? (await db.CompanySetups.AsNoTracking().FirstOrDefaultAsync(c => c.Id == companyId))?.InvoiceNumberPrefix
+            : null;
         var existing = await db.SalesInvoices.Select(i => i.InvoiceNo).ToListAsync();
-        return JournalPoster.NextDocNo(existing, "INV", year);
+        return JournalPoster.NextDocNo(existing, string.IsNullOrWhiteSpace(prefix) ? "INV" : prefix, year);
     }
 
     /// <summary>
@@ -239,6 +247,7 @@ public class SalesInvoiceService
             ?? throw new PostingException("Invoice not found.");
         if (invoice.Status != VoucherStatus.Draft)
             throw new PostingException("Only draft invoices can be edited — a posted invoice already hit the ledger; reverse it with a Credit Note instead.");
+        EnsureNotLocked(invoice);
 
         var customer = await db.Customers.FindAsync(customerId)
             ?? throw new PostingException("Customer not found.");
@@ -288,6 +297,7 @@ public class SalesInvoiceService
             ?? throw new PostingException("Invoice not found.");
         if (invoice.Status != VoucherStatus.Draft)
             throw new PostingException("Only draft invoices can be posted.");
+        EnsureNotLocked(invoice);
 
         invoice.Post(postedBy, nowUtc); // domain validation (positive totals, valid lines, due date, approval gate)
 
@@ -310,6 +320,7 @@ public class SalesInvoiceService
         await using var db = await _dbf.CreateDbContextAsync();
         var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
             ?? throw new PostingException("Invoice not found.");
+        EnsureNotLocked(invoice);
 
         invoice.Void(voidedBy, nowUtc);
         await db.SaveChangesAsync();
@@ -360,6 +371,7 @@ public class SalesInvoiceService
         await using var db = await _dbf.CreateDbContextAsync();
         var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
             ?? throw new PostingException("Invoice not found.");
+        EnsureNotLocked(invoice);
 
         invoice.AttachmentFileName = fileName;
         invoice.AttachmentContentType = contentType;
@@ -372,6 +384,7 @@ public class SalesInvoiceService
         await using var db = await _dbf.CreateDbContextAsync();
         var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
             ?? throw new PostingException("Invoice not found.");
+        EnsureNotLocked(invoice);
 
         invoice.AttachmentFileName = null;
         invoice.AttachmentContentType = null;
@@ -424,6 +437,117 @@ public class SalesInvoiceService
         var line = await db.SalesInvoiceLines.AsNoTracking().FirstOrDefaultAsync(l => l.Id == lineId);
         if (line?.AttachmentData is null || line.AttachmentFileName is null) return null;
         return (line.AttachmentFileName, line.AttachmentContentType ?? "application/octet-stream", line.AttachmentData);
+    }
+
+    private static void EnsureNotLocked(SalesInvoice invoice)
+    {
+        if (invoice.IsLocked)
+            throw new PostingException($"{invoice.InvoiceNo} is locked — unlock it first.");
+    }
+
+    /// <summary>Admin-only lock blocking further edits/void/attachment changes on this invoice.</summary>
+    public async Task LockAsync(int invoiceId, string lockedBy, DateTime nowUtc)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+        if (invoice.IsLocked) throw new PostingException("Invoice is already locked.");
+
+        invoice.IsLocked = true;
+        invoice.LockedBy = lockedBy;
+        invoice.LockedAtUtc = nowUtc;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task UnlockAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.IsLocked = false;
+        invoice.LockedBy = null;
+        invoice.LockedAtUtc = null;
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>The token backing this invoice's public "Share" link — generated once, then stable.</summary>
+    public async Task<string> GetOrCreateShareTokenAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        if (string.IsNullOrEmpty(invoice.ShareToken))
+        {
+            invoice.ShareToken = Guid.NewGuid().ToString("N");
+            await db.SaveChangesAsync();
+        }
+        return invoice.ShareToken;
+    }
+
+    /// <summary>
+    /// Looks up an invoice by its public share token, for the anonymous Share page. Returns null for
+    /// an unknown/never-shared token so the page can show "not found" rather than leaking which
+    /// tokens exist. Runs unscoped (no authenticated session sets a current company on this route),
+    /// which is correct here — the opaque token is the security boundary, not company scoping.
+    /// </summary>
+    public async Task<SalesInvoice?> GetBySharedTokenAsync(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return null;
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.SalesInvoices.AsNoTracking()
+            .Include(i => i.Customer).Include(i => i.Lines).ThenInclude(l => l.Item)
+            .FirstOrDefaultAsync(i => i.ShareToken == token);
+    }
+
+    public async Task<DateTime?> GetLastReminderSentAtAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.InvoiceReminderLogs.AsNoTracking()
+            .Where(r => r.SalesInvoiceId == invoiceId)
+            .OrderByDescending(r => r.SentAtUtc)
+            .Select(r => (DateTime?)r.SentAtUtc)
+            .FirstOrDefaultAsync();
+    }
+
+    /// <summary>
+    /// Sends a payment-reminder email for this invoice (manual "Send Reminder Now", or automated —
+    /// see <c>InvoiceAutomationHostedService</c>) and logs it. Requires the invoice to be posted,
+    /// have an outstanding balance, and the customer to have an email on file.
+    /// </summary>
+    public async Task SendReminderAsync(int invoiceId, string sentBy, DateTime nowUtc, bool isAutomated)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.SalesInvoices.Include(i => i.Customer).Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+        if (invoice.Status != VoucherStatus.Posted)
+            throw new PostingException("Only posted invoices can be reminded about.");
+        if (string.IsNullOrWhiteSpace(invoice.Customer.Email))
+            throw new PostingException($"{invoice.Customer.Name} has no email address on file.");
+
+        var lineBalances = await GetLineBalancesAsync(invoiceId);
+        var creditedTotal = await GetCreditedTotalAsync(invoiceId);
+        var balance = invoice.TotalGross - lineBalances.Sum(l => l.Allocated) - creditedTotal;
+        if (balance <= 0)
+            throw new PostingException($"{invoice.InvoiceNo} is already fully paid — nothing to remind about.");
+
+        var subject = $"Payment Reminder: Invoice {invoice.InvoiceNo} — AED {balance:N2} overdue";
+        var body = $"Dear {invoice.Customer.Name},\n\n" +
+                   $"This is a reminder that invoice {invoice.InvoiceNo} dated {invoice.Date:dd MMM yyyy} for AED {invoice.TotalGross:N2}, " +
+                   $"due {invoice.DueDate:dd MMM yyyy}, has an outstanding balance of AED {balance:N2}.\n\n" +
+                   "Please arrange payment at your earliest convenience. Thank you.";
+        await _emailSvc.SendAsync(invoice.Customer.Email, subject, body);
+
+        db.InvoiceReminderLogs.Add(new InvoiceReminderLog
+        {
+            SalesInvoiceId = invoiceId,
+            SentAtUtc = nowUtc,
+            SentBy = sentBy,
+            IsAutomated = isAutomated,
+        });
+        await db.SaveChangesAsync();
     }
 
     /// <summary>

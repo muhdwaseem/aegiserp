@@ -1,5 +1,6 @@
 using AegisErp.Domain;
 using AegisErp.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 namespace AegisErp.Tests;
 
@@ -16,7 +17,7 @@ public class ReportsTests : IDisposable
     public ReportsTests()
     {
         _reports = new ReportsService(_db);
-        _invoices = new SalesInvoiceService(_db);
+        _invoices = new SalesInvoiceService(_db, new EmailService(Options.Create(new SmtpOptions())));
         _receipts = new ReceiptService(_db);
         _purchases = new PurchaseInvoiceService(_db);
         _payments = new VendorPaymentService(_db);

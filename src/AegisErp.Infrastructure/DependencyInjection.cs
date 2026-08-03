@@ -50,8 +50,10 @@ public static class DependencyInjection
         services.AddScoped<ItemService>();
         services.AddScoped<CustomFieldService>();
         services.AddScoped<TagService>();
+        services.AddScoped<RecurringInvoiceService>();
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
         services.AddScoped<EmailService>();
+        services.AddHostedService<InvoiceAutomationHostedService>();
         return services;
     }
 }

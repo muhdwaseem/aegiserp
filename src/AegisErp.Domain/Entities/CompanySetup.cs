@@ -81,6 +81,18 @@ public class CompanySetup
     public string? InputVatAccountCode { get; set; }           // GL mapping
     public string? OutputVatAccountCode { get; set; }          // GL mapping
 
+    // ── 7b. Invoice Preferences ──
+    public int InvoiceDefaultPaymentTermsDays { get; set; } = 30;
+    public string? InvoiceDefaultNotes { get; set; }
+    public string InvoiceNumberPrefix { get; set; } = "INV";
+
+    /// <summary>Send an automated reminder this many days before the due date (0 = don't).</summary>
+    public int ReminderDaysBeforeDue { get; set; }
+    public bool ReminderOnDueDate { get; set; }
+    /// <summary>Comma-separated days-after-due-date to remind on, e.g. "7,15,30" — same CSV-list
+    /// convention already used for <see cref="CommunicationLanguage"/>.</summary>
+    public string? ReminderDaysAfterDue { get; set; } = "7,15,30";
+
     // ── 8. System Controls ──
     public bool MultiCompanyEnabled { get; set; }
     public bool AuditTrailEnabled { get; set; } = true;

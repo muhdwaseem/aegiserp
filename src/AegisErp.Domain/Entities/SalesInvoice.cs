@@ -66,7 +66,19 @@ public class SalesInvoice : ICompanyScoped
     public string? VoidedBy { get; set; }
     public DateTime? VoidedAtUtc { get; set; }
 
+    /// <summary>Admin-only flag blocking further edits/void/attachment changes — e.g. during a
+    /// closed audit period. Posted invoices are already immutable for accounting purposes; this
+    /// additionally locks down the document itself.</summary>
+    public bool IsLocked { get; set; }
+    public DateTime? LockedAtUtc { get; set; }
+    public string? LockedBy { get; set; }
+
+    /// <summary>Opaque token for the public, anonymous read-only "Share" link — generated lazily
+    /// the first time Share is used, then stable.</summary>
+    public string? ShareToken { get; set; }
+
     public List<SalesInvoiceLine> Lines { get; set; } = new();
+    public List<InvoiceReminderLog> ReminderLogs { get; set; } = new();
 
     public decimal TotalNet => Lines.Sum(l => l.Net);
     public decimal TotalVat => Lines.Sum(l => l.Vat);
@@ -206,4 +218,18 @@ public class SalesInvoiceLine
     public decimal Net => Math.Round(Quantity * UnitPrice * (1 - DiscountPercent / 100m), 2, MidpointRounding.AwayFromZero);
     public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;
+}
+
+/// <summary>One payment reminder sent for an invoice — manual ("Send Reminder Now") or automated
+/// (the background service, per the day-offsets configured in Invoice Preferences). Lets the UI show
+/// "last reminded on" and stops the background service from re-sending the same day twice.</summary>
+public class InvoiceReminderLog
+{
+    public int Id { get; set; }
+    public int SalesInvoiceId { get; set; }
+    public SalesInvoice SalesInvoice { get; set; } = null!;
+
+    public DateTime SentAtUtc { get; set; }
+    public string SentBy { get; set; } = "System Admin";
+    public bool IsAutomated { get; set; }
 }
