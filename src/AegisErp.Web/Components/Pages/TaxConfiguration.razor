@@ -45,7 +45,9 @@
             <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="Add">Add</MudButton>
         </MudItem>
     </MudGrid>
-    <MudDatePicker @bind-Date="_effectiveFrom" Label="Effective From" Margin="Margin.Dense" Class="mt-3" Style="max-width:200px" />
+    <div class="mt-3" style="max-width:200px">
+        <MudDatePicker @bind-Date="_effectiveFrom" Label="Effective From" Margin="Margin.Dense" />
+    </div>
 </MudPaper>
 
 <MudTable Items="_taxCodes" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_taxCodes is null">

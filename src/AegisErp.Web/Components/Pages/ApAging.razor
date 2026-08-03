@@ -7,7 +7,9 @@
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
     <MudText Typo="Typo.h5">AP Aging</MudText>
     <MudSpacer />
-    <MudDatePicker Date="_asOf" DateChanged="OnAsOfChanged" Label="As of" Style="max-width:180px" />
+    <div style="max-width:180px">
+        <MudDatePicker Date="_asOf" DateChanged="OnAsOfChanged" Label="As of" />
+    </div>
 </MudStack>
 
 <MudTable Items="_rows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null">
