@@ -222,6 +222,19 @@ public class LedgerService
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        return await BuildProfitAndLossAsync(db, period.StartDate, period.EndDate, period.Name);
+    }
+
+    /// <summary>Profit &amp; loss for an arbitrary date range, with cumulative to-date (to the range's
+    /// end date) alongside — the From/To filter on the P&amp;L page.</summary>
+    public async Task<ProfitAndLoss> GetProfitAndLossAsync(DateOnly fromDate, DateOnly toDate)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await BuildProfitAndLossAsync(db, fromDate, toDate, $"{fromDate:dd MMM yyyy} – {toDate:dd MMM yyyy}");
+    }
+
+    private static async Task<ProfitAndLoss> BuildProfitAndLossAsync(AegisDbContext db, DateOnly fromDate, DateOnly toDate, string label)
+    {
         var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
         var lines = await PostedLinesAsync(db);
 
@@ -231,8 +244,8 @@ public class LedgerService
                 .Select(a =>
                 {
                     var forAcct = lines.Where(l => l.AccountId == a.Id);
-                    var period_ = sign * forAcct.Where(l => l.Date >= period.StartDate && l.Date <= period.EndDate).Sum(l => l.Debit - l.Credit);
-                    var ytd = sign * forAcct.Where(l => l.Date <= period.EndDate).Sum(l => l.Debit - l.Credit);
+                    var period_ = sign * forAcct.Where(l => l.Date >= fromDate && l.Date <= toDate).Sum(l => l.Debit - l.Credit);
+                    var ytd = sign * forAcct.Where(l => l.Date <= toDate).Sum(l => l.Debit - l.Credit);
                     return new PnlLine(a.Id, a.Code, a.Name, period_, ytd);
                 })
                 .Where(l => l.Period != 0 || l.Ytd != 0)
@@ -242,7 +255,7 @@ public class LedgerService
         var income = Build(AccountType.Income, -1m);
         var expenses = Build(AccountType.Expense, 1m);
 
-        return new ProfitAndLoss(period.Name, income, expenses,
+        return new ProfitAndLoss(label, income, expenses,
             income.Sum(l => l.Period), income.Sum(l => l.Ytd),
             expenses.Sum(l => l.Period), expenses.Sum(l => l.Ytd));
     }

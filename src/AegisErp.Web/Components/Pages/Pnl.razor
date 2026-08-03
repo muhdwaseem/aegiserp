@@ -4,7 +4,7 @@
 
 <PageTitle>P&amp;L Statement · Aegis ERP</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
     <MudText Typo="Typo.h5">Profit &amp; Loss Statement</MudText>
     <MudSpacer />
     @if (_periods is not null)
@@ -16,6 +16,13 @@
             }
         </MudSelect>
     }
+    <div style="max-width:160px">
+        <MudDatePicker @bind-Date="_fromDate" Label="From" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+    </div>
+    <div style="max-width:160px">
+        <MudDatePicker @bind-Date="_toDate" Label="To" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+    </div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="Load">Run</MudButton>
 </MudStack>
 
 @if (_pnl is not null)
@@ -75,18 +82,40 @@
 @code {
     private List<FiscalPeriod>? _periods;
     private int _periodId;
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
     private ProfitAndLoss? _pnl;
 
     protected override async Task OnInitializedAsync()
     {
         _periods = await Ledger.GetPeriodsAsync();
-        _periodId = (await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today)))?.Id
-                    ?? _periods.LastOrDefault()?.Id ?? 0;
+        var defaultPeriod = await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today))
+                             ?? _periods.LastOrDefault();
+        _periodId = defaultPeriod?.Id ?? 0;
+        _fromDate = defaultPeriod?.StartDate.ToDateTime(TimeOnly.MinValue);
+        _toDate = defaultPeriod?.EndDate.ToDateTime(TimeOnly.MinValue);
         await Load();
     }
 
-    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
-    private async Task Load() { if (_periodId > 0) _pnl = await Ledger.GetProfitAndLossAsync(_periodId); }
+    /// <summary>Picking a period is a quick-select convenience: it just sets the From/To range,
+    /// which is what actually drives the report — so it can still be overridden freely afterwards.</summary>
+    private async Task OnPeriodChanged(int id)
+    {
+        _periodId = id;
+        var period = _periods?.FirstOrDefault(p => p.Id == id);
+        if (period is not null)
+        {
+            _fromDate = period.StartDate.ToDateTime(TimeOnly.MinValue);
+            _toDate = period.EndDate.ToDateTime(TimeOnly.MinValue);
+        }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (_fromDate is not { } from || _toDate is not { } to) return;
+        _pnl = await Ledger.GetProfitAndLossAsync(DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
+    }
 }
 
 <style>
