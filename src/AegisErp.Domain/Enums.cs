@@ -17,6 +17,21 @@ public enum NormalBalance
     Credit = 2
 }
 
+/// <summary>
+/// Which section of the sectioned P&amp;L statement an Income or Expense account rolls into
+/// (Zoho-style: Operating Income / Cost of Goods Sold / Gross Profit / Operating Expense /
+/// Operating Profit / Non-Operating Income / Non-Operating Expense / Net Profit). Meaningless for
+/// Asset/Liability/Equity accounts.
+/// </summary>
+public enum PnlSection
+{
+    OperatingIncome = 1,
+    CostOfGoodsSold = 2,
+    OperatingExpense = 3,
+    NonOperatingIncome = 4,
+    NonOperatingExpense = 5,
+}
+
 /// <summary>Source document type for a voucher. Mirrors the modules in the prototype.</summary>
 public enum VoucherType
 {

@@ -86,6 +86,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(a => a.Code).HasMaxLength(20).IsRequired();
             e.Property(a => a.Name).HasMaxLength(120).IsRequired();
             e.Property(a => a.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(a => a.PnlSection).HasConversion<string>().HasMaxLength(24);
             e.Property(a => a.Category).HasMaxLength(60);
             e.Property(a => a.Currency).HasMaxLength(3).IsRequired();
             e.Property(a => a.Description).HasMaxLength(300);

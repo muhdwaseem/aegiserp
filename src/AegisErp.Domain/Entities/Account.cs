@@ -24,6 +24,10 @@ public class Account : ICompanyScoped
     /// <summary>Optional sub-classification, e.g. "Cash and cash equivalents", "Accounts receivable".</summary>
     public string? Category { get; set; }
 
+    /// <summary>Which section of the P&amp;L this Income/Expense account rolls into (null for
+    /// Asset/Liability/Equity accounts, where it has no meaning).</summary>
+    public PnlSection? PnlSection { get; set; }
+
     /// <summary>Account currency. AED-only for now (stored, no FX logic).</summary>
     public string Currency { get; set; } = "AED";
 

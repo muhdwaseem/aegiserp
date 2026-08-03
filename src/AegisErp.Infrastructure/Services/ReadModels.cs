@@ -66,15 +66,31 @@ public record TrialBalance(
 /// <summary>One revenue or expense line on the P&amp;L, with period and year-to-date figures.</summary>
 public record PnlLine(int AccountId, string Code, string Name, decimal Period, decimal Ytd);
 
+/// <summary>
+/// A Zoho-style sectioned P&amp;L: Operating Income and Cost of Goods Sold combine into Gross
+/// Profit; Operating Expense on top of that gives Operating Profit; Non-Operating Income/Expense
+/// on top of that gives Net Profit. Every figure exists in both a "Period" flavor (the requested
+/// date range) and a "Ytd" flavor (cumulative to the range's end date).
+/// </summary>
 public record ProfitAndLoss(
     string PeriodName,
-    IReadOnlyList<PnlLine> Income,
-    IReadOnlyList<PnlLine> Expenses,
-    decimal IncomePeriod, decimal IncomeYtd,
-    decimal ExpensePeriod, decimal ExpenseYtd)
+    IReadOnlyList<PnlLine> OperatingIncome,
+    IReadOnlyList<PnlLine> CostOfGoodsSold,
+    IReadOnlyList<PnlLine> OperatingExpense,
+    IReadOnlyList<PnlLine> NonOperatingIncome,
+    IReadOnlyList<PnlLine> NonOperatingExpense,
+    decimal OperatingIncomePeriod, decimal OperatingIncomeYtd,
+    decimal CostOfGoodsSoldPeriod, decimal CostOfGoodsSoldYtd,
+    decimal OperatingExpensePeriod, decimal OperatingExpenseYtd,
+    decimal NonOperatingIncomePeriod, decimal NonOperatingIncomeYtd,
+    decimal NonOperatingExpensePeriod, decimal NonOperatingExpenseYtd)
 {
-    public decimal NetPeriod => IncomePeriod - ExpensePeriod;
-    public decimal NetYtd => IncomeYtd - ExpenseYtd;
+    public decimal GrossProfitPeriod => OperatingIncomePeriod - CostOfGoodsSoldPeriod;
+    public decimal GrossProfitYtd => OperatingIncomeYtd - CostOfGoodsSoldYtd;
+    public decimal OperatingProfitPeriod => GrossProfitPeriod - OperatingExpensePeriod;
+    public decimal OperatingProfitYtd => GrossProfitYtd - OperatingExpenseYtd;
+    public decimal NetProfitPeriod => OperatingProfitPeriod + NonOperatingIncomePeriod - NonOperatingExpensePeriod;
+    public decimal NetProfitYtd => OperatingProfitYtd + NonOperatingIncomeYtd - NonOperatingExpenseYtd;
 }
 
 /// <summary>One line on the balance sheet (account balance in its natural positive sense).</summary>

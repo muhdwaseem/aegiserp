@@ -22,7 +22,7 @@
             </MudItem>
 
             <MudItem xs="12" sm="4">
-                <MudSelect T="AccountType" @bind-Value="_type" Label="Account Type" Required="true" Disabled="IsEdit">
+                <MudSelect T="AccountType" Value="_type" ValueChanged="OnTypeChanged" Label="Account Type" Required="true" Disabled="IsEdit">
                     <MudSelectItem Value="AccountType.Asset">Asset</MudSelectItem>
                     <MudSelectItem Value="AccountType.Liability">Liability</MudSelectItem>
                     <MudSelectItem Value="AccountType.Equity">Equity</MudSelectItem>
@@ -38,6 +38,17 @@
                     }
                 </MudSelect>
             </MudItem>
+            @if (_type is AccountType.Income or AccountType.Expense)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="PnlSection" @bind-Value="_pnlSection" Label="P&amp;L Section">
+                        @foreach (var s in PnlSectionsFor(_type))
+                        {
+                            <MudSelectItem Value="s">@PnlSectionLabel(s)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
             <MudItem xs="12" sm="4">
                 <MudSelect T="string" @bind-Value="_currency" Label="Currency">
                     <MudSelectItem Value="@("AED")">AED — UAE Dirham</MudSelectItem>
@@ -107,6 +118,7 @@
     private string _code = "";
     private string _name = "";
     private AccountType _type = AccountType.Expense;
+    private PnlSection _pnlSection = PnlSection.OperatingExpense;
     private string? _category;
     private string _currency = "AED";
     private int? _parentId;
@@ -130,8 +142,36 @@
             _code = e.Code; _name = e.Name; _type = e.Type; _category = e.Category;
             _currency = e.Currency; _parentId = e.ParentId; _isPostable = e.IsPostable;
             _isActive = e.IsActive; _description = e.Description;
+            if (e.PnlSection is PnlSection s) _pnlSection = s;
         }
+        _pnlSection = PnlSectionsFor(_type).Contains(_pnlSection) ? _pnlSection : PnlSectionsFor(_type)[0];
     }
+
+    private void OnTypeChanged(AccountType type)
+    {
+        _type = type;
+        var options = PnlSectionsFor(type);
+        if (options.Length > 0 && !options.Contains(_pnlSection)) _pnlSection = options[0];
+    }
+
+    /// <summary>The P&amp;L sections that make sense for this account type — Cost of Goods Sold only
+    /// applies to expenses, never income.</summary>
+    private static PnlSection[] PnlSectionsFor(AccountType type) => type switch
+    {
+        AccountType.Income => new[] { PnlSection.OperatingIncome, PnlSection.NonOperatingIncome },
+        AccountType.Expense => new[] { PnlSection.CostOfGoodsSold, PnlSection.OperatingExpense, PnlSection.NonOperatingExpense },
+        _ => Array.Empty<PnlSection>(),
+    };
+
+    private static string PnlSectionLabel(PnlSection s) => s switch
+    {
+        PnlSection.OperatingIncome => "Operating Income",
+        PnlSection.CostOfGoodsSold => "Cost of Goods Sold",
+        PnlSection.OperatingExpense => "Operating Expense",
+        PnlSection.NonOperatingIncome => "Non-Operating Income",
+        PnlSection.NonOperatingExpense => "Non-Operating Expense",
+        _ => s.ToString(),
+    };
 
     private async Task AutoNumber()
     {
@@ -149,14 +189,16 @@
             if (IsEdit)
             {
                 var acc = await Coa.UpdateAsync(Existing!.Id, _name, _category, _currency, _parentId, _description,
-                    _isActive, Existing.RowVersion, user);
+                    _isActive, Existing.RowVersion, user,
+                    _type is AccountType.Income or AccountType.Expense ? _pnlSection : null);
                 Snackbar.Add($"Account {acc.Code} updated.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(acc.Id));
             }
             else
             {
                 var input = new NewAccountInput(_code, _name, _type, _isPostable, _category, _currency, _parentId, _description,
-                    _isPostable ? _openingBalance : 0);
+                    _isPostable ? _openingBalance : 0,
+                    _type is AccountType.Income or AccountType.Expense ? _pnlSection : null);
                 var acc = await Coa.CreateAsync(input, user);
                 Snackbar.Add($"Account {acc.Code} created.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(acc.Id));

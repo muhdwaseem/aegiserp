@@ -65,7 +65,7 @@
                     <tr>
                         <th style="width:34px"></th>
                         <th>Account No.</th><th>Account Name</th><th>Type</th>
-                        <th>Category</th><th>Currency</th><th class="ctr">Dr/Cr</th><th>Status</th>
+                        <th>Category</th><th>P&amp;L Section</th><th>Currency</th><th class="ctr">Dr/Cr</th><th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -103,6 +103,7 @@
                             </td>
                             <td>@TypeLabel(a.Type)</td>
                             <td class="muted">@(a.Category ?? "—")</td>
+                            <td class="muted">@(a.PnlSection is { } s ? PnlSectionLabel(s) : "—")</td>
                             <td class="muted">@(a.IsPostable ? a.Currency : "")</td>
                             <td class="ctr">
                                 @if (a.IsPostable)
@@ -229,10 +230,10 @@
     {
         if (_all is null) return;
         var sb = new StringBuilder();
-        sb.AppendLine("Account No,Account Name,Type,Category,Currency,Postable,Normal Balance,Status");
+        sb.AppendLine("Account No,Account Name,Type,Category,P&L Section,Currency,Postable,Normal Balance,Status");
         foreach (var a in _all.OrderBy(a => a.Code))
             sb.AppendLine(string.Join(",",
-                Csv(a.Code), Csv(a.Name), Csv(TypeLabel(a.Type)), Csv(a.Category), Csv(a.Currency),
+                Csv(a.Code), Csv(a.Name), Csv(TypeLabel(a.Type)), Csv(a.Category), Csv(a.PnlSection is { } s ? PnlSectionLabel(s) : null), Csv(a.Currency),
                 a.IsPostable ? "Yes" : "Header",
                 a.IsPostable ? (a.NormalBalance == NormalBalance.Debit ? "Dr" : "Cr") : "",
                 a.IsPostable ? (a.IsActive ? "Active" : "Inactive") : "Header"));
@@ -252,6 +253,16 @@
     }
 
     private static string TypeLabel(AccountType t) => t == AccountType.Income ? "Revenue" : t.ToString();
+
+    private static string PnlSectionLabel(PnlSection s) => s switch
+    {
+        PnlSection.OperatingIncome => "Operating Income",
+        PnlSection.CostOfGoodsSold => "Cost of Goods Sold",
+        PnlSection.OperatingExpense => "Operating Expense",
+        PnlSection.NonOperatingIncome => "Non-Operating Income",
+        PnlSection.NonOperatingExpense => "Non-Operating Expense",
+        _ => s.ToString(),
+    };
 
     private record CoaRow(Account Acc, int Level, bool HasChildren);
 }

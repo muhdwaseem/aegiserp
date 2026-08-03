@@ -7,7 +7,8 @@ namespace AegisErp.Infrastructure.Services;
 /// <summary>Everything the "New Account" form collects.</summary>
 public record NewAccountInput(
     string Code, string Name, AccountType Type, bool IsPostable,
-    string? Category, string Currency, int? ParentId, string? Description, decimal OpeningBalance);
+    string? Category, string Currency, int? ParentId, string? Description, decimal OpeningBalance,
+    PnlSection? PnlSection = null);
 
 public class ChartOfAccountsService
 {
@@ -90,6 +91,7 @@ public class ChartOfAccountsService
             Currency = string.IsNullOrWhiteSpace(input.Currency) ? "AED" : input.Currency.Trim(),
             Description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim(),
             IsActive = true,
+            PnlSection = input.PnlSection ?? DefaultPnlSection(input.Type),
         };
         db.Accounts.Add(account);
         await db.SaveChangesAsync(); // assigns account.Id
@@ -131,7 +133,8 @@ public class ChartOfAccountsService
     /// instead of silently overwriting their edit.
     /// </summary>
     public async Task<Account> UpdateAsync(int id, string name, string? category, string currency,
-        int? parentId, string? description, bool isActive, Guid expectedRowVersion, string updatedBy)
+        int? parentId, string? description, bool isActive, Guid expectedRowVersion, string updatedBy,
+        PnlSection? pnlSection = null)
     {
         name = name.Trim();
         if (string.IsNullOrWhiteSpace(name)) throw new PostingException("Account name is required.");
@@ -147,6 +150,9 @@ public class ChartOfAccountsService
         acc.ParentId = parentId;
         acc.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         acc.IsActive = isActive;
+        acc.PnlSection = acc.Type is AccountType.Income or AccountType.Expense
+            ? pnlSection ?? acc.PnlSection ?? DefaultPnlSection(acc.Type)
+            : null;
         acc.UpdatedBy = updatedBy;
         acc.UpdatedAtUtc = DateTime.UtcNow;
         acc.RowVersion = Guid.NewGuid();
@@ -155,6 +161,15 @@ public class ChartOfAccountsService
         await JournalPoster.SaveChangesTranslatedAsync(db);
         return acc;
     }
+
+    /// <summary>The sensible default P&amp;L section for a newly created account of this type — Cost
+    /// of Goods Sold is never auto-assigned; the user picks it explicitly when it applies.</summary>
+    private static PnlSection? DefaultPnlSection(AccountType type) => type switch
+    {
+        AccountType.Income => PnlSection.OperatingIncome,
+        AccountType.Expense => PnlSection.OperatingExpense,
+        _ => null,
+    };
 
     /// <summary>
     /// Deletes an account, but only if nothing references it — sub-accounts, ledger entries,

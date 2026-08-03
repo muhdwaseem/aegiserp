@@ -4,111 +4,186 @@
 
 <PageTitle>P&amp;L Statement · Aegis ERP</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
-    <MudText Typo="Typo.h5">Profit &amp; Loss Statement</MudText>
-    <MudSpacer />
-    @if (_periods is not null)
-    {
-        <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="Period" Dense="true" Style="max-width:220px">
-            @foreach (var p in _periods)
-            {
-                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
-            }
-        </MudSelect>
-    }
-    <div style="max-width:160px">
-        <MudDatePicker @bind-Date="_fromDate" Label="From" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
-    </div>
-    <div style="max-width:160px">
-        <MudDatePicker @bind-Date="_toDate" Label="To" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
-    </div>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="Load">Run</MudButton>
-</MudStack>
-
-@if (_pnl is not null)
+<MudText Typo="Typo.h5">Profit &amp; Loss Statement</MudText>
+@if (_fromDate is { } f && _toDate is { } t)
 {
-    <MudPaper Elevation="1">
-        <MudTable Items="_pnl.Income" Dense="true" Bordered="false" Elevation="0">
-            <HeaderContent>
-                <MudTh>Income</MudTh>
-                <MudTh Style="text-align:right">This Period</MudTh>
-                <MudTh Style="text-align:right">YTD</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd><AccountLink AccountId="context.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</AccountLink></MudTd>
-                <MudTd Style="text-align:right" Class="mud-success-text">@context.Period.ToString("N2")</MudTd>
-                <MudTd Style="text-align:right" Class="mud-success-text">@context.Ytd.ToString("N2")</MudTd>
-            </RowTemplate>
-            <FooterContent>
-                <MudTh><b>Total Income</b></MudTh>
-                <MudTh Style="text-align:right"><b>@_pnl.IncomePeriod.ToString("N2")</b></MudTh>
-                <MudTh Style="text-align:right"><b>@_pnl.IncomeYtd.ToString("N2")</b></MudTh>
-            </FooterContent>
-        </MudTable>
-
-        <MudDivider />
-
-        <MudTable Items="_pnl.Expenses" Dense="true" Bordered="false" Elevation="0" Class="mt-2">
-            <HeaderContent>
-                <MudTh>Expenses</MudTh>
-                <MudTh Style="text-align:right">This Period</MudTh>
-                <MudTh Style="text-align:right">YTD</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd><AccountLink AccountId="context.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</AccountLink></MudTd>
-                <MudTd Style="text-align:right" Class="mud-error-text">@context.Period.ToString("N2")</MudTd>
-                <MudTd Style="text-align:right" Class="mud-error-text">@context.Ytd.ToString("N2")</MudTd>
-            </RowTemplate>
-            <FooterContent>
-                <MudTh><b>Total Expenses</b></MudTh>
-                <MudTh Style="text-align:right"><b>@_pnl.ExpensePeriod.ToString("N2")</b></MudTh>
-                <MudTh Style="text-align:right"><b>@_pnl.ExpenseYtd.ToString("N2")</b></MudTh>
-            </FooterContent>
-        </MudTable>
-
-        <div class="pnl-net">
-            <div>
-                <div class="lbl">Net Profit (Period)</div>
-                <div class="val @(_pnl.NetPeriod >= 0 ? "pos" : "neg")">AED @_pnl.NetPeriod.ToString("N2")</div>
-            </div>
-            <div>
-                <div class="lbl">Net Profit (YTD)</div>
-                <div class="val @(_pnl.NetYtd >= 0 ? "pos" : "neg")">AED @_pnl.NetYtd.ToString("N2")</div>
-            </div>
-        </div>
-    </MudPaper>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">From @f.ToString("dd MMM yyyy") To @t.ToString("dd MMM yyyy")</MudText>
 }
 
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+    <MudSelect T="string" Value="_preset" ValueChanged="OnPresetChanged" Label="Date Range" Dense="true" Style="max-width:200px">
+        @foreach (var p in Presets)
+        {
+            <MudSelectItem Value="p">@p</MudSelectItem>
+        }
+    </MudSelect>
+    @if (_preset == "Custom")
+    {
+        <div style="max-width:160px">
+            <MudDatePicker @bind-Date="_fromDate" Label="From" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+        </div>
+        <div style="max-width:160px">
+            <MudDatePicker @bind-Date="_toDate" Label="To" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="Load">Run</MudButton>
+    }
+    <MudSpacer />
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Report Basis: <b>Accrual</b></MudText>
+</MudStack>
+
+<MudTabs Elevation="0" Class="mb-3">
+    <MudTabPanel Text="Report View">
+        @if (_pnl is not null)
+        {
+            <MudPaper Elevation="1">
+                @PnlSectionTable("Operating Income", _pnl.OperatingIncome, "Total for Operating Income", _pnl.OperatingIncomePeriod, _pnl.OperatingIncomeYtd, "mud-success-text")
+                <MudDivider />
+                @PnlSectionTable("Cost of Goods Sold", _pnl.CostOfGoodsSold, "Total for Cost of Goods Sold", _pnl.CostOfGoodsSoldPeriod, _pnl.CostOfGoodsSoldYtd, "mud-error-text")
+
+                <div class="pnl-subtotal">
+                    <span>Gross Profit</span>
+                    <span>@_pnl.GrossProfitPeriod.ToString("N2")</span>
+                    <span>@_pnl.GrossProfitYtd.ToString("N2")</span>
+                </div>
+
+                <MudDivider />
+                @PnlSectionTable("Operating Expense", _pnl.OperatingExpense, "Total for Operating Expense", _pnl.OperatingExpensePeriod, _pnl.OperatingExpenseYtd, "mud-error-text")
+
+                <div class="pnl-subtotal">
+                    <span>Operating Profit</span>
+                    <span>@_pnl.OperatingProfitPeriod.ToString("N2")</span>
+                    <span>@_pnl.OperatingProfitYtd.ToString("N2")</span>
+                </div>
+
+                <MudDivider />
+                @PnlSectionTable("Non Operating Income", _pnl.NonOperatingIncome, "Total for Non Operating Income", _pnl.NonOperatingIncomePeriod, _pnl.NonOperatingIncomeYtd, "mud-success-text")
+                <MudDivider />
+                @PnlSectionTable("Non Operating Expense", _pnl.NonOperatingExpense, "Total for Non Operating Expense", _pnl.NonOperatingExpensePeriod, _pnl.NonOperatingExpenseYtd, "mud-error-text")
+
+                <div class="pnl-net">
+                    <div>
+                        <div class="lbl">Net Profit (Selected Period)</div>
+                        <div class="val @(_pnl.NetProfitPeriod >= 0 ? "pos" : "neg")">AED @_pnl.NetProfitPeriod.ToString("N2")</div>
+                    </div>
+                    <div>
+                        <div class="lbl">Net Profit (Cumulative to Date)</div>
+                        <div class="val @(_pnl.NetProfitYtd >= 0 ? "pos" : "neg")">AED @_pnl.NetProfitYtd.ToString("N2")</div>
+                    </div>
+                </div>
+            </MudPaper>
+        }
+    </MudTabPanel>
+
+    <MudTabPanel Text="Chart View">
+        @if (_pnl is not null)
+        {
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle1" Class="mb-2">P&amp;L Breakdown <span style="font-size:11px;color:var(--mud-palette-text-secondary)">(AED, selected period)</span></MudText>
+                <MudChart ChartType="ChartType.Bar" ChartSeries="@ChartSeries()" XAxisLabels="@ChartLabels" Height="300px" ChartOptions="_chartOptions" />
+            </MudPaper>
+        }
+    </MudTabPanel>
+</MudTabs>
+
 @code {
-    private List<FiscalPeriod>? _periods;
-    private int _periodId;
+    private static readonly string[] Presets =
+    {
+        "Today", "This Week", "This Month", "Month To Date", "This Quarter", "Quarter To Date",
+        "This Year", "Year To Date", "Previous Day", "Previous Week", "Previous Month",
+        "Previous Quarter", "Previous Year", "Custom",
+    };
+
+    private static readonly string[] ChartLabels =
+        { "Operating Income", "COGS", "Operating Expense", "Non-Op Income", "Non-Op Expense" };
+
+    private readonly ChartOptions _chartOptions = new() { ChartPalette = new[] { "#2e86de", "#e74c3c", "#e74c3c", "#2e86de", "#e74c3c" } };
+
+    private string _preset = "This Month";
     private DateTime? _fromDate;
     private DateTime? _toDate;
     private ProfitAndLoss? _pnl;
 
     protected override async Task OnInitializedAsync()
     {
-        _periods = await Ledger.GetPeriodsAsync();
-        var defaultPeriod = await Ledger.GetDefaultPeriodAsync(DateOnly.FromDateTime(DateTime.Today))
-                             ?? _periods.LastOrDefault();
-        _periodId = defaultPeriod?.Id ?? 0;
-        _fromDate = defaultPeriod?.StartDate.ToDateTime(TimeOnly.MinValue);
-        _toDate = defaultPeriod?.EndDate.ToDateTime(TimeOnly.MinValue);
+        ApplyPreset(_preset);
         await Load();
     }
 
-    /// <summary>Picking a period is a quick-select convenience: it just sets the From/To range,
-    /// which is what actually drives the report — so it can still be overridden freely afterwards.</summary>
-    private async Task OnPeriodChanged(int id)
+    private async Task OnPresetChanged(string preset)
     {
-        _periodId = id;
-        var period = _periods?.FirstOrDefault(p => p.Id == id);
-        if (period is not null)
+        ApplyPreset(preset);
+        if (preset != "Custom") await Load();
+    }
+
+    /// <summary>Computes From/To for every preset except Custom, which leaves whatever the user
+    /// last set in the date pickers untouched.</summary>
+    private void ApplyPreset(string preset)
+    {
+        _preset = preset;
+        var today = DateTime.Today;
+        int isoDow = today.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)today.DayOfWeek; // Monday = 1
+        var thisWeekStart = today.AddDays(1 - isoDow);
+        int quarterStartMonth = ((today.Month - 1) / 3) * 3 + 1;
+        var thisQuarterStart = new DateTime(today.Year, quarterStartMonth, 1);
+
+        switch (preset)
         {
-            _fromDate = period.StartDate.ToDateTime(TimeOnly.MinValue);
-            _toDate = period.EndDate.ToDateTime(TimeOnly.MinValue);
+            case "Today":
+                _fromDate = _toDate = today;
+                break;
+            case "This Week":
+                _fromDate = thisWeekStart;
+                _toDate = thisWeekStart.AddDays(6);
+                break;
+            case "This Month":
+                _fromDate = new DateTime(today.Year, today.Month, 1);
+                _toDate = _fromDate.Value.AddMonths(1).AddDays(-1);
+                break;
+            case "Month To Date":
+                _fromDate = new DateTime(today.Year, today.Month, 1);
+                _toDate = today;
+                break;
+            case "This Quarter":
+                _fromDate = thisQuarterStart;
+                _toDate = thisQuarterStart.AddMonths(3).AddDays(-1);
+                break;
+            case "Quarter To Date":
+                _fromDate = thisQuarterStart;
+                _toDate = today;
+                break;
+            case "This Year":
+                _fromDate = new DateTime(today.Year, 1, 1);
+                _toDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "Year To Date":
+                _fromDate = new DateTime(today.Year, 1, 1);
+                _toDate = today;
+                break;
+            case "Previous Day":
+                _fromDate = _toDate = today.AddDays(-1);
+                break;
+            case "Previous Week":
+                var prevWeekStart = thisWeekStart.AddDays(-7);
+                _fromDate = prevWeekStart;
+                _toDate = prevWeekStart.AddDays(6);
+                break;
+            case "Previous Month":
+                var prevMonth = today.AddMonths(-1);
+                _fromDate = new DateTime(prevMonth.Year, prevMonth.Month, 1);
+                _toDate = _fromDate.Value.AddMonths(1).AddDays(-1);
+                break;
+            case "Previous Quarter":
+                var prevQuarterStart = thisQuarterStart.AddMonths(-3);
+                _fromDate = prevQuarterStart;
+                _toDate = prevQuarterStart.AddMonths(3).AddDays(-1);
+                break;
+            case "Previous Year":
+                _fromDate = new DateTime(today.Year - 1, 1, 1);
+                _toDate = new DateTime(today.Year - 1, 12, 31);
+                break;
+            case "Custom":
+                break;
         }
-        await Load();
     }
 
     private async Task Load()
@@ -116,9 +191,48 @@
         if (_fromDate is not { } from || _toDate is not { } to) return;
         _pnl = await Ledger.GetProfitAndLossAsync(DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
     }
+
+    private List<ChartSeries> ChartSeries()
+    {
+        var p = _pnl!;
+        return new List<ChartSeries>
+        {
+            new()
+            {
+                Name = "Amount",
+                Data = new double[]
+                {
+                    (double)p.OperatingIncomePeriod, (double)p.CostOfGoodsSoldPeriod, (double)p.OperatingExpensePeriod,
+                    (double)p.NonOperatingIncomePeriod, (double)p.NonOperatingExpensePeriod,
+                },
+            },
+        };
+    }
+
+    private RenderFragment PnlSectionTable(string title, IReadOnlyList<PnlLine> lines, string totalLabel,
+        decimal totalPeriod, decimal totalYtd, string amountClass) =>
+        @<MudTable Items="lines" Dense="true" Bordered="false" Elevation="0" Class="mt-2">
+            <HeaderContent>
+                <MudTh>@title</MudTh>
+                <MudTh Style="text-align:right">This Period</MudTh>
+                <MudTh Style="text-align:right">Cumulative to Date</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><AccountLink AccountId="context.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@context.Code</span> @context.Name</AccountLink></MudTd>
+                <MudTd Style="text-align:right" Class="@amountClass">@context.Period.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right" Class="@amountClass">@context.Ytd.ToString("N2")</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                <MudTh><b>@totalLabel</b></MudTh>
+                <MudTh Style="text-align:right"><b>@totalPeriod.ToString("N2")</b></MudTh>
+                <MudTh Style="text-align:right"><b>@totalYtd.ToString("N2")</b></MudTh>
+            </FooterContent>
+        </MudTable>;
 }
 
 <style>
+    .pnl-subtotal { display:flex; justify-content:space-between; padding:8px 16px; font-weight:700; background:var(--mud-palette-background-grey); }
+    .pnl-subtotal span:not(:first-child) { min-width:120px; text-align:right; margin-left:24px; }
     .pnl-net { display:flex; gap:32px; flex-wrap:wrap; padding:16px; background:var(--mud-palette-background-grey); border-top:1px solid var(--mud-palette-lines-default); }
     .pnl-net .lbl { font-size:12px; color:var(--mud-palette-text-secondary); text-transform:uppercase; letter-spacing:.04em; }
     .pnl-net .val { font-size:20px; font-weight:700; }

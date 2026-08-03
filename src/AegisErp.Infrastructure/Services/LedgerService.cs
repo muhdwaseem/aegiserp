@@ -217,30 +217,19 @@ public class LedgerService
             .ToList();
     }
 
-    /// <summary>Profit &amp; loss for a period, with cumulative year-to-date (to period end) alongside.</summary>
-    public async Task<ProfitAndLoss> GetProfitAndLossAsync(int periodId)
-    {
-        await using var db = await _dbf.CreateDbContextAsync();
-        var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
-        return await BuildProfitAndLossAsync(db, period.StartDate, period.EndDate, period.Name);
-    }
-
-    /// <summary>Profit &amp; loss for an arbitrary date range, with cumulative to-date (to the range's
-    /// end date) alongside — the From/To filter on the P&amp;L page.</summary>
+    /// <summary>Sectioned profit &amp; loss for an arbitrary date range (Operating/Non-Operating
+    /// Income, Cost of Goods Sold, Operating Expense), with cumulative to-date (to the range's end
+    /// date) alongside — the Date Range filter on the P&amp;L page.</summary>
     public async Task<ProfitAndLoss> GetProfitAndLossAsync(DateOnly fromDate, DateOnly toDate)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        return await BuildProfitAndLossAsync(db, fromDate, toDate, $"{fromDate:dd MMM yyyy} – {toDate:dd MMM yyyy}");
-    }
-
-    private static async Task<ProfitAndLoss> BuildProfitAndLossAsync(AegisDbContext db, DateOnly fromDate, DateOnly toDate, string label)
-    {
         var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
         var lines = await PostedLinesAsync(db);
+        var label = $"{fromDate:dd MMM yyyy} – {toDate:dd MMM yyyy}";
 
         // sign: income is credit-normal (flip), expense is debit-normal.
-        List<PnlLine> Build(AccountType type, decimal sign) =>
-            accounts.Values.Where(a => a.Type == type)
+        List<PnlLine> Build(PnlSection section, decimal sign) =>
+            accounts.Values.Where(a => EffectiveSection(a) == section)
                 .Select(a =>
                 {
                     var forAcct = lines.Where(l => l.AccountId == a.Id);
@@ -252,13 +241,29 @@ public class LedgerService
                 .OrderBy(l => l.Code)
                 .ToList();
 
-        var income = Build(AccountType.Income, -1m);
-        var expenses = Build(AccountType.Expense, 1m);
+        var operatingIncome = Build(PnlSection.OperatingIncome, -1m);
+        var cogs = Build(PnlSection.CostOfGoodsSold, 1m);
+        var operatingExpense = Build(PnlSection.OperatingExpense, 1m);
+        var nonOperatingIncome = Build(PnlSection.NonOperatingIncome, -1m);
+        var nonOperatingExpense = Build(PnlSection.NonOperatingExpense, 1m);
 
-        return new ProfitAndLoss(label, income, expenses,
-            income.Sum(l => l.Period), income.Sum(l => l.Ytd),
-            expenses.Sum(l => l.Period), expenses.Sum(l => l.Ytd));
+        return new ProfitAndLoss(label, operatingIncome, cogs, operatingExpense, nonOperatingIncome, nonOperatingExpense,
+            operatingIncome.Sum(l => l.Period), operatingIncome.Sum(l => l.Ytd),
+            cogs.Sum(l => l.Period), cogs.Sum(l => l.Ytd),
+            operatingExpense.Sum(l => l.Period), operatingExpense.Sum(l => l.Ytd),
+            nonOperatingIncome.Sum(l => l.Period), nonOperatingIncome.Sum(l => l.Ytd),
+            nonOperatingExpense.Sum(l => l.Period), nonOperatingExpense.Sum(l => l.Ytd));
     }
+
+    /// <summary>An account's P&amp;L section, falling back to the type-level default (Operating
+    /// Income/Expense) for the rare Income/Expense account that predates this classification and
+    /// hasn't been reclassified yet.</summary>
+    private static PnlSection? EffectiveSection(Account a) => a.PnlSection ?? a.Type switch
+    {
+        AccountType.Income => PnlSection.OperatingIncome,
+        AccountType.Expense => PnlSection.OperatingExpense,
+        _ => null,
+    };
 
     /// <summary>Balance sheet as at the period end. Current-year earnings roll into equity so it balances.</summary>
     public async Task<BalanceSheet> GetBalanceSheetAsync(int periodId)
