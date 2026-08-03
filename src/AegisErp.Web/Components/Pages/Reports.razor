@@ -1,6 +1,7 @@
 @page "/reports"
 @attribute [Authorize]
 @inject ReportsService ReportSvc
+@inject CompanyService CompanySvc
 
 <PageTitle>MIS &amp; Segment Reports · Aegis ERP</PageTitle>
 
@@ -29,6 +30,10 @@
                 <MudSelectItem Value="ReportKind.SegmentPnl">Segment P&amp;L (by cost centre)</MudSelectItem>
                 <MudSelectItem Value="ReportKind.CustomerRevenue">Customer-wise Revenue</MudSelectItem>
                 <MudSelectItem Value="ReportKind.VendorSpend">Vendor-wise Spend</MudSelectItem>
+                @if (_salespersonEnabled)
+                {
+                    <MudSelectItem Value="ReportKind.SalespersonRevenue">Salesperson Revenue</MudSelectItem>
+                }
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="3"><MudDatePicker @bind-Date="_from" Label="Period from" /></MudItem>
@@ -75,7 +80,32 @@
     </MudText>
 }
 
-@if (_kind != ReportKind.SegmentPnl && _parties is not null)
+@if (_kind == ReportKind.SalespersonRevenue && _salespeople is not null)
+{
+    <MudTable Items="_salespeople" Dense="true" Hover="true" Striped="true" Bordered="true">
+        <HeaderContent>
+            <MudTh>Salesperson</MudTh>
+            <MudTh Style="text-align:right">Documents</MudTh>
+            <MudTh Style="text-align:right">Revenue (excl. VAT)</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Salesperson</MudTd>
+            <MudTd Style="text-align:right">@context.DocumentCount</MudTd>
+            <MudTd Style="text-align:right;font-weight:600">@context.Amount.ToString("N2")</MudTd>
+        </RowTemplate>
+        <FooterContent>
+            <MudTh><b>Total (AED)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_salespeople.Sum(r => r.DocumentCount)</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_salespeople.Sum(r => r.Amount).ToString("N2")</b></MudTh>
+        </FooterContent>
+        <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No documents posted in this range.</MudText></NoRecordsContent>
+    </MudTable>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
+        Each document is attributed to whoever owned its customer on the document's own date, not the customer's current salesperson — a later reassignment never rewrites past attribution.
+    </MudText>
+}
+
+@if (_kind is ReportKind.CustomerRevenue or ReportKind.VendorSpend && _parties is not null)
 {
     <MudTable Items="_parties" Dense="true" Hover="true" Striped="true" Bordered="true">
         <HeaderContent>
@@ -105,7 +135,7 @@
 @code {
     [Inject] private NavigationManager Navigation { get; set; } = default!;
 
-    public enum ReportKind { SegmentPnl, CustomerRevenue, VendorSpend }
+    public enum ReportKind { SegmentPnl, CustomerRevenue, VendorSpend, SalespersonRevenue }
 
     private record QuickLink(string Title, string Subtitle, string Icon, string Href);
 
@@ -123,11 +153,23 @@
     private DateTime? _from = new DateTime(DateTime.Today.Year, 1, 1);
     private DateTime? _to = DateTime.Today;
     private bool _loading;
+    private bool _salespersonEnabled;
 
     private List<SegmentPnlRow>? _segments;
     private List<PartyAmountRow>? _parties;
+    private List<SalespersonRevenueRow>? _salespeople;
 
-    protected override async Task OnInitializedAsync() => await Run();
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var company = await CompanySvc.GetAsync();
+            _salespersonEnabled = company.SalespersonEnabled;
+        }
+        catch (PostingException) { _salespersonEnabled = false; }
+
+        await Run();
+    }
 
     private void Nav(string href) => Navigation.NavigateTo(href);
 
@@ -142,17 +184,21 @@
             var from = DateOnly.FromDateTime(_from ?? DateTime.Today.AddYears(-1));
             var to = DateOnly.FromDateTime(_to ?? DateTime.Today);
 
-            if (_kind == ReportKind.SegmentPnl)
+            _segments = null; _parties = null; _salespeople = null;
+            switch (_kind)
             {
-                _segments = await ReportSvc.GetSegmentPnlAsync(from, to);
-                _parties = null;
-            }
-            else
-            {
-                _parties = _kind == ReportKind.CustomerRevenue
-                    ? await ReportSvc.GetCustomerRevenueAsync(from, to)
-                    : await ReportSvc.GetVendorSpendAsync(from, to);
-                _segments = null;
+                case ReportKind.SegmentPnl:
+                    _segments = await ReportSvc.GetSegmentPnlAsync(from, to);
+                    break;
+                case ReportKind.CustomerRevenue:
+                    _parties = await ReportSvc.GetCustomerRevenueAsync(from, to);
+                    break;
+                case ReportKind.VendorSpend:
+                    _parties = await ReportSvc.GetVendorSpendAsync(from, to);
+                    break;
+                case ReportKind.SalespersonRevenue:
+                    _salespeople = await ReportSvc.GetSalespersonRevenueAsync(from, to);
+                    break;
             }
         }
         finally { _loading = false; }

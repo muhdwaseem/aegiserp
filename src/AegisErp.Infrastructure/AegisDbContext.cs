@@ -71,6 +71,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<TagGroup> TagGroups => Set<TagGroup>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
+    public DbSet<SalespersonAssignmentHistory> SalespersonAssignmentHistories => Set<SalespersonAssignmentHistory>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -187,6 +188,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasMany(c => c.Documents).WithOne(d => d.Customer).HasForeignKey(d => d.CustomerId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(c => c.CustomFieldValues).WithOne(v => v.Customer).HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(c => c.Tags).WithOne(t => t.Customer).HasForeignKey(t => t.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.SalespersonHistory).WithOne(h => h.Customer).HasForeignKey(h => h.CustomerId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<CustomerContactPerson>(e =>
@@ -236,6 +238,13 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         b.Entity<CustomerTag>(e =>
         {
             e.HasOne(t => t.Tag).WithMany().HasForeignKey(t => t.TagId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<SalespersonAssignmentHistory>(e =>
+        {
+            e.Property(h => h.PreviousSalesperson).HasMaxLength(100);
+            e.Property(h => h.NewSalesperson).HasMaxLength(100);
+            e.Property(h => h.ChangedBy).HasMaxLength(80);
         });
 
         b.Entity<SalesInvoice>(e =>

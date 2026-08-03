@@ -74,7 +74,9 @@ public class CustomerService
         NewCustomerInput input,
         IEnumerable<ContactPersonInput>? contactPersons = null,
         IEnumerable<CustomFieldValueInput>? customFieldValues = null,
-        IEnumerable<int>? tagIds = null)
+        IEnumerable<int>? tagIds = null,
+        string changedBy = "System Admin",
+        DateTime? nowUtc = null)
     {
         ValidateHeader(input);
 
@@ -88,6 +90,7 @@ public class CustomerService
                 max = n;
 
         var customer = new Customer { Code = $"C-{max + 1:0000}" };
+        LogSalespersonChangeIfNeeded(customer, input.Salesperson, changedBy, nowUtc ?? DateTime.UtcNow);
         ApplyScalarFields(customer, input);
         foreach (var p in BuildContactPersons(contactPersons ?? Enumerable.Empty<ContactPersonInput>()))
             customer.ContactPersons.Add(p);
@@ -106,7 +109,9 @@ public class CustomerService
         int id, NewCustomerInput input,
         IEnumerable<ContactPersonInput>? contactPersons = null,
         IEnumerable<CustomFieldValueInput>? customFieldValues = null,
-        IEnumerable<int>? tagIds = null)
+        IEnumerable<int>? tagIds = null,
+        string changedBy = "System Admin",
+        DateTime? nowUtc = null)
     {
         ValidateHeader(input);
 
@@ -116,6 +121,7 @@ public class CustomerService
             .FirstOrDefaultAsync(c => c.Id == id)
             ?? throw new PostingException("Customer not found.");
 
+        LogSalespersonChangeIfNeeded(customer, input.Salesperson, changedBy, nowUtc ?? DateTime.UtcNow);
         ApplyScalarFields(customer, input);
 
         customer.ContactPersons.Clear();
@@ -129,6 +135,39 @@ public class CustomerService
         await ValidateAndBuildTagsAsync(db, tagIds ?? Enumerable.Empty<int>(), customer.Tags);
 
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>Ordered history of this customer's salesperson reassignments (oldest first), for an
+    /// audit-trail display and for time-correct revenue attribution reports.</summary>
+    public async Task<List<SalespersonAssignmentHistory>> GetSalespersonHistoryAsync(int customerId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.SalespersonAssignmentHistories.AsNoTracking()
+            .Where(h => h.CustomerId == customerId)
+            .OrderBy(h => h.ChangedAtUtc).ThenBy(h => h.Id)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// Appends a <see cref="SalespersonAssignmentHistory"/> row when <paramref name="newValue"/>
+    /// (after trimming) actually differs from the customer's current <see cref="Customer.Salesperson"/>
+    /// — including the very first assignment (<c>customer.Salesperson</c> is still null/default at
+    /// this point, since this runs before <see cref="ApplyScalarFields"/>), so a report built on this
+    /// history never has to special-case "no history exists yet."
+    /// </summary>
+    private static void LogSalespersonChangeIfNeeded(Customer customer, string? newValue, string changedBy, DateTime nowUtc)
+    {
+        var previous = customer.Salesperson;
+        var next = Trim(newValue);
+        if (string.Equals(previous, next, StringComparison.Ordinal)) return;
+
+        customer.SalespersonHistory.Add(new SalespersonAssignmentHistory
+        {
+            PreviousSalesperson = previous,
+            NewSalesperson = next,
+            ChangedAtUtc = nowUtc,
+            ChangedBy = string.IsNullOrWhiteSpace(changedBy) ? "System Admin" : changedBy.Trim(),
+        });
     }
 
     private static void ValidateHeader(NewCustomerInput input)

@@ -135,4 +135,58 @@ public class ReportsTests : IDisposable
 
         Assert.Equal(850m, rows.Single(r => r.Code == _db.Customer.Code).Amount); // 1000 − 150
     }
+
+    // --- Salesperson revenue: attribution follows who owned the customer on each document's own date ---
+
+    [Fact]
+    public async Task Salesperson_revenue_credits_each_invoice_to_whoever_owned_the_customer_at_the_time()
+    {
+        var customers = new CustomerService(_db);
+
+        // Alice owns the customer from 1 May; an invoice on 10 May is hers.
+        await customers.UpdateAsync(_db.Customer.Id,
+            new NewCustomerInput(_db.Customer.Name, null, "AED", 0, 30, null, null, null, null, "Alice"),
+            changedBy: "tester", nowUtc: new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc));
+        await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, _db.CostCenter.Id, 1, 1000, 0.05m) }, Now);
+
+        // Ownership moves to Bob on 1 June; an invoice on 10 June is his — not retroactively Alice's or Bob's for the May one.
+        await customers.UpdateAsync(_db.Customer.Id,
+            new NewCustomerInput(_db.Customer.Name, null, "AED", 0, 30, null, null, null, null, "Bob"),
+            changedBy: "tester", nowUtc: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+        await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 6, 10), _db.Jun.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", _db.Revenue.Id, _db.CostCenter.Id, 1, 2000, 0.05m) }, Now);
+
+        var rows = await _reports.GetSalespersonRevenueAsync(new(2026, 1, 1), new(2026, 12, 31));
+
+        Assert.Equal(1000m, rows.Single(r => r.Salesperson == "Alice").Amount);
+        Assert.Equal(2000m, rows.Single(r => r.Salesperson == "Bob").Amount);
+    }
+
+    [Fact]
+    public async Task Salesperson_revenue_groups_customers_with_no_history_under_their_current_assignment()
+    {
+        // _db.Customer is seeded directly (bypassing CustomerService), so it has no history rows at all.
+        await using (var db = _db.CreateUnscopedDbContext())
+        {
+            var customer = await db.Customers.FindAsync(_db.Customer.Id);
+            customer!.Salesperson = "Carol";
+            await db.SaveChangesAsync();
+        }
+        await PostSale(price: 500);
+
+        var rows = await _reports.GetSalespersonRevenueAsync(new(2026, 5, 1), new(2026, 5, 31));
+
+        Assert.Equal(500m, rows.Single(r => r.Salesperson == "Carol").Amount);
+    }
+
+    [Fact]
+    public async Task Salesperson_revenue_groups_customers_with_no_salesperson_as_unassigned()
+    {
+        await PostSale(price: 300);
+
+        var rows = await _reports.GetSalespersonRevenueAsync(new(2026, 5, 1), new(2026, 5, 31));
+
+        Assert.Equal(300m, rows.Single(r => r.Salesperson == "Unassigned").Amount);
+    }
 }

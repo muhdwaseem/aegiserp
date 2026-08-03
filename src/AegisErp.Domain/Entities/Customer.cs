@@ -105,6 +105,7 @@ public class Customer : ICompanyScoped
     public List<CustomerDocument> Documents { get; set; } = new();
     public List<CustomerCustomFieldValue> CustomFieldValues { get; set; } = new();
     public List<CustomerTag> Tags { get; set; } = new();
+    public List<SalespersonAssignmentHistory> SalespersonHistory { get; set; } = new();
 }
 
 /// <summary>One person to contact at this customer — a customer can have several (billing contact,
@@ -220,4 +221,27 @@ public class CustomerTag
 
     public int TagId { get; set; }
     public Tag Tag { get; set; } = null!;
+}
+
+/// <summary>
+/// One change to a customer's <see cref="Customer.Salesperson"/> assignment. Logged by
+/// <see cref="Services.CustomerService"/> whenever the value actually changes (including the very
+/// first assignment, so a report never has to special-case "no history yet"). Exists so revenue can
+/// later be attributed to whichever salesperson owned the customer on a given document's own date,
+/// not whoever owns it today.
+/// </summary>
+public class SalespersonAssignmentHistory
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+
+    /// <summary>Null means the customer had no salesperson before this change.</summary>
+    public string? PreviousSalesperson { get; set; }
+
+    /// <summary>Null means the salesperson was cleared/unassigned.</summary>
+    public string? NewSalesperson { get; set; }
+
+    public DateTime ChangedAtUtc { get; set; }
+    public string ChangedBy { get; set; } = "System Admin";
 }

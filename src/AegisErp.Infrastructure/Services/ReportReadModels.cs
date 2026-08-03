@@ -39,3 +39,10 @@ public record SegmentPnlRow(string Code, string Name, decimal Revenue, decimal E
 
 /// <summary>A customer's revenue or a vendor's spend over a date range (net of tax, net of credit/debit notes).</summary>
 public record PartyAmountRow(string Code, string Name, decimal Amount, int DocumentCount);
+
+/// <summary>
+/// Revenue attributed to whichever salesperson owned a customer on each document's own date — see
+/// <see cref="ReportsService.GetSalespersonRevenueAsync"/>. "Unassigned" groups documents whose
+/// customer had no salesperson at the time.
+/// </summary>
+public record SalespersonRevenueRow(string Salesperson, decimal Amount, int DocumentCount);

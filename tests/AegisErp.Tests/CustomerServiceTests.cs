@@ -232,4 +232,60 @@ public class CustomerServiceTests : IDisposable
         Assert.Equal("Alice", c.Salesperson);
         Assert.Equal(CustomerType.Business, c.CustomerType); // default preserved
     }
+
+    [Fact]
+    public async Task Assigning_a_salesperson_at_creation_logs_one_history_row()
+    {
+        var c = await _customers.CreateAsync(MinimalInput() with { Salesperson = "Alice" }, changedBy: "tester", nowUtc: Now);
+
+        var history = await _customers.GetSalespersonHistoryAsync(c.Id);
+        var row = Assert.Single(history);
+        Assert.Null(row.PreviousSalesperson);
+        Assert.Equal("Alice", row.NewSalesperson);
+        Assert.Equal("tester", row.ChangedBy);
+    }
+
+    [Fact]
+    public async Task Creating_without_a_salesperson_logs_nothing()
+    {
+        var c = await _customers.CreateAsync(MinimalInput(), changedBy: "tester", nowUtc: Now);
+        Assert.Empty(await _customers.GetSalespersonHistoryAsync(c.Id));
+    }
+
+    [Fact]
+    public async Task Changing_the_salesperson_on_update_logs_a_new_row()
+    {
+        var c = await _customers.CreateAsync(MinimalInput() with { Salesperson = "Alice" }, changedBy: "tester", nowUtc: Now);
+        await _customers.UpdateAsync(c.Id, MinimalInput() with { Salesperson = "Bob" }, changedBy: "manager", nowUtc: Now.AddDays(30));
+
+        var history = await _customers.GetSalespersonHistoryAsync(c.Id);
+        Assert.Equal(2, history.Count);
+        var change = history[1];
+        Assert.Equal("Alice", change.PreviousSalesperson);
+        Assert.Equal("Bob", change.NewSalesperson);
+        Assert.Equal("manager", change.ChangedBy);
+    }
+
+    [Fact]
+    public async Task Updating_to_the_same_salesperson_logs_nothing()
+    {
+        var c = await _customers.CreateAsync(MinimalInput() with { Salesperson = "Alice" }, changedBy: "tester", nowUtc: Now);
+        await _customers.UpdateAsync(c.Id, MinimalInput() with { Salesperson = "Alice" }, changedBy: "tester", nowUtc: Now.AddDays(1));
+
+        Assert.Single(await _customers.GetSalespersonHistoryAsync(c.Id));
+    }
+
+    [Fact]
+    public async Task Clearing_the_salesperson_logs_a_row_with_a_null_new_value()
+    {
+        var c = await _customers.CreateAsync(MinimalInput() with { Salesperson = "Alice" }, changedBy: "tester", nowUtc: Now);
+        await _customers.UpdateAsync(c.Id, MinimalInput() with { Salesperson = null }, changedBy: "tester", nowUtc: Now.AddDays(1));
+
+        var history = await _customers.GetSalespersonHistoryAsync(c.Id);
+        Assert.Equal(2, history.Count);
+        Assert.Null(history[1].NewSalesperson);
+
+        var found = await _customers.GetByIdAsync(c.Id);
+        Assert.Null(found!.Salesperson);
+    }
 }

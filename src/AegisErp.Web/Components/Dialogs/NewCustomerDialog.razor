@@ -89,6 +89,18 @@
                             <MudSelectItem Value="@sp">@sp</MudSelectItem>
                         }
                     </MudSelect>
+                    @if (_salespersonHistory is { Count: > 0 })
+                    {
+                        <MudStack Class="mt-1" Spacing="0">
+                            @foreach (var h in _salespersonHistory)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                                    Changed from <b>@(h.PreviousSalesperson ?? "none")</b> to <b>@(h.NewSalesperson ?? "none")</b>
+                                    on @h.ChangedAtUtc.ToLocalTime().ToString("dd MMM yyyy") by @h.ChangedBy
+                                </MudText>
+                            }
+                        </MudStack>
+                    }
                 </MudItem>
             }
         </MudGrid>
@@ -258,6 +270,7 @@
 
 @code {
     [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Parameter] public Customer? Existing { get; set; }
 
     private bool IsEdit => Existing is not null;
@@ -279,6 +292,8 @@
     private string? _salesperson;
     private bool _salespersonEnabled;
     private List<string> _salespersons = new();
+    private List<SalespersonAssignmentHistory>? _salespersonHistory;
+    private string _userName = "System Admin";
 
     private TaxTreatment? _taxTreatment;
     private string? _placeOfSupply;
@@ -311,6 +326,9 @@
             _salespersons = company.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList();
         }
         catch (PostingException) { _salespersonEnabled = false; }
+
+        if (AuthState is not null)
+            _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
 
         _customFieldDefs = await CustomFieldSvc.GetDefinitionsAsync(CustomerService.Module, activeOnly: true);
         _tagGroups = await TagSvc.GetGroupsAsync(CustomerService.Module, activeOnly: true);
@@ -353,6 +371,8 @@
 
             foreach (var t in c.Tags)
                 _selectedTagByGroup[t.Tag.TagGroupId] = t.TagId;
+
+            _salespersonHistory = await CustomerSvc.GetSalespersonHistoryAsync(c.Id);
 
             _documents = await CustomerSvc.GetDocumentsAsync(c.Id);
         }
@@ -546,13 +566,13 @@
 
             if (IsEdit)
             {
-                await CustomerSvc.UpdateAsync(Existing!.Id, input, contactPersons, customFieldValues, tagIds);
+                await CustomerSvc.UpdateAsync(Existing!.Id, input, contactPersons, customFieldValues, tagIds, _userName);
                 Snackbar.Add($"Customer {Existing.Code} updated.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(Existing.Id));
             }
             else
             {
-                var c = await CustomerSvc.CreateAsync(input, contactPersons, customFieldValues, tagIds);
+                var c = await CustomerSvc.CreateAsync(input, contactPersons, customFieldValues, tagIds, _userName);
                 Snackbar.Add($"Customer {c.Code} created.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(c.Id));
             }

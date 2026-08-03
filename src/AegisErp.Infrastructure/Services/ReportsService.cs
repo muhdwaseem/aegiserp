@@ -151,6 +151,62 @@ public class ReportsService
             .ToList();
     }
 
+    /// <summary>
+    /// Revenue per salesperson over a date range, attributed to whichever salesperson owned each
+    /// document's customer on the document's own <see cref="SalesInvoice.Date"/> — never the
+    /// customer's current salesperson — so reassigning a customer later never retroactively changes
+    /// historical attribution. Customers with no salesperson-change history at all (predating this
+    /// feature, or that never had one recorded) fall back to their current assignment for every
+    /// document, since no finer-grained data exists for them.
+    /// </summary>
+    public async Task<List<SalespersonRevenueRow>> GetSalespersonRevenueAsync(DateOnly from, DateOnly to)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var customerById = await db.Customers.AsNoTracking()
+            .Include(c => c.SalespersonHistory)
+            .ToDictionaryAsync(c => c.Id);
+        var invoices = await db.SalesInvoices.AsNoTracking().Include(i => i.Lines)
+            .Where(i => i.Status == VoucherStatus.Posted && i.Date >= from && i.Date <= to).ToListAsync();
+        var credits = await db.CreditNotes.AsNoTracking().Include(n => n.Lines)
+            .Where(n => n.Status == VoucherStatus.Posted && n.Date >= from && n.Date <= to).ToListAsync();
+
+        string SalespersonFor(int customerId, DateOnly date)
+        {
+            if (!customerById.TryGetValue(customerId, out var c)) return "Unassigned";
+            var resolved = ResolveSalespersonAsOf(c.SalespersonHistory, c.Salesperson, date);
+            return string.IsNullOrWhiteSpace(resolved) ? "Unassigned" : resolved;
+        }
+
+        var totals = new Dictionary<string, (decimal Amount, int Count)>();
+        void Add(string salesperson, decimal amount)
+        {
+            var (a, c) = totals.GetValueOrDefault(salesperson);
+            totals[salesperson] = (a + amount, c + 1);
+        }
+
+        foreach (var i in invoices) Add(SalespersonFor(i.CustomerId, i.Date), i.TotalNet);
+        foreach (var n in credits) Add(SalespersonFor(n.CustomerId, n.Date), -n.TotalNet);
+
+        return totals
+            .Select(kv => new SalespersonRevenueRow(kv.Key, kv.Value.Amount, kv.Value.Count))
+            .OrderByDescending(r => r.Amount)
+            .ToList();
+    }
+
+    /// <summary>The salesperson who owned a customer on a specific date, derived from its assignment
+    /// history rather than its current value — null means the customer had no salesperson yet as of
+    /// that date. Customers with zero history rows (nothing ever recorded) fall back to
+    /// <paramref name="currentSalesperson"/> since there is no time-resolved data to use instead.</summary>
+    private static string? ResolveSalespersonAsOf(List<SalespersonAssignmentHistory> history, string? currentSalesperson, DateOnly asOf)
+    {
+        if (history.Count == 0) return currentSalesperson;
+        var applicable = history
+            .Where(h => DateOnly.FromDateTime(h.ChangedAtUtc) <= asOf)
+            .OrderByDescending(h => h.ChangedAtUtc).ThenByDescending(h => h.Id)
+            .FirstOrDefault();
+        return applicable?.NewSalesperson;
+    }
+
     /// <summary>Spend per vendor over a date range: posted purchase invoices net of debit notes, excluding VAT.</summary>
     public async Task<List<PartyAmountRow>> GetVendorSpendAsync(DateOnly from, DateOnly to)
     {
