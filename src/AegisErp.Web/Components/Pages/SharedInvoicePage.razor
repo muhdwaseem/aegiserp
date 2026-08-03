@@ -1,0 +1,51 @@
+@page "/shared-invoice/{Token}"
+@using AegisErp.Web.Components.Layout
+@layout PublicLayout
+@attribute [AllowAnonymous]
+@inject SalesInvoiceService InvoiceSvc
+@inject CompanyService CompanySvc
+
+<PageTitle>@(_invoice?.InvoiceNo ?? "Invoice") · Aegis ERP</PageTitle>
+
+@if (_loaded && _invoice is null)
+{
+    <MudContainer MaxWidth="MaxWidth.Small" Class="pa-8">
+        <MudAlert Severity="Severity.Error">This invoice link is invalid or no longer available.</MudAlert>
+    </MudContainer>
+}
+else if (_invoice is not null)
+{
+    <MudContainer MaxWidth="MaxWidth.Medium" Class="pa-4">
+        <SalesInvoicePrintout Invoice="_invoice" Company="_company" Balance="_balance" Status="_status" />
+    </MudContainer>
+}
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private SalesInvoice? _invoice;
+    private bool _loaded;
+    private CompanySetup? _company;
+    private decimal _balance;
+    private ArStatus _status;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _invoice = await InvoiceSvc.GetBySharedTokenAsync(Token);
+        _loaded = true;
+        if (_invoice is null) return;
+
+        var lineBalances = await InvoiceSvc.GetLineBalancesAsync(_invoice.Id);
+        var creditedTotal = await InvoiceSvc.GetCreditedTotalAsync(_invoice.Id);
+        _balance = _invoice.TotalGross - lineBalances.Sum(l => l.Allocated) - creditedTotal;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        _status = _invoice.Status switch
+        {
+            VoucherStatus.Draft => ArStatus.Draft,
+            VoucherStatus.Void => ArStatus.Void,
+            _ => _balance <= 0 ? ArStatus.Paid : _invoice.DueDate < today ? ArStatus.Overdue : ArStatus.Pending,
+        };
+
+        _company = await CompanySvc.GetByIdAsync(_invoice.CompanyId);
+    }
+}

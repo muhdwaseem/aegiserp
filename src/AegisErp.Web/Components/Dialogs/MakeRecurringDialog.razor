@@ -1,0 +1,79 @@
+@inject RecurringInvoiceService RecurringSvc
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Make Recurring</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
+            A new draft invoice — using this invoice's customer and lines — will be generated
+            automatically on each due date. Nothing is posted automatically; each generated invoice
+            still needs to be reviewed and posted.
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="RecurringFrequency" @bind-Value="_frequency" Label="Repeats">
+                    <MudSelectItem Value="RecurringFrequency.Weekly">Weekly</MudSelectItem>
+                    <MudSelectItem Value="RecurringFrequency.Monthly">Monthly</MudSelectItem>
+                    <MudSelectItem Value="RecurringFrequency.Quarterly">Quarterly</MudSelectItem>
+                    <MudSelectItem Value="RecurringFrequency.Yearly">Yearly</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="int" @bind-Value="_repeatEvery" Label="Every" Min="1" HideSpinButtons="true"
+                                  HelperText="@($"Every {_repeatEvery} {FrequencyUnit(_frequency, _repeatEvery)}")" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_startDate" Label="Start Date" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker @bind-Date="_endDate" Label="End Date" Clearable="true" HelperText="Leave blank to repeat indefinitely" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => MudDialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving" OnClick="Save">Create Recurring Profile</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter, EditorRequired] public int SourceInvoiceId { get; set; }
+
+    private RecurringFrequency _frequency = RecurringFrequency.Monthly;
+    private int _repeatEvery = 1;
+    private DateTime? _startDate = DateTime.Today;
+    private DateTime? _endDate;
+    private bool _saving;
+
+    private static string FrequencyUnit(RecurringFrequency f, int n) => f switch
+    {
+        RecurringFrequency.Weekly => n == 1 ? "week" : "weeks",
+        RecurringFrequency.Monthly => n == 1 ? "month" : "months",
+        RecurringFrequency.Quarterly => n == 1 ? "quarter" : "quarters",
+        RecurringFrequency.Yearly => n == 1 ? "year" : "years",
+        _ => "",
+    };
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            await RecurringSvc.CreateFromInvoiceAsync(SourceInvoiceId, _frequency, _repeatEvery,
+                DateOnly.FromDateTime(_startDate ?? DateTime.Today),
+                _endDate.HasValue ? DateOnly.FromDateTime(_endDate.Value) : null,
+                userName, DateTime.UtcNow);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+}

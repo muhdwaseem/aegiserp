@@ -1,0 +1,146 @@
+@* The printable invoice document itself — company header, Bill To, line items, totals, bank
+   details, notes and signature blocks. Deliberately has no actions/attachments/audit trail so it's
+   safe to reuse on the public, anonymous Share page as well as the authenticated detail panel. *@
+
+<MudPaper Class="pa-6 mb-4 invoice-printout" Elevation="1" Style="position:relative;overflow:hidden">
+    @if (Status == ArStatus.Overdue)
+    {
+        <div class="overdue-ribbon">Overdue</div>
+    }
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.h6">@Company?.LegalName</MudText>
+            @if (!string.IsNullOrWhiteSpace(Company?.AddressLine1))
+            {
+                <MudText Typo="Typo.body2">@Company!.AddressLine1</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Company?.City) || !string.IsNullOrWhiteSpace(Company?.AddressCountry))
+            {
+                <MudText Typo="Typo.body2">@Company?.City @Company?.AddressCountry</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Company?.TrnNumber))
+            {
+                <MudText Typo="Typo.body2">TRN: @Company!.TrnNumber</MudText>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="6" Class="text-right">
+            <MudText Typo="Typo.h4">TAX INVOICE</MudText>
+            <MudText Typo="Typo.body1"># @Invoice.InvoiceNo</MudText>
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.subtitle2">Bill To</MudText>
+            <MudText Typo="Typo.body1">@Invoice.Customer.Name</MudText>
+            @if (!string.IsNullOrWhiteSpace(Invoice.Customer.Trn))
+            {
+                <MudText Typo="Typo.body2">TRN: @Invoice.Customer.Trn</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Invoice.CustomerPoNo))
+            {
+                <MudText Typo="Typo.body2">PO No.: @Invoice.CustomerPoNo</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Invoice.DeliveryNoteRef))
+            {
+                <MudText Typo="Typo.body2">Delivery Note Ref.: @Invoice.DeliveryNoteRef</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Invoice.SalesOrderRef))
+            {
+                <MudText Typo="Typo.body2">Sales Order Ref.: @Invoice.SalesOrderRef</MudText>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="6" Class="text-right">
+            <MudText Typo="Typo.body2">Invoice Date: @Invoice.Date.ToString("dd MMM yyyy")</MudText>
+            <MudText Typo="Typo.body2">Due Date: @Invoice.DueDate.ToString("dd MMM yyyy")</MudText>
+            <MudText Typo="Typo.h6" Class="mt-2">Balance Due: AED @Balance.ToString("N2")</MudText>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="Invoice.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0" Class="mt-4">
+        <HeaderContent>
+            <MudTh>#</MudTh>
+            <MudTh>Item &amp; Description</MudTh>
+            <MudTh Style="text-align:right">Qty</MudTh>
+            <MudTh>UOM</MudTh>
+            <MudTh Style="text-align:right">Rate</MudTh>
+            <MudTh Style="text-align:right">Disc %</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.LineNo</MudTd>
+            <MudTd>@context.Description</MudTd>
+            <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+            <MudTd>@context.Uom</MudTd>
+            <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">@(context.DiscountPercent > 0 ? context.DiscountPercent.ToString("N2") : "—")</MudTd>
+            <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudStack Class="mt-3" AlignItems="AlignItems.End">
+        <MudText>Net: @Invoice.TotalNet.ToString("N2")</MudText>
+        <MudText>VAT: @Invoice.TotalVat.ToString("N2")</MudText>
+        <MudText Typo="Typo.h6">Total: AED @Invoice.TotalGross.ToString("N2")</MudText>
+    </MudStack>
+
+    @{ var bank = Company?.BankAccounts.FirstOrDefault(a => a.IsPrimary) ?? Company?.BankAccounts.FirstOrDefault(); }
+    @if (bank is not null)
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle2">Payment Details</MudText>
+        <MudText Typo="Typo.body2">Bank: @bank.BankName</MudText>
+        @if (!string.IsNullOrWhiteSpace(bank.AccountName))
+        {
+            <MudText Typo="Typo.body2">Account Name: @bank.AccountName</MudText>
+        }
+        @if (!string.IsNullOrWhiteSpace(bank.AccountNumber))
+        {
+            <MudText Typo="Typo.body2">Account No.: @bank.AccountNumber</MudText>
+        }
+        @if (!string.IsNullOrWhiteSpace(bank.Iban))
+        {
+            <MudText Typo="Typo.body2">IBAN: @bank.Iban</MudText>
+        }
+        @if (!string.IsNullOrWhiteSpace(bank.Swift))
+        {
+            <MudText Typo="Typo.body2">SWIFT: @bank.Swift</MudText>
+        }
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Invoice.Notes))
+    {
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.subtitle2">Notes</MudText>
+        <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@Invoice.Notes</MudText>
+    }
+
+    <div class="sig-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:2rem">
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="height:1px;background:rgba(0,0,0,0.2)"></div>
+            <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Authorised Signature &amp; Stamp</MudText>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="height:1px;background:rgba(0,0,0,0.2)"></div>
+            <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Customer Acknowledgement</MudText>
+        </div>
+    </div>
+</MudPaper>
+
+<style>
+    .overdue-ribbon {
+        position: absolute; top: 18px; left: -38px; width: 160px;
+        transform: rotate(-45deg); text-align: center;
+        background: var(--mud-palette-error); color: var(--mud-palette-error-text);
+        font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+        padding: 4px 0; box-shadow: 0 2px 4px rgba(0,0,0,.2); z-index: 1;
+    }
+    @@media print {
+        .overdue-ribbon { display: none; }
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public SalesInvoice Invoice { get; set; } = null!;
+    [Parameter] public CompanySetup? Company { get; set; }
+    [Parameter] public decimal Balance { get; set; }
+    [Parameter] public ArStatus Status { get; set; }
+}

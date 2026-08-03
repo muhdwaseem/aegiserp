@@ -3,6 +3,7 @@
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
 @inject ItemService ItemSvc
+@inject CompanyService CompanySvc
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -253,6 +254,13 @@
         else
         {
             _invoiceNo = await InvoiceSvc.PeekNextInvoiceNoAsync((_date ?? DateTime.Today).Year);
+            try
+            {
+                var company = await CompanySvc.GetAsync();
+                _paymentTermsDays = company.InvoiceDefaultPaymentTermsDays;
+                _notes = company.InvoiceDefaultNotes;
+            }
+            catch (PostingException) { /* no company selected yet — keep the built-in defaults */ }
         }
 
         SyncPeriodToDate();

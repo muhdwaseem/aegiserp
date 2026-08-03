@@ -1,5 +1,3 @@
-@page "/sales-invoice/{Id:int}"
-@attribute [Authorize(Roles = AppRoles.Posters)]
 @using AegisErp.Web.Components.Dialogs
 @inject SalesInvoiceService InvoiceSvc
 @inject CompanyService CompanySvc
@@ -9,31 +7,47 @@
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
 
-<PageTitle>@(_invoice?.InvoiceNo ?? "Invoice") · Aegis ERP</PageTitle>
-
 @if (_loaded && _invoice is null)
 {
     <MudAlert Severity="Severity.Error">Invoice not found.</MudAlert>
-    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="@(() => Nav.NavigateTo("sales-invoice"))">Back to Sales Invoices</MudButton>
 }
 else if (_invoice is not null)
 {
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3 invoice-print-hide" Wrap="Wrap.Wrap">
-        <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" OnClick="@(() => Nav.NavigateTo("sales-invoice"))" />
         <MudText Typo="Typo.h5">@_invoice.InvoiceNo</MudText>
-        <MudChip T="string" Size="Size.Small" Color="StatusColor(_status)" Variant="Variant.Text">@_status</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_status)" Variant="Variant.Text">@StatusLabel(_status, _invoice.DueDate)</MudChip>
+        @if (_invoice.IsLocked)
+        {
+            <MudTooltip Text="@($"Locked by {_invoice.LockedBy} on {_invoice.LockedAtUtc:dd MMM yyyy}")">
+                <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Lock" Color="Color.Warning" Variant="Variant.Text">Locked</MudChip>
+            </MudTooltip>
+        }
         @if (_invoice.ApprovalStatus != ApprovalStatus.None)
         {
             <MudChip T="string" Size="Size.Small" Color="ApprovalColor(_invoice.ApprovalStatus)" Variant="Variant.Text">@ApprovalLabel(_invoice.ApprovalStatus)</MudChip>
         }
         <MudSpacer />
-        @if (_invoice.Status == VoucherStatus.Draft)
+        @if (_invoice.Status == VoucherStatus.Draft && !_invoice.IsLocked)
         {
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditInvoice">Edit</MudButton>
         }
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Print" OnClick="Print">PDF/Print</MudButton>
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Email" OnClick="SendByEmail">Send by Email</MudButton>
-        @if (_invoice.Status == VoucherStatus.Draft && _invoice.ApprovalStatus != ApprovalStatus.PendingApproval)
+        <MudMenu>
+            <ActivatorContent>
+                <MudButton Variant="Variant.Outlined" EndIcon="@Icons.Material.Filled.ArrowDropDown">Reminders</MudButton>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem Icon="@Icons.Material.Filled.NotificationsActive" OnClick="SendReminder">Send Reminder Now</MudMenuItem>
+                @if (_lastReminder is not null)
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary px-4 py-1 d-block">
+                        Last reminded @_lastReminder.Value.ToString("dd MMM yyyy")
+                    </MudText>
+                }
+            </ChildContent>
+        </MudMenu>
+        @if (_invoice.Status == VoucherStatus.Draft && _invoice.ApprovalStatus != ApprovalStatus.PendingApproval && !_invoice.IsLocked)
         {
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.RateReview" OnClick="SubmitForApproval">Submit for Approval</MudButton>
         }
@@ -49,7 +63,8 @@ else if (_invoice is not null)
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Payments" OnClick="RecordPayment">Record Payment</MudButton>
         <MudMenu Icon="@Icons.Material.Filled.MoreVert">
             <MudMenuItem Icon="@Icons.Material.Filled.ContentCopy" OnClick="Clone">Clone</MudMenuItem>
-            @if (_invoice.Status == VoucherStatus.Draft)
+            <MudMenuItem Icon="@Icons.Material.Filled.Autorenew" OnClick="MakeRecurring">Make Recurring</MudMenuItem>
+            @if (_invoice.Status == VoucherStatus.Draft && !_invoice.IsLocked)
             {
                 <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="VoidInvoice">Void</MudMenuItem>
             }
@@ -58,15 +73,24 @@ else if (_invoice is not null)
                 <MudMenuItem Icon="@Icons.Material.Filled.MenuBook" OnClick="ViewJournal">View Journal</MudMenuItem>
             }
             <MudMenuItem Icon="@Icons.Material.Filled.Undo" OnClick="CreateCreditNote">Create Credit Note</MudMenuItem>
+            <MudMenuItem Icon="@Icons.Material.Filled.Share" OnClick="ShareInvoice">Share</MudMenuItem>
+            <AuthorizeView Roles="@AppRoles.Admins" Context="auth">
+                <MudMenuItem Icon="@(_invoice.IsLocked ? Icons.Material.Filled.LockOpen : Icons.Material.Filled.Lock)" OnClick="ToggleLock">
+                    @(_invoice.IsLocked ? "Unlock Invoice" : "Lock Invoice")
+                </MudMenuItem>
+            </AuthorizeView>
+            <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Nav.NavigateTo("company-setup"))">Invoice Preferences</MudMenuItem>
         </MudMenu>
     </MudStack>
 
     @if (_status is ArStatus.Overdue or ArStatus.Pending)
     {
-        <MudAlert Severity="@(_status == ArStatus.Overdue ? Severity.Warning : Severity.Info)" Class="mb-3 invoice-print-hide">
+        <MudAlert Severity="@(_status == ArStatus.Overdue ? Severity.Warning : Severity.Info)" Class="mb-3 invoice-print-hide whats-next-banner">
             <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
-                <MudText>@(_status == ArStatus.Overdue ? "Payment is overdue." : "Payment is not yet due.") Balance due: AED @_balance.ToString("N2").</MudText>
+                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
+                <MudText><b>What's next?</b> @(_status == ArStatus.Overdue ? "Payment is overdue." : "Payment is not yet due.") Balance due: AED @_balance.ToString("N2").</MudText>
                 <MudSpacer />
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="SendReminder">Send a reminder</MudButton>
                 <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="RecordPayment">Record Payment</MudButton>
             </MudStack>
         </MudAlert>
@@ -103,147 +127,31 @@ else if (_invoice is not null)
         </MudAlert>
     }
 
-    <MudPaper Class="pa-6 mb-4" Elevation="1">
-        <MudGrid>
-            <MudItem xs="12" sm="6">
-                <MudText Typo="Typo.h6">@_company?.LegalName</MudText>
-                @if (!string.IsNullOrWhiteSpace(_company?.AddressLine1))
-                {
-                    <MudText Typo="Typo.body2">@_company!.AddressLine1</MudText>
-                }
-                @if (!string.IsNullOrWhiteSpace(_company?.City) || !string.IsNullOrWhiteSpace(_company?.AddressCountry))
-                {
-                    <MudText Typo="Typo.body2">@_company?.City @_company?.AddressCountry</MudText>
-                }
-                @if (!string.IsNullOrWhiteSpace(_company?.TrnNumber))
-                {
-                    <MudText Typo="Typo.body2">TRN: @_company!.TrnNumber</MudText>
-                }
-            </MudItem>
-            <MudItem xs="12" sm="6" Class="text-right">
-                <MudText Typo="Typo.h4">TAX INVOICE</MudText>
-                <MudText Typo="Typo.body1"># @_invoice.InvoiceNo</MudText>
-            </MudItem>
+    <SalesInvoicePrintout Invoice="_invoice" Company="_company" Balance="_balance" Status="_status" />
 
-            <MudItem xs="12" sm="6">
-                <MudText Typo="Typo.subtitle2">Bill To</MudText>
-                <MudText Typo="Typo.body1">@_invoice.Customer.Name</MudText>
-                @if (!string.IsNullOrWhiteSpace(_invoice.Customer.Trn))
-                {
-                    <MudText Typo="Typo.body2">TRN: @_invoice.Customer.Trn</MudText>
-                }
-                @if (!string.IsNullOrWhiteSpace(_invoice.CustomerPoNo))
-                {
-                    <MudText Typo="Typo.body2">PO No.: @_invoice.CustomerPoNo</MudText>
-                }
-                @if (!string.IsNullOrWhiteSpace(_invoice.DeliveryNoteRef))
-                {
-                    <MudText Typo="Typo.body2">Delivery Note Ref.: @_invoice.DeliveryNoteRef</MudText>
-                }
-                @if (!string.IsNullOrWhiteSpace(_invoice.SalesOrderRef))
-                {
-                    <MudText Typo="Typo.body2">Sales Order Ref.: @_invoice.SalesOrderRef</MudText>
-                }
-            </MudItem>
-            <MudItem xs="12" sm="6" Class="text-right">
-                <MudText Typo="Typo.body2">Invoice Date: @_invoice.Date.ToString("dd MMM yyyy")</MudText>
-                <MudText Typo="Typo.body2">Due Date: @_invoice.DueDate.ToString("dd MMM yyyy")</MudText>
-                <MudText Typo="Typo.h6" Class="mt-2">Balance Due: AED @_balance.ToString("N2")</MudText>
-            </MudItem>
-        </MudGrid>
-
-        <MudTable Items="_invoice.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0" Class="mt-4">
-            <HeaderContent>
-                <MudTh>#</MudTh>
-                <MudTh>Item &amp; Description</MudTh>
-                <MudTh Style="text-align:right">Qty</MudTh>
-                <MudTh>UOM</MudTh>
-                <MudTh Style="text-align:right">Rate</MudTh>
-                <MudTh Style="text-align:right">Disc %</MudTh>
-                <MudTh Style="text-align:right">Amount</MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@context.LineNo</MudTd>
-                <MudTd>@context.Description</MudTd>
-                <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
-                <MudTd>@context.Uom</MudTd>
-                <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
-                <MudTd Style="text-align:right">@(context.DiscountPercent > 0 ? context.DiscountPercent.ToString("N2") : "—")</MudTd>
-                <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
-            </RowTemplate>
-        </MudTable>
-
-        <MudStack Class="mt-3" AlignItems="AlignItems.End">
-            <MudText>Net: @_invoice.TotalNet.ToString("N2")</MudText>
-            <MudText>VAT: @_invoice.TotalVat.ToString("N2")</MudText>
-            <MudText Typo="Typo.h6">Total: AED @_invoice.TotalGross.ToString("N2")</MudText>
-        </MudStack>
-
-        @{ var bank = _company?.BankAccounts.FirstOrDefault(a => a.IsPrimary) ?? _company?.BankAccounts.FirstOrDefault(); }
-        @if (bank is not null)
-        {
-            <MudDivider Class="my-4" />
-            <MudText Typo="Typo.subtitle2">Payment Details</MudText>
-            <MudText Typo="Typo.body2">Bank: @bank.BankName</MudText>
-            @if (!string.IsNullOrWhiteSpace(bank.AccountName))
-            {
-                <MudText Typo="Typo.body2">Account Name: @bank.AccountName</MudText>
-            }
-            @if (!string.IsNullOrWhiteSpace(bank.AccountNumber))
-            {
-                <MudText Typo="Typo.body2">Account No.: @bank.AccountNumber</MudText>
-            }
-            @if (!string.IsNullOrWhiteSpace(bank.Iban))
-            {
-                <MudText Typo="Typo.body2">IBAN: @bank.Iban</MudText>
-            }
-            @if (!string.IsNullOrWhiteSpace(bank.Swift))
-            {
-                <MudText Typo="Typo.body2">SWIFT: @bank.Swift</MudText>
-            }
-        }
-
-        @if (!string.IsNullOrWhiteSpace(_invoice.Notes))
-        {
-            <MudDivider Class="my-4" />
-            <MudText Typo="Typo.subtitle2">Notes</MudText>
-            <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@_invoice.Notes</MudText>
-        }
-
-        <MudDivider Class="my-4 invoice-print-hide" />
-        <MudText Typo="Typo.subtitle2" Class="invoice-print-hide">Supporting Document</MudText>
-        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2 invoice-print-hide" Wrap="Wrap.Wrap">
+    <MudPaper Class="pa-6 mb-4 invoice-print-hide" Elevation="1">
+        <MudText Typo="Typo.subtitle2">Supporting Document</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2" Wrap="Wrap.Wrap">
             @if (!string.IsNullOrWhiteSpace(_invoice.AttachmentFileName))
             {
                 <MudChip T="string" Icon="@Icons.Material.Filled.AttachFile" Color="Color.Default">@_invoice.AttachmentFileName</MudChip>
                 <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadAttachment">Download</MudButton>
-                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="RemoveAttachment">Remove</MudButton>
+                <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="RemoveAttachment" Disabled="_invoice.IsLocked">Remove</MudButton>
             }
             else
             {
                 <MudText Typo="Typo.body2" Class="mud-text-secondary">No document attached.</MudText>
             }
-            <MudFileUpload T="IBrowserFile" FilesChanged="OnAttachmentSelected" Accept=".pdf,.jpg,.jpeg,.png">
+            <MudFileUpload T="IBrowserFile" FilesChanged="OnAttachmentSelected" Accept=".pdf,.jpg,.jpeg,.png" Disabled="_invoice.IsLocked">
                 <ActivatorContent>
-                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile" Disabled="_invoice.IsLocked">
                         @(string.IsNullOrWhiteSpace(_invoice.AttachmentFileName) ? "Attach document" : "Replace")
                     </MudButton>
                 </ActivatorContent>
             </MudFileUpload>
         </MudStack>
 
-        <div class="sig-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:2rem">
-            <div style="display:flex;flex-direction:column;gap:8px">
-                <div style="height:1px;background:rgba(0,0,0,0.2)"></div>
-                <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Authorised Signature &amp; Stamp</MudText>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:8px">
-                <div style="height:1px;background:rgba(0,0,0,0.2)"></div>
-                <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary">Customer Acknowledgement</MudText>
-            </div>
-        </div>
-
-        <FastTab Title="Audit Trail" StartOpen="false" Class="mt-4 invoice-print-hide">
+        <FastTab Title="Audit Trail" StartOpen="false" Class="mt-4">
             @foreach (var entry in AuditEntries())
             {
                 <MudStack Row="true" Spacing="1" Class="mb-2">
@@ -281,15 +189,18 @@ else if (_invoice is not null)
 }
 
 <style>
+    .whats-next-banner { border-radius: 10px; }
     @@media print {
         .mud-appbar, .mud-drawer, .invoice-print-hide { display: none !important; }
     }
 </style>
 
 @code {
-    [Parameter] public int Id { get; set; }
+    [Parameter, EditorRequired] public int InvoiceId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
+    private int _loadedForId = -1;
     private SalesInvoice? _invoice;
     private bool _loaded;
     private List<SalesInvoiceLineBalance>? _lineBalances;
@@ -299,18 +210,27 @@ else if (_invoice is not null)
     private decimal _balance;
     private ArStatus _status;
     private bool _canApprove;
+    private DateTime? _lastReminder;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnParametersSetAsync()
+    {
+        if (InvoiceId != _loadedForId)
+        {
+            _loadedForId = InvoiceId;
+            await Load();
+        }
+    }
 
     private async Task Load()
     {
-        _invoice = await InvoiceSvc.GetByIdAsync(Id);
+        _invoice = await InvoiceSvc.GetByIdAsync(InvoiceId);
         _loaded = true;
         if (_invoice is null) return;
 
-        _lineBalances = await InvoiceSvc.GetLineBalancesAsync(Id);
-        _creditedTotal = await InvoiceSvc.GetCreditedTotalAsync(Id);
+        _lineBalances = await InvoiceSvc.GetLineBalancesAsync(InvoiceId);
+        _creditedTotal = await InvoiceSvc.GetCreditedTotalAsync(InvoiceId);
         _availableCredit = (await CreditNoteSvc.GetAvailableCreditAsync(_invoice.CustomerId)).Sum(c => c.Available);
+        _lastReminder = await InvoiceSvc.GetLastReminderSentAtAsync(InvoiceId);
         try { _company = await CompanySvc.GetAsync(); }
         catch (PostingException) { _company = null; }
 
@@ -331,6 +251,12 @@ else if (_invoice is not null)
         };
     }
 
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
     private async Task<string> CurrentUserAsync() =>
         AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
 
@@ -339,7 +265,7 @@ else if (_invoice is not null)
         var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
         var parameters = new DialogParameters<NewSalesInvoiceDialog> { { x => x.Existing, _invoice } };
         var dialog = await DialogService.ShowAsync<NewSalesInvoiceDialog>("Edit Sales Invoice", parameters, options);
-        if ((await dialog.Result) is { Canceled: false }) await Load();
+        if ((await dialog.Result) is { Canceled: false }) await NotifyChangedAsync();
     }
 
     private async Task Clone()
@@ -352,13 +278,52 @@ else if (_invoice is not null)
             Nav.NavigateTo($"/sales-invoice/{newId}");
     }
 
+    private async Task MakeRecurring()
+    {
+        var parameters = new DialogParameters<MakeRecurringDialog> { { x => x.SourceInvoiceId, InvoiceId } };
+        var dialog = await DialogService.ShowAsync<MakeRecurringDialog>("Make Recurring", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            Snackbar.Add("Recurring profile created — see Recurring Invoices.", Severity.Success);
+    }
+
+    private async Task ToggleLock()
+    {
+        try
+        {
+            if (_invoice!.IsLocked) await InvoiceSvc.UnlockAsync(InvoiceId);
+            else await InvoiceSvc.LockAsync(InvoiceId, await CurrentUserAsync(), DateTime.UtcNow);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ShareInvoice()
+    {
+        var token = await InvoiceSvc.GetOrCreateShareTokenAsync(InvoiceId);
+        var url = Nav.ToAbsoluteUri($"/shared-invoice/{token}").ToString();
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+        Snackbar.Add("Share link copied to clipboard.", Severity.Success);
+    }
+
+    private async Task SendReminder()
+    {
+        try
+        {
+            await InvoiceSvc.SendReminderAsync(InvoiceId, await CurrentUserAsync(), DateTime.UtcNow, isAutomated: false);
+            Snackbar.Add("Reminder sent.", Severity.Success);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
     private async Task VoidInvoice()
     {
         try
         {
-            await InvoiceSvc.VoidDraftAsync(Id, await CurrentUserAsync(), DateTime.UtcNow);
+            await InvoiceSvc.VoidDraftAsync(InvoiceId, await CurrentUserAsync(), DateTime.UtcNow);
             Snackbar.Add("Invoice voided.", Severity.Success);
-            await Load();
+            await NotifyChangedAsync();
         }
         catch (PostingException ex)
         {
@@ -370,9 +335,9 @@ else if (_invoice is not null)
     {
         try
         {
-            await InvoiceSvc.SubmitForApprovalAsync(Id, await CurrentUserAsync(), DateTime.UtcNow);
+            await InvoiceSvc.SubmitForApprovalAsync(InvoiceId, await CurrentUserAsync(), DateTime.UtcNow);
             Snackbar.Add("Submitted for approval.", Severity.Success);
-            await Load();
+            await NotifyChangedAsync();
         }
         catch (PostingException ex)
         {
@@ -384,9 +349,9 @@ else if (_invoice is not null)
     {
         try
         {
-            await InvoiceSvc.ApproveAsync(Id, await CurrentUserAsync(), DateTime.UtcNow);
+            await InvoiceSvc.ApproveAsync(InvoiceId, await CurrentUserAsync(), DateTime.UtcNow);
             Snackbar.Add("Invoice approved.", Severity.Success);
-            await Load();
+            await NotifyChangedAsync();
         }
         catch (PostingException ex)
         {
@@ -403,9 +368,9 @@ else if (_invoice is not null)
         {
             try
             {
-                await InvoiceSvc.RejectAsync(Id, await CurrentUserAsync(), DateTime.UtcNow, result.Data as string);
+                await InvoiceSvc.RejectAsync(InvoiceId, await CurrentUserAsync(), DateTime.UtcNow, result.Data as string);
                 Snackbar.Add("Invoice rejected.", Severity.Success);
-                await Load();
+                await NotifyChangedAsync();
             }
             catch (PostingException ex)
             {
@@ -434,9 +399,9 @@ else if (_invoice is not null)
 
         try
         {
-            await InvoiceSvc.SetAttachmentAsync(Id, file.Name, file.ContentType, ms.ToArray());
+            await InvoiceSvc.SetAttachmentAsync(InvoiceId, file.Name, file.ContentType, ms.ToArray());
             Snackbar.Add("Document attached.", Severity.Success);
-            await Load();
+            await NotifyChangedAsync();
         }
         catch (PostingException ex)
         {
@@ -446,7 +411,7 @@ else if (_invoice is not null)
 
     private async Task DownloadAttachment()
     {
-        var att = await InvoiceSvc.GetAttachmentAsync(Id);
+        var att = await InvoiceSvc.GetAttachmentAsync(InvoiceId);
         if (att is null) return;
         var base64 = Convert.ToBase64String(att.Value.Data);
         await JS.InvokeVoidAsync("downloadFileFromBytes", att.Value.FileName, att.Value.ContentType, base64);
@@ -454,9 +419,9 @@ else if (_invoice is not null)
 
     private async Task RemoveAttachment()
     {
-        await InvoiceSvc.RemoveAttachmentAsync(Id);
+        await InvoiceSvc.RemoveAttachmentAsync(InvoiceId);
         Snackbar.Add("Attachment removed.", Severity.Success);
-        await Load();
+        await NotifyChangedAsync();
     }
 
     private record AuditEntry(string Text, DateTime At);
@@ -477,6 +442,8 @@ else if (_invoice is not null)
             entries.Add(new($"Posted by {_invoice.PostedBy}", postedAt));
         if (_invoice.VoidedAtUtc is DateTime voidedAt)
             entries.Add(new($"Voided by {_invoice.VoidedBy}", voidedAt));
+        if (_invoice.LockedAtUtc is DateTime lockedAt)
+            entries.Add(new($"Locked by {_invoice.LockedBy}", lockedAt));
         return entries.OrderBy(e => e.At).ToList();
     }
 
@@ -484,22 +451,23 @@ else if (_invoice is not null)
     {
         var parameters = new DialogParameters<ApplyCreditDialog>
         {
-            { x => x.InvoiceId, Id },
+            { x => x.InvoiceId, InvoiceId },
             { x => x.CustomerId, _invoice!.CustomerId },
             { x => x.InvoiceNo, _invoice!.InvoiceNo },
             { x => x.Balance, _balance },
         };
         var dialog = await DialogService.ShowAsync<ApplyCreditDialog>("Apply Credit", parameters);
-        if ((await dialog.Result) is { Canceled: false }) await Load();
+        if ((await dialog.Result) is { Canceled: false }) await NotifyChangedAsync();
     }
 
-    private void RecordPayment() => Nav.NavigateTo($"/receipt-voucher?customerId={_invoice!.CustomerId}&invoiceId={Id}");
+    private void RecordPayment() => Nav.NavigateTo($"/receipt-voucher?customerId={_invoice!.CustomerId}&invoiceId={InvoiceId}");
     private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_invoice!.JournalVoucher!.VoucherNo)}");
-    private void CreateCreditNote() => Nav.NavigateTo($"/credit-note?invoiceId={Id}");
+    private void CreateCreditNote() => Nav.NavigateTo($"/credit-note?invoiceId={InvoiceId}");
 
     private async Task Print() => await JS.InvokeVoidAsync("print");
 
-    private static Color StatusColor(ArStatus status) => status switch
+    /// <summary>Shared by the master-detail list rows and this panel's status chip.</summary>
+    public static Color StatusColor(ArStatus status) => status switch
     {
         ArStatus.Draft => Color.Default,
         ArStatus.Pending => Color.Info,
@@ -508,6 +476,23 @@ else if (_invoice is not null)
         ArStatus.Void => Color.Dark,
         _ => Color.Default,
     };
+
+    /// <summary>Zoho-style status wording — "OVERDUE BY N DAYS", "PAID", "DUE IN N DAYS", etc.</summary>
+    public static string StatusLabel(ArStatus status, DateOnly dueDate)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var days = Math.Abs(today.DayNumber - dueDate.DayNumber);
+        return status switch
+        {
+            ArStatus.Draft => "DRAFT",
+            ArStatus.Void => "VOID",
+            ArStatus.Paid => "PAID",
+            ArStatus.Overdue => $"OVERDUE BY {days} DAY{(days == 1 ? "" : "S")}",
+            ArStatus.Pending when days == 0 => "DUE TODAY",
+            ArStatus.Pending => $"DUE IN {days} DAY{(days == 1 ? "" : "S")}",
+            _ => status.ToString().ToUpperInvariant(),
+        };
+    }
 
     private static string ApprovalLabel(ApprovalStatus status) => status switch
     {

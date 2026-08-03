@@ -1,0 +1,89 @@
+@page "/recurring-invoices"
+@attribute [Authorize(Roles = AppRoles.Posters)]
+@inject RecurringInvoiceService RecurringSvc
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Recurring Invoices · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">Recurring Invoices</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Each profile generates a new Draft invoice automatically on its next run date — nothing posts
+    to the ledger until someone reviews and posts the generated invoice. Create one from an existing
+    invoice's "⋯" menu → Make Recurring.
+</MudText>
+
+<MudTable Items="_profiles" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_profiles is null">
+    <HeaderContent>
+        <MudTh>Customer</MudTh>
+        <MudTh>Repeats</MudTh>
+        <MudTh>Next Run</MudTh>
+        <MudTh>Ends</MudTh>
+        <MudTh Style="text-align:right">Amount (Net)</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh Style="width:60px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Customer.Name</MudTd>
+        <MudTd>Every @context.RepeatEvery @FrequencyUnit(context.Frequency, context.RepeatEvery)</MudTd>
+        <MudTd>@context.NextGenerationDate.ToString("dd MMM yyyy")</MudTd>
+        <MudTd>@(context.EndDate?.ToString("dd MMM yyyy") ?? "Never")</MudTd>
+        <MudTd Style="text-align:right">@context.Lines.Sum(l => l.Quantity * l.UnitPrice).ToString("N2")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                @(context.IsActive ? "Active" : "Paused")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                <MudMenuItem OnClick="@(() => Toggle(context))">@(context.IsActive ? "Pause" : "Resume")</MudMenuItem>
+                <MudMenuItem OnClick="@(() => Delete(context))">Delete</MudMenuItem>
+            </MudMenu>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No recurring invoices set up yet.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<RecurringInvoiceProfile>? _profiles;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load() => _profiles = await RecurringSvc.GetAllAsync();
+
+    private static string FrequencyUnit(RecurringFrequency f, int n) => f switch
+    {
+        RecurringFrequency.Weekly => n == 1 ? "Week" : "Weeks",
+        RecurringFrequency.Monthly => n == 1 ? "Month" : "Months",
+        RecurringFrequency.Quarterly => n == 1 ? "Quarter" : "Quarters",
+        RecurringFrequency.Yearly => n == 1 ? "Year" : "Years",
+        _ => "",
+    };
+
+    private async Task Toggle(RecurringInvoiceProfile p)
+    {
+        try
+        {
+            if (p.IsActive) await RecurringSvc.PauseAsync(p.Id);
+            else await RecurringSvc.ResumeAsync(p.Id);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task Delete(RecurringInvoiceProfile p)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete recurring profile",
+            $"Delete the recurring profile for {p.Customer.Name}? Already-generated invoices are unaffected.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await RecurringSvc.DeleteAsync(p.Id);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

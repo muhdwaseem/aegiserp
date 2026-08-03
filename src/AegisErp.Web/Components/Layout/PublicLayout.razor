@@ -1,0 +1,11 @@
+@inherits LayoutComponentBase
+
+@* Minimal layout for anonymous, public-facing pages (e.g. the Share-an-invoice link) — MudBlazor
+   theming/providers so shared components like SalesInvoicePrintout render correctly, but no app
+   chrome (nav drawer, top bar) — a customer following a shared link shouldn't see internal nav. *@
+<MudThemeProvider />
+<MudPopoverProvider />
+
+<div style="min-height:100vh;background:#f5f6f8">
+    @Body
+</div>

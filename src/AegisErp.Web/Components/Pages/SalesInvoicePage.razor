@@ -1,4 +1,5 @@
 @page "/sales-invoice"
+@page "/sales-invoice/{Id:int?}"
 @attribute [Authorize(Roles = AppRoles.Posters)]
 @using AegisErp.Web.Components.Dialogs
 @inject SalesInvoiceService InvoiceSvc
@@ -9,7 +10,7 @@
 
 <PageTitle>Sales Invoice · Aegis ERP</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
     <MudText Typo="Typo.h5">Sales Invoices</MudText>
     <MudSpacer />
     <MudSelect T="string" Value="_statusFilter" ValueChanged="OnFilterChanged" Label="Status" Dense="true" Style="min-width:160px">
@@ -37,6 +38,7 @@
             <MudMenuItem Icon="@Icons.Material.Filled.LocalShipping" OnClick="@(() => Nav.NavigateTo("delivery-note"))">Delivery Note</MudMenuItem>
             <MudMenuItem Icon="@Icons.Material.Filled.Payments" OnClick="@(() => Nav.NavigateTo("receipt-voucher"))">Receipt Voucher</MudMenuItem>
             <MudMenuItem Icon="@Icons.Material.Filled.Undo" OnClick="@(() => Nav.NavigateTo("credit-note"))">Credit Note</MudMenuItem>
+            <MudMenuItem Icon="@Icons.Material.Filled.Autorenew" OnClick="@(() => Nav.NavigateTo("recurring-invoices"))">Recurring Invoices</MudMenuItem>
         </ChildContent>
     </MudMenu>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNew">
@@ -44,59 +46,83 @@
     </MudButton>
 </MudStack>
 
-<MudTable Items="FilteredRows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null"
-          T="SalesInvoiceRow" OnRowClick="@((TableRowClickEventArgs<SalesInvoiceRow> e) => { if (e.Item is not null) OpenView(e.Item); })" RowStyle="cursor:pointer">
-    <HeaderContent>
-        <MudTh>Invoice</MudTh>
-        <MudTh>Date</MudTh>
-        <MudTh>Due</MudTh>
-        <MudTh>Customer</MudTh>
-        <MudTh Style="text-align:right">Total</MudTh>
-        <MudTh Style="text-align:right">Balance Due</MudTh>
-        <MudTh>GL Voucher</MudTh>
-        <MudTh>Status</MudTh>
-        <MudTh Style="width:48px"></MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd Style="font-family:monospace">@context.Invoice.InvoiceNo</MudTd>
-        <MudTd>@context.Invoice.Date.ToString("yyyy-MM-dd")</MudTd>
-        <MudTd>@context.Invoice.DueDate.ToString("yyyy-MM-dd")</MudTd>
-        <MudTd>@context.Invoice.Customer.Name</MudTd>
-        <MudTd Style="text-align:right;font-weight:600">@context.Invoice.TotalGross.ToString("N2")</MudTd>
-        <MudTd Style="text-align:right">@context.Balance.ToString("N2")</MudTd>
-        <MudTd Style="font-family:monospace;font-size:11.5px">@context.Invoice.JournalVoucher?.VoucherNo</MudTd>
-        <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-        <MudTd @onclick:stopPropagation="true">
-            <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
-                <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenView(context))">View</MudMenuItem>
-                @if (context.Status == ArStatus.Draft)
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="invoice-list-pane" Elevation="1">
+            @if (_rows is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (FilteredRows.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No invoices match this filter.</MudText>
+            }
+            else
+            {
+                @foreach (var row in FilteredRows)
                 {
-                    <MudMenuItem Icon="@Icons.Material.Filled.PostAdd" OnClick="@(() => PostDraft(context.Invoice.Id))">Post Invoice</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="@(() => VoidDraft(context.Invoice.Id))">Void</MudMenuItem>
+                    <div class="invoice-row @(row.Invoice.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(row))">
+                        <div class="invoice-row-top">
+                            <span class="invoice-row-customer">@row.Invoice.Customer.Name</span>
+                            <span class="invoice-row-amount">AED @row.Invoice.TotalGross.ToString("N2")</span>
+                        </div>
+                        <div class="invoice-row-meta">@row.Invoice.InvoiceNo · @row.Invoice.Date.ToString("dd MMM yyyy")</div>
+                        <div class="invoice-row-status status-@row.Status.ToString().ToLowerInvariant()">
+                            @SalesInvoiceDetailPanel.StatusLabel(row.Status, row.Invoice.DueDate)
+                        </div>
+                    </div>
                 }
-            </MudMenu>
-        </MudTd>
-    </RowTemplate>
-    <NoRecordsContent>
-        <MudText Class="pa-4 mud-text-secondary">No invoices match this filter.</MudText>
-    </NoRecordsContent>
-</MudTable>
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <SalesInvoiceDetailPanel @key="id" InvoiceId="id" OnChanged="Load" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select an invoice on the left to view its details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+<style>
+    .invoice-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .invoice-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .invoice-row:hover { background: var(--mud-palette-action-default-hover); }
+    .invoice-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .invoice-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .invoice-row-customer { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .invoice-row-amount { font-weight: 600; white-space: nowrap; }
+    .invoice-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+    .invoice-row-status { font-size: 11px; font-weight: 700; letter-spacing: .03em; margin-top: 4px; }
+    .status-overdue { color: var(--mud-palette-error); }
+    .status-paid { color: var(--mud-palette-success); }
+    .status-pending { color: var(--mud-palette-info); }
+    .status-draft, .status-void { color: var(--mud-palette-text-secondary); }
+</style>
 
 @code {
     private static readonly string[] StatusFilters = { "All", "Draft", "Pending", "Outstanding", "Overdue", "Paid", "Void" };
 
+    [Parameter] public int? Id { get; set; }
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 
     private List<SalesInvoiceRow>? _rows;
     private List<FiscalPeriod>? _periods;
     private string _statusFilter = "All";
     private int? _periodFilter;
+    private int? _selectedId;
 
-    private IEnumerable<SalesInvoiceRow> FilteredRows
+    private List<SalesInvoiceRow> FilteredRows
     {
         get
         {
-            if (_rows is null) return Enumerable.Empty<SalesInvoiceRow>();
+            if (_rows is null) return new();
             var rows = _statusFilter switch
             {
                 "All" => _rows,
@@ -104,7 +130,7 @@
                 "Outstanding" => _rows.Where(r => r.Status is ArStatus.Pending or ArStatus.Overdue),
                 _ => _rows.Where(r => r.Status.ToString() == _statusFilter),
             };
-            return _periodFilter is int periodId ? rows.Where(r => r.Invoice.FiscalPeriodId == periodId) : rows;
+            return (_periodFilter is int periodId ? rows.Where(r => r.Invoice.FiscalPeriodId == periodId) : rows).ToList();
         }
     }
 
@@ -114,56 +140,39 @@
         await Load();
     }
 
-    private async Task Load() => _rows = await InvoiceSvc.GetAllAsync();
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _rows is { Count: > 0 }) _selectedId = _rows[0].Invoice.Id;
+    }
+
+    private async Task Load()
+    {
+        _rows = await InvoiceSvc.GetAllAsync();
+        if (_selectedId is null && _rows.Count > 0) _selectedId = Id ?? _rows[0].Invoice.Id;
+    }
+
+    private void SelectRow(SalesInvoiceRow row)
+    {
+        _selectedId = row.Invoice.Id;
+        Nav.NavigateTo($"/sales-invoice/{row.Invoice.Id}");
+    }
 
     private void OnFilterChanged(string s) => _statusFilter = s;
-
-    private static Color StatusColor(ArStatus status) => status switch
-    {
-        ArStatus.Draft => Color.Default,
-        ArStatus.Pending => Color.Info,
-        ArStatus.Overdue => Color.Error,
-        ArStatus.Paid => Color.Success,
-        ArStatus.Void => Color.Dark,
-        _ => Color.Default,
-    };
 
     private async Task OpenNew()
     {
         var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
         var dialog = await DialogService.ShowAsync<NewSalesInvoiceDialog>("New Sales Invoice", options);
-        if ((await dialog.Result) is { Canceled: false }) await Load();
-    }
-
-    private void OpenView(SalesInvoiceRow row) => Nav.NavigateTo($"/sales-invoice/{row.Invoice.Id}");
-
-    private async Task PostDraft(int invoiceId)
-    {
-        try
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
         {
-            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
-            var inv = await InvoiceSvc.PostDraftAsync(invoiceId, userName, DateTime.UtcNow);
-            Snackbar.Add($"Posted {inv.InvoiceNo} — GL voucher {inv.JournalVoucher?.VoucherNo} generated.", Severity.Success);
             await Load();
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-    }
-
-    private async Task VoidDraft(int invoiceId)
-    {
-        try
-        {
-            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
-            await InvoiceSvc.VoidDraftAsync(invoiceId, userName, DateTime.UtcNow);
-            Snackbar.Add("Invoice voided.", Severity.Success);
-            await Load();
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/sales-invoice/{newId}");
+            }
         }
     }
 }
