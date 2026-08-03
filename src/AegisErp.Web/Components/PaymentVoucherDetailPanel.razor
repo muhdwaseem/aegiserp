@@ -1,0 +1,221 @@
+@inject VendorPaymentService PaymentSvc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@if (_loaded && _payment is null)
+{
+    <MudAlert Severity="Severity.Error">Payment not found.</MudAlert>
+}
+else if (_payment is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">@_payment.PaymentNo</MudText>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_payment.Status)" Variant="Variant.Text">@_payment.Status</MudChip>
+        <MudSpacer />
+        @if (_payment.Status == VoucherStatus.Draft)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PostAdd" OnClick="PostDraft">Post Payment</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block" OnClick="VoidDraft">Void</MudButton>
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Vendor</MudText>
+                        <MudText Class="mb-2">@_payment.Vendor.Name</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Date</MudText>
+                        <MudText Class="mb-2">@_payment.Date.ToString("dd MMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Paid From</MudText>
+                        <MudText Class="mb-2">@_payment.BankAccount.Name</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Payment Mode</MudText>
+                        <MudText Class="mb-2">@_payment.PaymentMode</MudText>
+                        @if (!string.IsNullOrWhiteSpace(_payment.ReferenceNo))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Cheque / Ref. No.</MudText>
+                            <MudText Class="mb-2">@_payment.ReferenceNo @(_payment.ChequeDate is { } cd ? $"({cd:dd MMM yyyy})" : "")</MudText>
+                        }
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Amount</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2">AED @_payment.Amount.ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+                @if (!string.IsNullOrWhiteSpace(_payment.Narration))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">Narration</MudText>
+                    <MudText>@_payment.Narration</MudText>
+                }
+
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Applied To</MudText>
+                @if (_payment.Allocations.Count == 0)
+                {
+                    <MudText Class="mud-text-secondary">On account — not yet applied to any bill.</MudText>
+                }
+                else
+                {
+                    <MudTable Items="_payment.Allocations" Dense="true" Bordered="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Bill</MudTh>
+                            <MudTh>Description</MudTh>
+                            <MudTh Style="text-align:right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <MudLink Href="@($"/purchase-invoice/{context.PurchaseInvoiceLine.PurchaseInvoice.Id}")">@context.PurchaseInvoiceLine.PurchaseInvoice.InvoiceNo</MudLink>
+                            </MudTd>
+                            <MudTd>@context.PurchaseInvoiceLine.Description</MudTd>
+                            <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="GL Voucher">
+                @if (_payment.JournalVoucher is null)
+                {
+                    <MudText Class="mud-text-secondary">Not posted yet — a GL voucher is generated when this payment is posted.</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Voucher No.</MudText>
+                    <MudText Class="mb-2">@_payment.JournalVoucher.VoucherNo</MudText>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MenuBook" OnClick="ViewJournal">View Journal</MudButton>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Attachments">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">
+                            @(_payment.AttachmentFileName is null ? "Attach document (e.g. scanned cheque)" : $"Replace: {_payment.AttachmentFileName}")
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+
+                @if (!string.IsNullOrWhiteSpace(_payment.AttachmentFileName))
+                {
+                    <MudPaper Elevation="0" Class="pa-2 mt-3" Style="border:1px solid var(--mud-palette-lines-default)">
+                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                            <MudText>@_payment.AttachmentFileName</MudText>
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="DownloadAttachment" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveAttachment" />
+                        </MudStack>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudText Class="mt-3 mud-text-secondary">No document attached.</MudText>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    [Parameter, EditorRequired] public int PaymentId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private int _loadedForId = -1;
+    private bool _loaded;
+    private VendorPayment? _payment;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (PaymentId != _loadedForId)
+        {
+            _loadedForId = PaymentId;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _payment = await PaymentSvc.GetByIdAsync(PaymentId);
+        _loaded = true;
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
+    private async Task<string> CurrentUserAsync() =>
+        AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+
+    private async Task PostDraft()
+    {
+        try
+        {
+            var userName = await CurrentUserAsync();
+            var p = await PaymentSvc.PostDraftAsync(PaymentId, userName, DateTime.UtcNow);
+            Snackbar.Add($"Posted {p.PaymentNo}.", Severity.Success);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task VoidDraft()
+    {
+        try
+        {
+            await PaymentSvc.VoidDraftAsync(PaymentId);
+            Snackbar.Add("Payment voided.", Severity.Success);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_payment!.JournalVoucher!.VoucherNo)}");
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file.Size > VendorPaymentService.MaxAttachmentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {VendorPaymentService.MaxAttachmentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(VendorPaymentService.MaxAttachmentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        try
+        {
+            await PaymentSvc.SetAttachmentAsync(PaymentId, file.Name, file.ContentType, ms.ToArray());
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DownloadAttachment()
+    {
+        var att = await PaymentSvc.GetAttachmentAsync(PaymentId);
+        if (att is null) return;
+        var base64 = Convert.ToBase64String(att.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", att.Value.FileName, att.Value.ContentType, base64);
+    }
+
+    private async Task RemoveAttachment()
+    {
+        await PaymentSvc.RemoveAttachmentAsync(PaymentId);
+        await Load();
+    }
+
+    private static Color StatusColor(VoucherStatus status) => status switch
+    {
+        VoucherStatus.Draft => Color.Default,
+        VoucherStatus.Posted => Color.Success,
+        VoucherStatus.Void => Color.Dark,
+        _ => Color.Default,
+    };
+}

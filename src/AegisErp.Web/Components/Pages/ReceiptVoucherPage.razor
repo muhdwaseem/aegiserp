@@ -1,4 +1,5 @@
 @page "/receipt-voucher"
+@page "/receipt-voucher/{Id:int?}"
 @attribute [Authorize(Roles = AppRoles.Posters)]
 @using AegisErp.Web.Components.Dialogs
 @inject ReceiptService ReceiptSvc
@@ -7,6 +8,7 @@
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
 @inject IDialogService DialogService
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
 
@@ -222,51 +224,62 @@
     </MudExpansionPanel>
 </MudExpansionPanels>
 
-@if (_recent is not null && _recent.Count > 0)
-{
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent receipts</MudText>
-    <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true">
-        <HeaderContent>
-            <MudTh>Receipt</MudTh>
-            <MudTh>Date</MudTh>
-            <MudTh>Customer</MudTh>
-            <MudTh>Allocated To</MudTh>
-            <MudTh>Bank</MudTh>
-            <MudTh Style="text-align:right">Amount</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh Style="width:48px"></MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd Style="font-family:monospace">
-                @context.ReceiptNo
-                @if (!string.IsNullOrWhiteSpace(context.AttachmentFileName))
+<MudText Typo="Typo.subtitle1" Class="mb-2">Receipts</MudText>
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="receipt-list-pane" Elevation="1">
+            @if (_recent is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_recent.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No receipts yet.</MudText>
+            }
+            else
+            {
+                @foreach (var r in _recent)
                 {
-                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="ml-1" title="@context.AttachmentFileName" />
+                    <div class="receipt-row @(r.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(r))">
+                        <div class="receipt-row-top">
+                            <span class="receipt-row-name">@r.Customer.Name</span>
+                            <span class="receipt-row-amount">@r.Amount.ToString("N2")</span>
+                        </div>
+                        <div class="receipt-row-meta">@r.ReceiptNo · @r.Date.ToString("dd MMM yyyy")</div>
+                        <div class="receipt-row-status">
+                            <MudChip T="string" Size="Size.Small" Color="StatusColor(r.Status)" Variant="Variant.Text">@r.Status</MudChip>
+                        </div>
+                    </div>
                 }
-            </MudTd>
-            <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-            <MudTd>@context.Customer.Name</MudTd>
-            <MudTd Style="font-family:monospace;font-size:11.5px">@AllocatedToLabel(context)</MudTd>
-            <MudTd>@context.BankAccount.Name</MudTd>
-            <MudTd Style="text-align:right;font-weight:600">@context.Amount.ToString("N2")</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-            <MudTd>
-                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
-                    @if (context.Status == VoucherStatus.Draft)
-                    {
-                        <MudMenuItem Icon="@Icons.Material.Filled.PostAdd" OnClick="@(() => PostDraft(context.Id))">Post Receipt</MudMenuItem>
-                        <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="@(() => VoidDraft(context.Id))">Void</MudMenuItem>
-                    }
-                    <MudMenuItem Icon="@Icons.Material.Filled.Email" OnClick="@(() => SendByEmail(context))">Send Receipt</MudMenuItem>
-                    @if (!string.IsNullOrWhiteSpace(context.AttachmentFileName))
-                    {
-                        <MudMenuItem Icon="@Icons.Material.Filled.Download" OnClick="@(() => DownloadAttachment(context.Id))">Download Attachment</MudMenuItem>
-                    }
-                </MudMenu>
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <ReceiptDetailPanel @key="id" ReceiptId="id" OnChanged="RefreshList" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select a receipt on the left to view its details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+<style>
+    .receipt-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .receipt-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .receipt-row:hover { background: var(--mud-palette-action-default-hover); }
+    .receipt-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .receipt-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .receipt-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .receipt-row-amount { font-weight: 600; white-space: nowrap; }
+    .receipt-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+    .receipt-row-status { margin-top: 4px; }
+</style>
 
 @code {
     private List<Customer>? _customers;
@@ -282,6 +295,9 @@
     private readonly Dictionary<int, decimal> _lineAllocationInputs = new();
     private readonly Dictionary<int, List<SalesInvoiceLineBalance>> _lineBalancesByInvoice = new();
     private int? _splitInvoiceId;
+    private int? _selectedId;
+
+    [Parameter] public int? Id { get; set; }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
@@ -338,7 +354,8 @@
         _bankAccounts = accounts.Where(a => a.Type == AccountType.Asset && a.Code.StartsWith("110")).ToList();
         _periods = await Ledger.GetPeriodsAsync();
         SyncPeriodToDate();
-        _recent = await ReceiptSvc.GetRecentAsync(8);
+        _recent = await ReceiptSvc.GetRecentAsync(50);
+        if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
 
@@ -353,6 +370,18 @@
                 if (inv is not null) await PayInFull(inv);
             }
         }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _recent is { Count: > 0 }) _selectedId = _recent[0].Id;
+    }
+
+    private void SelectRow(CustomerReceipt r)
+    {
+        _selectedId = r.Id;
+        Nav.NavigateTo($"/receipt-voucher/{r.Id}");
     }
 
     private async Task OnCustomerChanged(int id)
@@ -436,22 +465,6 @@
         _attachmentContentType = file.ContentType;
     }
 
-    private async Task SendByEmail(CustomerReceipt row)
-    {
-        var full = await ReceiptSvc.GetByIdAsync(row.Id);
-        if (full is null) return;
-        var parameters = new DialogParameters<SendReceiptEmailDialog> { { x => x.Receipt, full } };
-        await DialogService.ShowAsync<SendReceiptEmailDialog>("Send Receipt", parameters);
-    }
-
-    private async Task DownloadAttachment(int receiptId)
-    {
-        var att = await ReceiptSvc.GetAttachmentAsync(receiptId);
-        if (att is null) return;
-        var base64 = Convert.ToBase64String(att.Value.Data);
-        await JS.InvokeVoidAsync("downloadFileFromBytes", att.Value.FileName, att.Value.ContentType, base64);
-    }
-
     private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
 
     private void SyncPeriodToDate()
@@ -483,6 +496,8 @@
 
             Snackbar.Add($"Posted {r.ReceiptNo} — GL voucher generated.", Severity.Success);
             await ResetAfterSaveAsync();
+            _selectedId = r.Id;
+            Nav.NavigateTo($"/receipt-voucher/{r.Id}");
         }
         catch (PostingException ex)
         {
@@ -507,6 +522,8 @@
 
             Snackbar.Add($"Saved {r.ReceiptNo} as a draft.", Severity.Success);
             await ResetAfterSaveAsync();
+            _selectedId = r.Id;
+            Nav.NavigateTo($"/receipt-voucher/{r.Id}");
         }
         catch (PostingException ex)
         {
@@ -514,6 +531,8 @@
         }
         finally { _posting = false; }
     }
+
+    private async Task RefreshList() => _recent = await ReceiptSvc.GetRecentAsync(50);
 
     private async Task ResetAfterSaveAsync()
     {
@@ -525,43 +544,7 @@
         _attachmentBytes = null;
         ClearApplied();
         _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
-        _recent = await ReceiptSvc.GetRecentAsync(8);
-    }
-
-    private async Task PostDraft(int receiptId)
-    {
-        try
-        {
-            var r = await ReceiptSvc.PostDraftAsync(receiptId, _userName, DateTime.UtcNow);
-            Snackbar.Add($"Posted {r.ReceiptNo}.", Severity.Success);
-            _recent = await ReceiptSvc.GetRecentAsync(8);
-            _openInvoices = _customerId > 0 ? await CustomerSvc.GetOpenInvoicesAsync(_customerId) : new();
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-    }
-
-    private async Task VoidDraft(int receiptId)
-    {
-        try
-        {
-            await ReceiptSvc.VoidDraftAsync(receiptId);
-            Snackbar.Add("Receipt voided.", Severity.Success);
-            _recent = await ReceiptSvc.GetRecentAsync(8);
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-    }
-
-    private static string AllocatedToLabel(CustomerReceipt r)
-    {
-        if (r.Allocations.Count == 0) return "On account";
-        var invoiceNos = r.Allocations.Select(a => a.SalesInvoiceLine.SalesInvoice.InvoiceNo).Distinct().ToList();
-        return invoiceNos.Count == 1 ? invoiceNos[0] : $"{invoiceNos.Count} invoices";
+        await RefreshList();
     }
 
     private static Color StatusColor(VoucherStatus status) => status switch

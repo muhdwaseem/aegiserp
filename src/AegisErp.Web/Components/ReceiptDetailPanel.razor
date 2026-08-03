@@ -1,0 +1,230 @@
+@using AegisErp.Web.Components.Dialogs
+@inject ReceiptService ReceiptSvc
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+@if (_loaded && _receipt is null)
+{
+    <MudAlert Severity="Severity.Error">Receipt not found.</MudAlert>
+}
+else if (_receipt is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">@_receipt.ReceiptNo</MudText>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_receipt.Status)" Variant="Variant.Text">@_receipt.Status</MudChip>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Email" OnClick="SendByEmail">Send Receipt</MudButton>
+        @if (_receipt.Status == VoucherStatus.Draft)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PostAdd" OnClick="PostDraft">Post Receipt</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block" OnClick="VoidDraft">Void</MudButton>
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudPaper Elevation="1">
+        <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true">
+            <MudTabPanel Text="General">
+                <MudGrid>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Customer</MudText>
+                        <MudText Class="mb-2">@_receipt.Customer.Name</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Date</MudText>
+                        <MudText Class="mb-2">@_receipt.Date.ToString("dd MMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Deposited To</MudText>
+                        <MudText Class="mb-2">@_receipt.BankAccount.Name</MudText>
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Payment Mode</MudText>
+                        <MudText Class="mb-2">@_receipt.PaymentMode</MudText>
+                        @if (!string.IsNullOrWhiteSpace(_receipt.ReferenceNo))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Cheque / Ref. No.</MudText>
+                            <MudText Class="mb-2">@_receipt.ReferenceNo @(_receipt.ChequeDate is { } cd ? $"({cd:dd MMM yyyy})" : "")</MudText>
+                        }
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Amount</MudText>
+                        <MudText Typo="Typo.h6" Class="mb-2">AED @_receipt.Amount.ToString("N2")</MudText>
+                    </MudItem>
+                </MudGrid>
+                @if (!string.IsNullOrWhiteSpace(_receipt.Narration))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">Narration</MudText>
+                    <MudText>@_receipt.Narration</MudText>
+                }
+
+                <MudDivider Class="my-4" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Applied To</MudText>
+                @if (_receipt.Allocations.Count == 0)
+                {
+                    <MudText Class="mud-text-secondary">On account — not yet applied to any invoice.</MudText>
+                }
+                else
+                {
+                    <MudTable Items="_receipt.Allocations" Dense="true" Bordered="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Invoice</MudTh>
+                            <MudTh>Service / Description</MudTh>
+                            <MudTh Style="text-align:right">Amount</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>
+                                <MudLink Href="@($"/sales-invoice/{context.SalesInvoiceLine.SalesInvoice.Id}")">@context.SalesInvoiceLine.SalesInvoice.InvoiceNo</MudLink>
+                            </MudTd>
+                            <MudTd>@context.SalesInvoiceLine.Description</MudTd>
+                            <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="GL Voucher">
+                @if (_receipt.JournalVoucher is null)
+                {
+                    <MudText Class="mud-text-secondary">Not posted yet — a GL voucher is generated when this receipt is posted.</MudText>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Voucher No.</MudText>
+                    <MudText Class="mb-2">@_receipt.JournalVoucher.VoucherNo</MudText>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MenuBook" OnClick="ViewJournal">View Journal</MudButton>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Attachments">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">
+                            @(_receipt.AttachmentFileName is null ? "Attach document (e.g. scanned cheque)" : $"Replace: {_receipt.AttachmentFileName}")
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+
+                @if (!string.IsNullOrWhiteSpace(_receipt.AttachmentFileName))
+                {
+                    <MudPaper Elevation="0" Class="pa-2 mt-3" Style="border:1px solid var(--mud-palette-lines-default)">
+                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                            <MudText>@_receipt.AttachmentFileName</MudText>
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="DownloadAttachment" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="RemoveAttachment" />
+                        </MudStack>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudText Class="mt-3 mud-text-secondary">No document attached.</MudText>
+                }
+            </MudTabPanel>
+        </MudTabs>
+    </MudPaper>
+}
+
+@code {
+    [Parameter, EditorRequired] public int ReceiptId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private int _loadedForId = -1;
+    private bool _loaded;
+    private CustomerReceipt? _receipt;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReceiptId != _loadedForId)
+        {
+            _loadedForId = ReceiptId;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _receipt = await ReceiptSvc.GetByIdAsync(ReceiptId);
+        _loaded = true;
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
+    private async Task<string> CurrentUserAsync() =>
+        AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+
+    private async Task SendByEmail()
+    {
+        var parameters = new DialogParameters<SendReceiptEmailDialog> { { x => x.Receipt, _receipt! } };
+        await DialogService.ShowAsync<SendReceiptEmailDialog>("Send Receipt", parameters);
+    }
+
+    private async Task PostDraft()
+    {
+        try
+        {
+            var userName = await CurrentUserAsync();
+            var r = await ReceiptSvc.PostDraftAsync(ReceiptId, userName, DateTime.UtcNow);
+            Snackbar.Add($"Posted {r.ReceiptNo}.", Severity.Success);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task VoidDraft()
+    {
+        try
+        {
+            await ReceiptSvc.VoidDraftAsync(ReceiptId);
+            Snackbar.Add("Receipt voided.", Severity.Success);
+            await NotifyChangedAsync();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_receipt!.JournalVoucher!.VoucherNo)}");
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file.Size > ReceiptService.MaxAttachmentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {ReceiptService.MaxAttachmentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(ReceiptService.MaxAttachmentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        try
+        {
+            await ReceiptSvc.SetAttachmentAsync(ReceiptId, file.Name, file.ContentType, ms.ToArray());
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DownloadAttachment()
+    {
+        var att = await ReceiptSvc.GetAttachmentAsync(ReceiptId);
+        if (att is null) return;
+        var base64 = Convert.ToBase64String(att.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", att.Value.FileName, att.Value.ContentType, base64);
+    }
+
+    private async Task RemoveAttachment()
+    {
+        await ReceiptSvc.RemoveAttachmentAsync(ReceiptId);
+        await Load();
+    }
+
+    private static Color StatusColor(VoucherStatus status) => status switch
+    {
+        VoucherStatus.Draft => Color.Default,
+        VoucherStatus.Posted => Color.Success,
+        VoucherStatus.Void => Color.Dark,
+        _ => Color.Default,
+    };
+}

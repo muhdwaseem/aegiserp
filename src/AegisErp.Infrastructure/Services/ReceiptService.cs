@@ -190,12 +190,14 @@ public class ReceiptService
         await db.SaveChangesAsync();
     }
 
-    /// <summary>One receipt with full detail (Customer, BankAccount) — used for the Send by Email dialog.</summary>
+    /// <summary>One receipt with full detail (Customer, BankAccount, Allocations) — for the Send by
+    /// Email dialog and the receipt detail view.</summary>
     public async Task<CustomerReceipt?> GetByIdAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.CustomerReceipts.AsNoTracking()
-            .Include(r => r.Customer).Include(r => r.BankAccount)
+            .Include(r => r.Customer).Include(r => r.BankAccount).Include(r => r.JournalVoucher)
+            .Include(r => r.Allocations).ThenInclude(a => a.SalesInvoiceLine).ThenInclude(l => l.SalesInvoice)
             .FirstOrDefaultAsync(r => r.Id == id);
     }
 

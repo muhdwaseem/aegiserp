@@ -1,10 +1,12 @@
 @page "/payment-voucher"
+@page "/payment-voucher/{Id:int?}"
 @attribute [Authorize(Roles = AppRoles.Posters)]
 @inject VendorPaymentService PaymentSvc
 @inject VendorService VendorSvc
 @inject PurchaseInvoiceService InvoiceSvc
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
 
@@ -220,50 +222,62 @@
     </MudExpansionPanel>
 </MudExpansionPanels>
 
-@if (_recent is not null && _recent.Count > 0)
-{
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Recent payments</MudText>
-    <MudTable Items="_recent" Dense="true" Hover="true" Bordered="true">
-        <HeaderContent>
-            <MudTh>Payment</MudTh>
-            <MudTh>Date</MudTh>
-            <MudTh>Vendor</MudTh>
-            <MudTh>Allocated To</MudTh>
-            <MudTh>Bank</MudTh>
-            <MudTh Style="text-align:right">Amount</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh Style="width:48px"></MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd Style="font-family:monospace">
-                @context.PaymentNo
-                @if (!string.IsNullOrWhiteSpace(context.AttachmentFileName))
+<MudText Typo="Typo.subtitle1" Class="mb-2">Payments</MudText>
+<MudGrid>
+    <MudItem xs="12" md="4">
+        <MudPaper Class="payment-list-pane" Elevation="1">
+            @if (_recent is null)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+            }
+            else if (_recent.Count == 0)
+            {
+                <MudText Class="pa-4 mud-text-secondary">No payments yet.</MudText>
+            }
+            else
+            {
+                @foreach (var p in _recent)
                 {
-                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" Class="ml-1" title="@context.AttachmentFileName" />
+                    <div class="payment-row @(p.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(p))">
+                        <div class="payment-row-top">
+                            <span class="payment-row-name">@p.Vendor.Name</span>
+                            <span class="payment-row-amount">@p.Amount.ToString("N2")</span>
+                        </div>
+                        <div class="payment-row-meta">@p.PaymentNo · @p.Date.ToString("dd MMM yyyy")</div>
+                        <div class="payment-row-status">
+                            <MudChip T="string" Size="Size.Small" Color="StatusColor(p.Status)" Variant="Variant.Text">@p.Status</MudChip>
+                        </div>
+                    </div>
                 }
-            </MudTd>
-            <MudTd>@context.Date.ToString("yyyy-MM-dd")</MudTd>
-            <MudTd>@context.Vendor.Name</MudTd>
-            <MudTd Style="font-family:monospace;font-size:11.5px">@AllocatedToLabel(context)</MudTd>
-            <MudTd>@context.BankAccount.Name</MudTd>
-            <MudTd Style="text-align:right;font-weight:600">@context.Amount.ToString("N2")</MudTd>
-            <MudTd><MudChip T="string" Size="Size.Small" Color="StatusColor(context.Status)" Variant="Variant.Text">@context.Status</MudChip></MudTd>
-            <MudTd>
-                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
-                    @if (context.Status == VoucherStatus.Draft)
-                    {
-                        <MudMenuItem Icon="@Icons.Material.Filled.PostAdd" OnClick="@(() => PostDraft(context.Id))">Post Payment</MudMenuItem>
-                        <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="@(() => VoidDraft(context.Id))">Void</MudMenuItem>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(context.AttachmentFileName))
-                    {
-                        <MudMenuItem Icon="@Icons.Material.Filled.Download" OnClick="@(() => DownloadAttachment(context.Id))">Download Attachment</MudMenuItem>
-                    }
-                </MudMenu>
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
-}
+            }
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="8">
+        @if (_selectedId is int id)
+        {
+            <PaymentVoucherDetailPanel @key="id" PaymentId="id" OnChanged="RefreshList" />
+        }
+        else
+        {
+            <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                <MudIcon Icon="@Icons.Material.Filled.CreditCard" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                <MudText Class="mud-text-secondary">Select a payment on the left to view its details.</MudText>
+            </MudPaper>
+        }
+    </MudItem>
+</MudGrid>
+
+<style>
+    .payment-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .payment-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .payment-row:hover { background: var(--mud-palette-action-default-hover); }
+    .payment-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .payment-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .payment-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .payment-row-amount { font-weight: 600; white-space: nowrap; }
+    .payment-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+    .payment-row-status { margin-top: 4px; }
+</style>
 
 @code {
     private List<Vendor>? _vendors;
@@ -279,6 +293,9 @@
     private readonly Dictionary<int, decimal> _lineAllocationInputs = new();
     private readonly Dictionary<int, List<PurchaseInvoiceLineBalance>> _lineBalancesByInvoice = new();
     private int? _splitInvoiceId;
+    private int? _selectedId;
+
+    [Parameter] public int? Id { get; set; }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     private string _userName = "System Admin";
@@ -335,7 +352,8 @@
         _bankAccounts = accounts.Where(a => a.Type == AccountType.Asset && a.Code.StartsWith("110")).ToList();
         _periods = await Ledger.GetPeriodsAsync();
         SyncPeriodToDate();
-        _recent = await PaymentSvc.GetRecentAsync(8);
+        _recent = await PaymentSvc.GetRecentAsync(50);
+        if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
         if (AuthState is not null)
             _userName = (await AuthState).User.Identity?.Name ?? "System Admin";
 
@@ -350,6 +368,18 @@
                 if (inv is not null) await PayInFull(inv);
             }
         }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _recent is { Count: > 0 }) _selectedId = _recent[0].Id;
+    }
+
+    private void SelectRow(VendorPayment p)
+    {
+        _selectedId = p.Id;
+        Nav.NavigateTo($"/payment-voucher/{p.Id}");
     }
 
     private async Task OnVendorChanged(int id)
@@ -433,14 +463,6 @@
         _attachmentContentType = file.ContentType;
     }
 
-    private async Task DownloadAttachment(int paymentId)
-    {
-        var att = await PaymentSvc.GetAttachmentAsync(paymentId);
-        if (att is null) return;
-        var base64 = Convert.ToBase64String(att.Value.Data);
-        await JS.InvokeVoidAsync("downloadFileFromBytes", att.Value.FileName, att.Value.ContentType, base64);
-    }
-
     private void OnDateChanged(DateTime? d) { _date = d; SyncPeriodToDate(); }
 
     private void SyncPeriodToDate()
@@ -472,6 +494,8 @@
 
             Snackbar.Add($"Posted {p.PaymentNo} — GL voucher generated.", Severity.Success);
             await ResetAfterSaveAsync();
+            _selectedId = p.Id;
+            Nav.NavigateTo($"/payment-voucher/{p.Id}");
         }
         catch (PostingException ex)
         {
@@ -496,6 +520,8 @@
 
             Snackbar.Add($"Saved {p.PaymentNo} as a draft.", Severity.Success);
             await ResetAfterSaveAsync();
+            _selectedId = p.Id;
+            Nav.NavigateTo($"/payment-voucher/{p.Id}");
         }
         catch (PostingException ex)
         {
@@ -503,6 +529,8 @@
         }
         finally { _posting = false; }
     }
+
+    private async Task RefreshList() => _recent = await PaymentSvc.GetRecentAsync(50);
 
     private async Task ResetAfterSaveAsync()
     {
@@ -514,43 +542,7 @@
         _attachmentBytes = null;
         ClearApplied();
         _openInvoices = _vendorId > 0 ? await VendorSvc.GetOpenInvoicesAsync(_vendorId) : new();
-        _recent = await PaymentSvc.GetRecentAsync(8);
-    }
-
-    private async Task PostDraft(int paymentId)
-    {
-        try
-        {
-            var p = await PaymentSvc.PostDraftAsync(paymentId, _userName, DateTime.UtcNow);
-            Snackbar.Add($"Posted {p.PaymentNo}.", Severity.Success);
-            _recent = await PaymentSvc.GetRecentAsync(8);
-            _openInvoices = _vendorId > 0 ? await VendorSvc.GetOpenInvoicesAsync(_vendorId) : new();
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-    }
-
-    private async Task VoidDraft(int paymentId)
-    {
-        try
-        {
-            await PaymentSvc.VoidDraftAsync(paymentId);
-            Snackbar.Add("Payment voided.", Severity.Success);
-            _recent = await PaymentSvc.GetRecentAsync(8);
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-    }
-
-    private static string AllocatedToLabel(VendorPayment p)
-    {
-        if (p.Allocations.Count == 0) return "On account";
-        var invoiceNos = p.Allocations.Select(a => a.PurchaseInvoiceLine.PurchaseInvoice.InvoiceNo).Distinct().ToList();
-        return invoiceNos.Count == 1 ? invoiceNos[0] : $"{invoiceNos.Count} invoices";
+        await RefreshList();
     }
 
     private static Color StatusColor(VoucherStatus status) => status switch

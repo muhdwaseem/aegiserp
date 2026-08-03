@@ -190,12 +190,13 @@ public class VendorPaymentService
         await db.SaveChangesAsync();
     }
 
-    /// <summary>One payment with full detail (Vendor, BankAccount) — for the detail/email views.</summary>
+    /// <summary>One payment with full detail (Vendor, BankAccount, Allocations) — for the detail/email views.</summary>
     public async Task<VendorPayment?> GetByIdAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.VendorPayments.AsNoTracking()
-            .Include(p => p.Vendor).Include(p => p.BankAccount)
+            .Include(p => p.Vendor).Include(p => p.BankAccount).Include(p => p.JournalVoucher)
+            .Include(p => p.Allocations).ThenInclude(a => a.PurchaseInvoiceLine).ThenInclude(l => l.PurchaseInvoice)
             .FirstOrDefaultAsync(p => p.Id == id);
     }
 
