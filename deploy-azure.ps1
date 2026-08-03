@@ -84,6 +84,6 @@ $url = "https://$AppName.azurewebsites.net"
 Write-Host "`n=================================================" -ForegroundColor Green
 Write-Host " DEPLOYED. Share this link with your client:" -ForegroundColor Green
 Write-Host "   $url" -ForegroundColor White
-Write-Host "   Login:  admin@aegisfze.com  /  Admin@123!" -ForegroundColor White
+Write-Host "   Login:  owner@aegiserp.com  /  Aegis#Owner2026" -ForegroundColor White
 Write-Host "=================================================" -ForegroundColor Green
 Write-Host "First load after idle can take ~20-30s (free tier waking up)." -ForegroundColor DarkGray

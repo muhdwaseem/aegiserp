@@ -663,9 +663,9 @@ realistic data.
 
 | Email | Password | Roles |
 |---|---|---|
-| admin@aegisfze.com | Admin@123! | Admin, Accountant |
-| finance@aegisfze.com | Finance@123! | Accountant |
-| viewer@aegisfze.com | Viewer@123! | Viewer |
+| owner@aegiserp.com | Aegis#Owner2026 | Admin, Accountant |
+| accounts@aegiserp.com | Aegis#Finance2026 | Accountant |
+| readonly@aegiserp.com | Aegis#View2026 | Viewer |
 
 **Fiscal periods:** Apr, May, Jun, Jul 2026.
 **Cost centers:** Admin, Passport Services, Travel & Tourism, HR.

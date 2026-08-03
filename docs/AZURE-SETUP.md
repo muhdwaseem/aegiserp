@@ -109,8 +109,8 @@ dotnet run --project src/AegisErp.Web --urls http://localhost:5199
 (The double underscore `__` is how .NET maps environment variables onto nested config keys.)
 
 On first run the app **creates all its tables in Azure SQL and seeds the demo data**
-automatically — the same behavior you saw locally. Sign in with `admin@aegisfze.com` /
-`Admin@123!`.
+automatically — the same behavior you saw locally. Sign in with `owner@aegiserp.com` /
+`Aegis#Owner2026`.
 
 > When the app itself is hosted on Azure (App Service), you set these same two values in the
 > App Service **Configuration → Application settings** instead of environment variables on

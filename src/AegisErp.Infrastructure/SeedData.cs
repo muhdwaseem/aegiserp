@@ -301,11 +301,11 @@ public static class SeedData
             db.UserCompanyAccess.Add(new UserCompanyAccess { UserId = user.Id, CompanyId = company.Id, Role = role });
         }
 
-        await Grant("admin@aegisfze.com", aegis, AppRoles.Admin);
-        await Grant("admin@aegisfze.com", meridian, AppRoles.Admin);
-        await Grant("finance@aegisfze.com", aegis, AppRoles.Accountant);   // Aegis only — not Meridian
-        await Grant("viewer@aegisfze.com", aegis, AppRoles.Viewer);
-        await Grant("viewer@aegisfze.com", meridian, AppRoles.Viewer);
+        await Grant(DemoAdminEmail, aegis, AppRoles.Admin);
+        await Grant(DemoAdminEmail, meridian, AppRoles.Admin);
+        await Grant(DemoFinanceEmail, aegis, AppRoles.Accountant);   // Aegis only — not Meridian
+        await Grant(DemoViewerEmail, aegis, AppRoles.Viewer);
+        await Grant(DemoViewerEmail, meridian, AppRoles.Viewer);
         await db.SaveChangesAsync();
     }
 
@@ -316,11 +316,50 @@ public static class SeedData
                 await roles.CreateAsync(new IdentityRole(role));
     }
 
+    // These credentials are never displayed anywhere in the app (see Login.razor) — they're
+    // handed to whoever provisions the demo/first-run login out of band.
+    public const string DemoAdminEmail = "owner@aegiserp.com";
+    public const string DemoAdminPassword = "Aegis#Owner2026";
+    public const string DemoFinanceEmail = "accounts@aegiserp.com";
+    public const string DemoFinancePassword = "Aegis#Finance2026";
+    public const string DemoViewerEmail = "readonly@aegiserp.com";
+    public const string DemoViewerPassword = "Aegis#View2026";
+
     private static async Task SeedDemoUsersAsync(UserManager<AppUser> users)
     {
-        await EnsureUserAsync(users, "admin@aegisfze.com", "Admin@123!", "System Admin", AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
-        await EnsureUserAsync(users, "finance@aegisfze.com", "Finance@123!", "Fatima Al Rashidi", AppRoles.Accountant);
-        await EnsureUserAsync(users, "viewer@aegisfze.com", "Viewer@123!", "Ahmed Al Mansoori", AppRoles.Viewer);
+        await MigrateOrCreateUserAsync(users, "admin@aegisfze.com", DemoAdminEmail, DemoAdminPassword, "System Admin", AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
+        await MigrateOrCreateUserAsync(users, "finance@aegisfze.com", DemoFinanceEmail, DemoFinancePassword, "Fatima Al Rashidi", AppRoles.Accountant);
+        await MigrateOrCreateUserAsync(users, "viewer@aegisfze.com", DemoViewerEmail, DemoViewerPassword, "Ahmed Al Mansoori", AppRoles.Viewer);
+    }
+
+    /// <summary>
+    /// Rotates a previously-seeded demo account (old email/password) onto new credentials in
+    /// place — renaming rather than creating a second user means UserCompanyAccess and every
+    /// other row keyed by UserId survives untouched, and the old password stops working.
+    /// Databases that never had the old account just get it created fresh under the new email.
+    /// </summary>
+    private static async Task MigrateOrCreateUserAsync(
+        UserManager<AppUser> users, string oldEmail, string newEmail, string newPassword,
+        string displayName, params string[] roles)
+    {
+        if (await users.FindByNameAsync(newEmail) is not null) return; // already migrated/created
+
+        var existing = await users.FindByNameAsync(oldEmail);
+        if (existing is not null)
+        {
+            await users.SetUserNameAsync(existing, newEmail);
+            await users.SetEmailAsync(existing, newEmail);
+            existing.EmailConfirmed = true;
+            await users.UpdateAsync(existing);
+            await users.RemovePasswordAsync(existing);
+            var resetResult = await users.AddPasswordAsync(existing, newPassword);
+            if (!resetResult.Succeeded)
+                throw new InvalidOperationException(
+                    $"Failed to rotate credentials for {oldEmail} -> {newEmail}: {string.Join("; ", resetResult.Errors.Select(e => e.Description))}");
+            return;
+        }
+
+        await EnsureUserAsync(users, newEmail, newPassword, displayName, roles);
     }
 
     private static async Task EnsureUserAsync(

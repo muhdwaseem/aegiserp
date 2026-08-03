@@ -42,9 +42,11 @@ balanced by construction.
 
 | Email | Password | Roles |
 |---|---|---|
-| admin@aegisfze.com | Admin@123! | Admin, Accountant |
-| finance@aegisfze.com | Finance@123! | Accountant |
-| viewer@aegisfze.com | Viewer@123! | Viewer (read-only) |
+| owner@aegiserp.com | Aegis#Owner2026 | Admin, Accountant |
+| accounts@aegiserp.com | Aegis#Finance2026 | Accountant |
+| readonly@aegiserp.com | Aegis#View2026 | Viewer (read-only) |
+
+These credentials are not shown on the login page itself — keep this table private.
 
 The database is seeded on first run with the demo company (Aegis FZE, AED): chart of
 accounts, opening balances, three customers, four sales invoices and two receipts —
