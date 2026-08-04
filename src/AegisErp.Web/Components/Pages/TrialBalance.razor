@@ -95,49 +95,39 @@
             <table class="tb-tbl">
                 <thead>
                     <tr>
-                        <th rowspan="2">Code</th>
-                        <th rowspan="2">Account</th>
+                        <th rowspan="@(TwoRowHeader ? 2 : 1)">Code</th>
+                        <th rowspan="@(TwoRowHeader ? 2 : 1)">Account</th>
                         @if (_showOpeningBalance)
                         {
-                            <th colspan="2" class="grp">Opening Balance</th>
-                        }
-                        @if (_showTransactions)
-                        {
-                            <th colspan="@(_nettTransactionsOnly ? 1 : 2)" class="grp">Transactions</th>
-                        }
-                        @if (_showClosingBalance)
-                        {
-                            <th colspan="2" class="grp">Closing Balance</th>
-                        }
-                        @if (_showPercentages)
-                        {
-                            <th rowspan="2">% of Total</th>
-                        }
-                    </tr>
-                    <tr>
-                        @if (_showOpeningBalance)
-                        {
-                            <th class="amt">Debit</th>
-                            <th class="amt">Credit</th>
+                            <th rowspan="@(TwoRowHeader ? 2 : 1)" class="amt">Opening Balance</th>
                         }
                         @if (_showTransactions)
                         {
                             @if (_nettTransactionsOnly)
                             {
-                                <th class="amt">Net</th>
+                                <th rowspan="@(TwoRowHeader ? 2 : 1)" class="amt">Transactions</th>
                             }
                             else
                             {
-                                <th class="amt">Debit</th>
-                                <th class="amt">Credit</th>
+                                <th colspan="2" class="grp">Transactions</th>
                             }
                         }
                         @if (_showClosingBalance)
                         {
-                            <th class="amt">Debit</th>
-                            <th class="amt">Credit</th>
+                            <th rowspan="@(TwoRowHeader ? 2 : 1)" class="amt">Closing Balance</th>
+                        }
+                        @if (_showPercentages)
+                        {
+                            <th rowspan="@(TwoRowHeader ? 2 : 1)" class="amt">% of Total</th>
                         }
                     </tr>
+                    @if (TwoRowHeader)
+                    {
+                        <tr>
+                            <th class="amt">Debit</th>
+                            <th class="amt">Credit</th>
+                        </tr>
+                    }
                 </thead>
                 <tbody>
                     @if (_format == "Detailed")
@@ -149,8 +139,7 @@
                                 <td><AccountLink AccountId="r.AccountId">@r.Name</AccountLink></td>
                                 @if (_showOpeningBalance)
                                 {
-                                    <td class="amt">@(r.OpeningDebit > 0 ? r.OpeningDebit.ToString("N2") : "")</td>
-                                    <td class="amt">@(r.OpeningCredit > 0 ? r.OpeningCredit.ToString("N2") : "")</td>
+                                    <td class="amt">@NetLabel(r.OpeningDebit, r.OpeningCredit)</td>
                                 }
                                 @if (_showTransactions)
                                 {
@@ -166,8 +155,7 @@
                                 }
                                 @if (_showClosingBalance)
                                 {
-                                    <td class="amt">@(r.ClosingDebit > 0 ? r.ClosingDebit.ToString("N2") : "")</td>
-                                    <td class="amt">@(r.ClosingCredit > 0 ? r.ClosingCredit.ToString("N2") : "")</td>
+                                    <td class="amt">@NetLabel(r.ClosingDebit, r.ClosingCredit)</td>
                                 }
                                 @if (_showPercentages)
                                 {
@@ -182,8 +170,7 @@
                         <td colspan="2">Total (AED)</td>
                         @if (_showOpeningBalance)
                         {
-                            <td class="amt">@_tb.TotalOpeningDebit.ToString("N2")</td>
-                            <td class="amt">@_tb.TotalOpeningCredit.ToString("N2")</td>
+                            <td class="amt">@NetLabel(_tb.TotalOpeningDebit, _tb.TotalOpeningCredit)</td>
                         }
                         @if (_showTransactions)
                         {
@@ -199,8 +186,7 @@
                         }
                         @if (_showClosingBalance)
                         {
-                            <td class="amt">@_tb.TotalClosingDebit.ToString("N2")</td>
-                            <td class="amt">@_tb.TotalClosingCredit.ToString("N2")</td>
+                            <td class="amt">@NetLabel(_tb.TotalClosingDebit, _tb.TotalClosingCredit)</td>
                         }
                         @if (_showPercentages)
                         {
@@ -237,6 +223,11 @@
 
     private IEnumerable<TrialBalanceMovementRow> SortedRows =>
         _sortBy == "Name" ? _tb!.Rows.OrderBy(r => r.Name) : _tb!.Rows;
+
+    /// <summary>Only the Transactions group ever splits into Debit/Credit sub-columns (Opening and
+    /// Closing Balance are always a single net Dr/Cr figure) — so a second header row is needed
+    /// only when Transactions are shown and not netted.</summary>
+    private bool TwoRowHeader => _showTransactions && !_nettTransactionsOnly;
 
     protected override async Task OnInitializedAsync()
     {
