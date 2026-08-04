@@ -1,0 +1,93 @@
+@inject CompanyAccessService AccessSvc
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Add User</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@CompanyName</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+            If this email already has a login (e.g. someone who works in another company too), it's
+            simply granted access here with the role below — no second account is created.
+        </MudAlert>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_name" Label="Full Name" Required="true" Immediate="true" Placeholder="e.g. Fatima Al Rashidi" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_email" Label="Email" Required="true" Immediate="true" InputType="InputType.Email" Placeholder="name@company.com" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="_password" Label="Password" Required="true" Immediate="true"
+                              InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                              Adornment="Adornment.End" AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                              OnAdornmentClick="@(() => _showPassword = !_showPassword)"
+                              HelperText="At least 8 characters. Share it with them directly — there is no email invite yet." />
+            </MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex align-center" Style="gap:12px">
+                <MudSelect T="string" @bind-Value="_role" Label="Role in this company" Style="flex:1">
+                    @foreach (var r in AppRoles.CompanyRoles)
+                    {
+                        <MudSelectItem T="string" Value="@r">@r</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="GeneratePassword">Generate</MudButton>
+            </MudItem>
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                    <b>Admin</b> can manage this company's settings and team. <b>Accountant</b> can create and post
+                    documents. <b>Viewer</b> can see everything but not change it.
+                </MudText>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd"
+                   OnClick="Save" Disabled="_saving">Add User</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public int CompanyId { get; set; }
+    [Parameter, EditorRequired] public string CompanyName { get; set; } = "";
+
+    private string _name = "";
+    private string _email = "";
+    private string _password = "";
+    private string _role = AppRoles.Accountant;
+    private bool _showPassword;
+    private bool _saving;
+
+    private void GeneratePassword() =>
+        _password = $"{Guid.NewGuid():N}"[..10] + "#9";
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            Snackbar.Add("Name, email and password are all required.", Severity.Warning);
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var result = await AccessSvc.CreateUserAndGrantAsync(_email, _name, _password, CompanyId, _role);
+            Snackbar.Add(result.UserWasCreated
+                ? $"{result.Email} was created and given {_role} access."
+                : $"{result.Email} already had a login — granted {_role} access to this company.",
+                Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

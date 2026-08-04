@@ -37,6 +37,21 @@ public class CompanySession
     /// <summary>True when the user administers the firm and therefore reaches every company.</summary>
     public bool IsFirmAdmin { get; private set; }
 
+    /// <summary>
+    /// True when the signed-in user may post/create documents in the <em>active</em> company —
+    /// a FirmAdmin, or someone granted Admin/Accountant there. This is evaluated per company
+    /// (via <see cref="ActiveRole"/>), not from the user's account overall, so the same person can
+    /// be an Accountant in one client's books and only a Viewer in another's.
+    /// </summary>
+    public bool CanPost => IsFirmAdmin || ActiveRole is AppRoles.Admin or AppRoles.Accountant;
+
+    /// <summary>
+    /// True when the signed-in user may administer the <em>active</em> company's settings and
+    /// team — a FirmAdmin, or someone granted Admin there. See <see cref="CanPost"/> for why this
+    /// is per-company rather than a single account-wide flag.
+    /// </summary>
+    public bool CanAdminister => IsFirmAdmin || ActiveRole == AppRoles.Admin;
+
     /// <summary>Raised when the active company changes so pages can reload their data.</summary>
     public event Action? Changed;
 

@@ -2,6 +2,7 @@
 @inject LedgerService Ledger
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject CompanySession Session
 
 @if (_loaded && _estimate is null)
 {
@@ -60,26 +61,25 @@ else if (_estimate is not null)
             </MudTabPanel>
 
             <MudTabPanel Text="Status &amp; Conversion">
-                <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
-                    <Authorized>
-                        <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
-                            @if (_estimate.Status == DocumentStatus.Draft)
-                            {
-                                <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(DocumentStatus.Sent))">Mark Sent</MudButton>
-                            }
-                            @if (_estimate.Status is DocumentStatus.Draft or DocumentStatus.Sent)
-                            {
-                                <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="@(() => SetStatus(DocumentStatus.Accepted))">Accept</MudButton>
-                                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => SetStatus(DocumentStatus.Declined))">Decline</MudButton>
-                            }
-                            @if (_estimate.Status == DocumentStatus.Accepted)
-                            {
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ReceiptLong"
-                                           Disabled="_converting" OnClick="Convert">Convert to Invoice</MudButton>
-                            }
-                        </MudStack>
-                    </Authorized>
-                </AuthorizeView>
+                @if (Session.CanPost)
+                {
+                    <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                        @if (_estimate.Status == DocumentStatus.Draft)
+                        {
+                            <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(DocumentStatus.Sent))">Mark Sent</MudButton>
+                        }
+                        @if (_estimate.Status is DocumentStatus.Draft or DocumentStatus.Sent)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="@(() => SetStatus(DocumentStatus.Accepted))">Accept</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="@(() => SetStatus(DocumentStatus.Declined))">Decline</MudButton>
+                        }
+                        @if (_estimate.Status == DocumentStatus.Accepted)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.ReceiptLong"
+                                       Disabled="_converting" OnClick="Convert">Convert to Invoice</MudButton>
+                        }
+                    </MudStack>
+                }
 
                 @if (_estimate.Status == DocumentStatus.Converted && _estimate.ConvertedInvoice is not null)
                 {

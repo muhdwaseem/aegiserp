@@ -4,16 +4,18 @@
 @inject VendorService VendorSvc
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject CompanySession Session
 
 <PageTitle>Vendors · Aegis ERP</PageTitle>
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
     <MudText Typo="Typo.h5">Vendors</MudText>
     <MudSpacer />
-    <AuthorizeView Roles="@AppRoles.Posters">
+    @if (Session.CanPost)
+    {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                    OnClick="OpenForm">New Vendor</MudButton>
-    </AuthorizeView>
+    }
 </MudStack>
 
 @if (_showForm)

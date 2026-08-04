@@ -1,11 +1,12 @@
 @page "/debit-note"
 @page "/debit-note/{Id:int?}"
-@attribute [Authorize(Roles = AppRoles.Posters)]
+@attribute [Authorize]
 @using AegisErp.Web.Components.Dialogs
 @inject DebitNoteService DebitNoteSvc
 @inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject CompanySession Session
 
 <PageTitle>Debit Note · Aegis ERP</PageTitle>
 
@@ -87,6 +88,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanPost) { Nav.NavigateTo(""); return; }
+
         _recent = await DebitNoteSvc.GetRecentAsync(50);
         if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
 

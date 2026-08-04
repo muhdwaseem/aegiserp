@@ -1,3 +1,5 @@
+@inject CompanySession Session
+
 <MudNavMenu Class="pa-2">
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
 
@@ -42,18 +44,20 @@
         <MudNavLink Href="ap-aging" Icon="@Icons.Material.Filled.EventNote">AP Aging</MudNavLink>
     </MudNavGroup>
 
-    <AuthorizeView Roles="@AppRoles.Admins">
+    @if (Session.CanAdminister)
+    {
         <MudNavGroup Title="Settings" Icon="@Icons.Material.Filled.Settings">
             <MudNavLink Href="company-setup" Icon="@Icons.Material.Filled.Business">Company Setup</MudNavLink>
             <MudNavLink Href="currencies" Icon="@Icons.Material.Filled.CurrencyExchange">Currencies</MudNavLink>
             <MudNavLink Href="tax-configuration" Icon="@Icons.Material.Filled.AccountBalance">Tax Configuration</MudNavLink>
             <MudNavLink Href="custom-fields-tags" Icon="@Icons.Material.Filled.Label">Custom Fields &amp; Tags</MudNavLink>
-            <AuthorizeView Roles="@AppRoles.FirmAdmin" Context="firm">
+            @if (Session.IsFirmAdmin)
+            {
                 <MudNavLink Href="companies" Icon="@Icons.Material.Filled.Domain">Companies &amp; Access</MudNavLink>
-            </AuthorizeView>
-            <MudNavLink Href="users" Icon="@Icons.Material.Filled.AdminPanelSettings">Users &amp; Roles</MudNavLink>
+            }
+            <MudNavLink Href="users" Icon="@Icons.Material.Filled.AdminPanelSettings">Manage Team</MudNavLink>
         </MudNavGroup>
-    </AuthorizeView>
+    }
 </MudNavMenu>
 
 @* The drawer/appbar shell is a constant dark olive in BOTH light and dark mode (see MainLayout's

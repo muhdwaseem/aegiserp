@@ -23,7 +23,8 @@
 
 @* ── Action toolbar (matches the reference: Manage · Data · Reports) ── *@
 <div class="coa-toolbar">
-    <AuthorizeView Roles="@AppRoles.Posters">
+    @if (Session.CanPost)
+    {
         <div class="tb-grp">
             <div class="tb-btns">
                 <button class="tb-b prim" @onclick="OpenNew"><span>➕</span>New</button>
@@ -40,7 +41,7 @@
             </div>
             <div class="tb-lbl">Data</div>
         </div>
-    </AuthorizeView>
+    }
     <div class="tb-sep"></div>
     <div class="tb-grp">
         <div class="tb-btns">

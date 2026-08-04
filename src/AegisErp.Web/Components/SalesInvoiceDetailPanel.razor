@@ -1,6 +1,7 @@
 @using AegisErp.Web.Components.Dialogs
 @inject SalesInvoiceService InvoiceSvc
 @inject CompanyService CompanySvc
+@inject CompanySession Session
 @inject CreditNoteService CreditNoteSvc
 @inject IDialogService DialogService
 @inject NavigationManager Nav
@@ -74,11 +75,12 @@ else if (_invoice is not null)
             }
             <MudMenuItem Icon="@Icons.Material.Filled.Undo" OnClick="CreateCreditNote">Create Credit Note</MudMenuItem>
             <MudMenuItem Icon="@Icons.Material.Filled.Share" OnClick="ShareInvoice">Share</MudMenuItem>
-            <AuthorizeView Roles="@AppRoles.Admins" Context="auth">
+            @if (Session.CanAdminister)
+            {
                 <MudMenuItem Icon="@(_invoice.IsLocked ? Icons.Material.Filled.LockOpen : Icons.Material.Filled.Lock)" OnClick="ToggleLock">
                     @(_invoice.IsLocked ? "Unlock Invoice" : "Lock Invoice")
                 </MudMenuItem>
-            </AuthorizeView>
+            }
             <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Nav.NavigateTo("company-setup"))">Invoice Preferences</MudMenuItem>
         </MudMenu>
     </MudStack>
@@ -234,11 +236,7 @@ else if (_invoice is not null)
         try { _company = await CompanySvc.GetAsync(); }
         catch (PostingException) { _company = null; }
 
-        if (AuthState is not null)
-        {
-            var user = (await AuthState).User;
-            _canApprove = user.IsInRole(AppRoles.FirmAdmin) || user.IsInRole(AppRoles.Admin);
-        }
+        _canApprove = Session.CanAdminister;
 
         var totalAllocated = _lineBalances.Sum(l => l.Allocated) + _creditedTotal;
         _balance = _invoice.TotalGross - totalAllocated;

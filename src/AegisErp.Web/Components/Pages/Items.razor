@@ -5,6 +5,7 @@
 @inject TaxCodeService TaxCodeSvc
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject CompanySession Session
 
 <PageTitle>Items · Aegis ERP</PageTitle>
 
@@ -14,9 +15,10 @@
     <MudTextField @bind-Value="_search" Placeholder="Search items…" Immediate="true" DebounceInterval="200"
                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense"
                   Variant="Variant.Outlined" Style="max-width:260px" Class="mt-0" />
-    <AuthorizeView Roles="@AppRoles.Posters">
+    @if (Session.CanPost)
+    {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNew">New Item</MudButton>
-    </AuthorizeView>
+    }
 </MudStack>
 
 @if (_showForm)
@@ -151,13 +153,14 @@
             </MudChip>
         </MudTd>
         <MudTd>
-            <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+            @if (Session.CanPost)
+            {
                 <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
                     <MudMenuItem OnClick="@(() => OpenEdit(context))">Edit</MudMenuItem>
                     <MudMenuItem OnClick="@(() => Toggle(context))">@(context.IsActive ? "Deactivate" : "Activate")</MudMenuItem>
                     <MudMenuItem OnClick="@(() => Delete(context))">Delete</MudMenuItem>
                 </MudMenu>
-            </AuthorizeView>
+            }
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>

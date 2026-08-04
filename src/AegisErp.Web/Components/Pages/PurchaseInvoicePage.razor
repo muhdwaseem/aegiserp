@@ -1,10 +1,11 @@
 @page "/purchase-invoice"
 @page "/purchase-invoice/{Id:int?}"
-@attribute [Authorize(Roles = AppRoles.Posters)]
+@attribute [Authorize]
 @using AegisErp.Web.Components.Dialogs
 @inject PurchaseInvoiceService InvoiceSvc
 @inject IDialogService DialogService
 @inject NavigationManager Nav
+@inject CompanySession Session
 
 <PageTitle>Purchase Invoice · Aegis ERP</PageTitle>
 
@@ -87,7 +88,12 @@
     private List<PurchaseInvoice>? _invoices;
     private int? _selectedId;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanPost) { Nav.NavigateTo(""); return; }
+        await Load();
+    }
 
     protected override void OnParametersSet()
     {

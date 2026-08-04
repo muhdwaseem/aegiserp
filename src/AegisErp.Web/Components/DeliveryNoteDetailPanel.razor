@@ -1,6 +1,7 @@
 @inject DeliveryNoteService DeliveryNoteSvc
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject CompanySession Session
 
 @if (_loaded && _note is null)
 {
@@ -12,7 +13,8 @@ else if (_note is not null)
         <MudText Typo="Typo.h5">@_note.DeliveryNoteNo</MudText>
         <MudChip T="string" Size="Size.Small" Color="@(_note.Status == DocumentStatus.Delivered ? Color.Success : Color.Default)" Variant="Variant.Text">@_note.Status</MudChip>
         <MudSpacer />
-        <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+        @if (Session.CanPost)
+        {
             @if (_note.Status != DocumentStatus.Delivered)
             {
                 <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => SetStatus(DocumentStatus.Delivered))">Mark Delivered</MudButton>
@@ -21,7 +23,7 @@ else if (_note is not null)
             {
                 <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(DocumentStatus.Draft))">Reopen</MudButton>
             }
-        </AuthorizeView>
+        }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
 

@@ -1,7 +1,8 @@
 @page "/receipt-voucher"
 @page "/receipt-voucher/{Id:int?}"
-@attribute [Authorize(Roles = AppRoles.Posters)]
+@attribute [Authorize]
 @using AegisErp.Web.Components.Dialogs
+@inject CompanySession Session
 @inject ReceiptService ReceiptSvc
 @inject CustomerService CustomerSvc
 @inject SalesInvoiceService InvoiceSvc
@@ -95,6 +96,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanPost) { Nav.NavigateTo(""); return; }
+
         _recent = await ReceiptSvc.GetRecentAsync(50);
         if (_selectedId is null && _recent.Count > 0) _selectedId = Id ?? _recent[0].Id;
 

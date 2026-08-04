@@ -13,9 +13,10 @@
         <MudText Typo="Typo.body2" Class="mud-text-secondary">@(Session.Active?.Name ?? "—") · @(_kpis?.Period ?? "…") · AED</MudText>
     </div>
     <MudSpacer />
-    <AuthorizeView Roles="@AppRoles.Posters">
+    @if (Session.CanPost)
+    {
         <MudButton Href="journal-voucher" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">New Voucher</MudButton>
-    </AuthorizeView>
+    }
 </MudStack>
 
 @if (_kpis is null)

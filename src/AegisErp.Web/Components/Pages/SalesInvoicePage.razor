@@ -1,12 +1,13 @@
 @page "/sales-invoice"
 @page "/sales-invoice/{Id:int?}"
-@attribute [Authorize(Roles = AppRoles.Posters)]
+@attribute [Authorize]
 @using AegisErp.Web.Components.Dialogs
 @inject SalesInvoiceService InvoiceSvc
 @inject LedgerService Ledger
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
+@inject CompanySession Session
 
 <PageTitle>Sales Invoice · Aegis ERP</PageTitle>
 
@@ -136,6 +137,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanPost) { Nav.NavigateTo(""); return; }
+
         _periods = await Ledger.GetPeriodsAsync();
         await Load();
     }

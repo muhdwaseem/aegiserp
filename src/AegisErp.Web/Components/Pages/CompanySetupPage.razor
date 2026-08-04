@@ -1,6 +1,6 @@
 @page "/company-setup"
 @page "/company-setup/new"
-@attribute [Authorize(Roles = AppRoles.Admins)]
+@attribute [Authorize]
 @inject CompanyService Company
 @inject CompanySession Session
 @inject NavigationManager Navigation
@@ -361,6 +361,12 @@ else
         if (_isNew && !Session.IsFirmAdmin)
         {
             Snackbar.Add("Only a firm administrator can create companies.", Severity.Error);
+            Navigation.NavigateTo("");
+            return;
+        }
+        if (!_isNew && !Session.CanAdminister)
+        {
+            Snackbar.Add("Only an Admin can edit this company's setup.", Severity.Error);
             Navigation.NavigateTo("");
             return;
         }

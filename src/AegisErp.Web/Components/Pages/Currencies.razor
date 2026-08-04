@@ -1,9 +1,11 @@
 @page "/currencies"
-@attribute [Authorize(Roles = AppRoles.Admins)]
+@attribute [Authorize]
 @inject CurrencyService CurrencySvc
 @inject CompanyService Companies
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject CompanySession Session
+@inject NavigationManager Navigation
 
 <PageTitle>Currencies · Aegis ERP</PageTitle>
 
@@ -99,7 +101,12 @@
     private string _name = "";
     private decimal _rate = 1;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister) { Navigation.NavigateTo(""); return; }
+        await Load();
+    }
 
     private async Task Load()
     {

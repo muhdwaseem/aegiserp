@@ -1,9 +1,11 @@
 @page "/tax-configuration"
-@attribute [Authorize(Roles = AppRoles.Admins)]
+@attribute [Authorize]
 @inject TaxCodeService TaxCodeSvc
 @inject ChartOfAccountsService Coa
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject CompanySession Session
+@inject NavigationManager Navigation
 
 <PageTitle>Tax Configuration · Aegis ERP</PageTitle>
 
@@ -107,6 +109,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister) { Navigation.NavigateTo(""); return; }
+
         _accounts = await Coa.GetAllAsync(postableOnly: true);
         await Load();
     }

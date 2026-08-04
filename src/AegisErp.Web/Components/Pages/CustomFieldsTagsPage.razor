@@ -1,9 +1,11 @@
 @page "/custom-fields-tags"
-@attribute [Authorize(Roles = AppRoles.Admins)]
+@attribute [Authorize]
 @inject CustomFieldService CustomFieldSvc
 @inject TagService TagSvc
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject CompanySession Session
+@inject NavigationManager Navigation
 
 <PageTitle>Custom Fields &amp; Tags · Aegis ERP</PageTitle>
 
@@ -167,7 +169,12 @@
     private string _groupName = "";
     private int _groupSortOrder;
 
-    protected override async Task OnInitializedAsync() => await LoadAll();
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister) { Navigation.NavigateTo(""); return; }
+        await LoadAll();
+    }
 
     private async Task LoadAll()
     {

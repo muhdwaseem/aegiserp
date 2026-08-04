@@ -1,44 +1,127 @@
 @page "/users"
-@attribute [Authorize(Roles = AppRoles.Admin)]
-@inject UserManager<AppUser> UserManager
-@using Microsoft.EntityFrameworkCore
+@attribute [Authorize]
+@using AegisErp.Web.Components.Dialogs
+@inject CompanyAccessService AccessSvc
+@inject CompanySession Session
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
 
-<PageTitle>Users &amp; Roles · Aegis ERP</PageTitle>
+<PageTitle>Manage Team · Aegis ERP</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-3">Users &amp; Roles</MudText>
+@if (_ready)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <div>
+            <MudText Typo="Typo.h5">Manage Team</MudText>
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">@Session.Active?.Name</MudText>
+        </div>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="AddUser">
+            Add User
+        </MudButton>
+    </MudStack>
 
-<MudTable Items="_users" Dense="true" Hover="true" Striped="true" Bordered="true" Loading="_users is null">
-    <HeaderContent>
-        <MudTh>Email</MudTh>
-        <MudTh>Display Name</MudTh>
-        <MudTh>Roles</MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd Style="font-family:monospace">@context.Email</MudTd>
-        <MudTd>@context.DisplayName</MudTd>
-        <MudTd>
-            @foreach (var role in context.Roles)
-            {
-                <MudChip T="string" Size="Size.Small" Color="@(role == AppRoles.Admin ? Color.Error : role == AppRoles.Accountant ? Color.Primary : Color.Default)" Variant="Variant.Text">@role</MudChip>
-            }
-        </MudTd>
-    </RowTemplate>
-</MudTable>
-<MudText Typo="Typo.caption" Class="mud-text-secondary mt-1 d-block">
-    Admin manages users; Accountant can post documents; Viewer has read-only access to reports and masters.
-</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+        Everyone below can sign in and work in <b>@Session.Active?.Name</b> only — not any other company you may
+        also have access to. <b>Admin</b> can manage settings and this list; <b>Accountant</b> can create and post
+        documents; <b>Viewer</b> can see everything but not change it.
+    </MudText>
+
+    <MudTable Items="_members" Dense="true" Bordered="true" Striped="true" Loading="_members is null">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh>Email</MudTh>
+            <MudTh Style="width:200px">Role</MudTh>
+            <MudTh Style="width:100px"></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.DisplayName</MudTd>
+            <MudTd Style="font-family:monospace">@context.Email</MudTd>
+            <MudTd>
+                <MudSelect T="string" Value="context.Role" ValueChanged="@(r => ChangeRole(context, r))" Dense="true" Margin="Margin.Dense">
+                    @foreach (var r in AppRoles.CompanyRoles)
+                    {
+                        <MudSelectItem T="string" Value="@r">@r</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => Revoke(context))">Remove</MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4 mud-text-secondary">
+                No one else has been added yet — use <b>Add User</b> above to bring in your team.
+            </MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
 
 @code {
-    private List<UserRow>? _users;
+    private bool _ready;
+    private List<CompanyMemberRow>? _members;
 
     protected override async Task OnInitializedAsync()
     {
-        var users = await UserManager.Users.AsNoTracking().OrderBy(u => u.Email).ToListAsync();
-        var rows = new List<UserRow>();
-        foreach (var u in users)
-            rows.Add(new UserRow(u.Email ?? "", u.DisplayName, await UserManager.GetRolesAsync(u)));
-        _users = rows;
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister)
+        {
+            Snackbar.Add("Only an Admin can manage this company's team.", Severity.Error);
+            Navigation.NavigateTo("");
+            return;
+        }
+
+        _ready = true;
+        await Load();
     }
 
-    private record UserRow(string Email, string DisplayName, IList<string> Roles);
+    private async Task Load()
+    {
+        if (Session.Active is null) return;
+        _members = await AccessSvc.GetMembersAsync(Session.Active.CompanyId);
+    }
+
+    private async Task AddUser()
+    {
+        if (Session.Active is null) return;
+        var parameters = new DialogParameters<NewCompanyUserDialog>
+        {
+            { x => x.CompanyId, Session.Active.CompanyId },
+            { x => x.CompanyName, Session.Active.Name },
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewCompanyUserDialog>("Add User", parameters, options);
+        if ((await dialog.Result) is { Canceled: false }) await Load();
+    }
+
+    private async Task ChangeRole(CompanyMemberRow member, string role)
+    {
+        if (Session.Active is null || role == member.Role) return;
+        try
+        {
+            await AccessSvc.GrantAsync(member.UserId, Session.Active.CompanyId, role);
+            Snackbar.Add($"{member.DisplayName} is now {role}.", Severity.Success);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Revoke(CompanyMemberRow member)
+    {
+        if (Session.Active is null) return;
+        try
+        {
+            await AccessSvc.RevokeAsync(member.UserId, Session.Active.CompanyId);
+            Snackbar.Add($"{member.DisplayName} no longer has access.", Severity.Info);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
 }

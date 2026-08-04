@@ -1,4 +1,5 @@
 @using AegisErp.Web.Components.Dialogs
+@inject CompanySession Session
 @inject CustomerService CustomerSvc
 @inject SalesInvoiceService InvoiceSvc
 @inject ReceiptService ReceiptSvc
@@ -31,9 +32,10 @@ else if (_customer is not null)
         </MudChip>
         <MudSpacer />
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Assessment" OnClick="Report">Report</MudButton>
-        <AuthorizeView Roles="@AppRoles.Posters" Context="auth">
+        @if (Session.CanPost)
+        {
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditCustomer">Edit</MudButton>
-        </AuthorizeView>
+        }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
 

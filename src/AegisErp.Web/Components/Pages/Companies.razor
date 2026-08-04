@@ -1,11 +1,13 @@
 @page "/companies"
 @attribute [Authorize(Roles = AppRoles.FirmAdmin)]
 @using Microsoft.AspNetCore.Identity
+@using AegisErp.Web.Components.Dialogs
 @inject CompanyService CompanySvc
 @inject CompanyAccessService AccessSvc
 @inject CompanySession Session
 @inject UserManager<AppUser> Users
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Companies · Aegis ERP</PageTitle>
 
@@ -62,7 +64,7 @@
 
         <MudGrid Class="mb-3">
             <MudItem xs="12" sm="5">
-                <MudSelect T="string" @bind-Value="_grantUserId" Label="User" Dense="true">
+                <MudSelect T="string" @bind-Value="_grantUserId" Label="Existing user" Dense="true">
                     <MudSelectItem T="string" Value="@("")">— select user —</MudSelectItem>
                     @foreach (var u in _allUsers)
                     {
@@ -78,9 +80,10 @@
                     }
                 </MudSelect>
             </MudItem>
-            <MudItem xs="12" sm="4" Class="d-flex align-center">
+            <MudItem xs="12" sm="4" Class="d-flex align-center" Style="gap:8px">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
                            Disabled="@(string.IsNullOrEmpty(_grantUserId))" OnClick="Grant">Grant Access</MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="AddNewUser">New User</MudButton>
             </MudItem>
         </MudGrid>
 
@@ -139,6 +142,23 @@
         if (args.Item is null) return;
         _selected = args.Item;
         _members = await AccessSvc.GetMembersAsync(_selected.Id);
+    }
+
+    private async Task AddNewUser()
+    {
+        if (_selected is null) return;
+        var parameters = new DialogParameters<NewCompanyUserDialog>
+        {
+            { x => x.CompanyId, _selected.Id },
+            { x => x.CompanyName, _selected.LegalName },
+        };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewCompanyUserDialog>("Add User", parameters, options);
+        if ((await dialog.Result) is { Canceled: false })
+        {
+            _members = await AccessSvc.GetMembersAsync(_selected.Id);
+            _allUsers = Users.Users.OrderBy(u => u.Email).ToList();
+        }
     }
 
     private async Task Grant()

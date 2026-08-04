@@ -1,8 +1,10 @@
 @page "/recurring-invoices"
-@attribute [Authorize(Roles = AppRoles.Posters)]
+@attribute [Authorize]
 @inject RecurringInvoiceService RecurringSvc
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject CompanySession Session
+@inject NavigationManager Nav
 
 <PageTitle>Recurring Invoices · Aegis ERP</PageTitle>
 
@@ -49,7 +51,12 @@
 @code {
     private List<RecurringInvoiceProfile>? _profiles;
 
-    protected override async Task OnInitializedAsync() => await Load();
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanPost) { Nav.NavigateTo(""); return; }
+        await Load();
+    }
 
     private async Task Load() => _profiles = await RecurringSvc.GetAllAsync();
 

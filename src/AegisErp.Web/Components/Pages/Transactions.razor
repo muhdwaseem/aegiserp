@@ -5,6 +5,7 @@
 @inject VendorService VendorSvc
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject CompanySession Session
 
 <PageTitle>Transactions · Aegis ERP</PageTitle>
 
@@ -76,23 +77,23 @@
         <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
         <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
         <MudTd Style="min-width:150px">
-            <AuthorizeView Roles="@AppRoles.Posters" Context="posterAuth">
-                <Authorized>
-                    <MudSelect T="int?" Value="context.SupplierId" ValueChanged="@(v => OnSupplierChanged(context, v))"
-                               Dense="true" Margin="Margin.Dense" Clearable="true">
-                        @if (_vendors is not null)
+            @if (Session.CanPost)
+            {
+                <MudSelect T="int?" Value="context.SupplierId" ValueChanged="@(v => OnSupplierChanged(context, v))"
+                           Dense="true" Margin="Margin.Dense" Clearable="true">
+                    @if (_vendors is not null)
+                    {
+                        @foreach (var v in _vendors)
                         {
-                            @foreach (var v in _vendors)
-                            {
-                                <MudSelectItem T="int?" Value="@((int?)v.Id)">@v.Name</MudSelectItem>
-                            }
+                            <MudSelectItem T="int?" Value="@((int?)v.Id)">@v.Name</MudSelectItem>
                         }
-                    </MudSelect>
-                </Authorized>
-                <NotAuthorized>
-                    @(context.SupplierName ?? "—")
-                </NotAuthorized>
-            </AuthorizeView>
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                @(context.SupplierName ?? "—")
+            }
         </MudTd>
         <MudTd>@(context.PaidFromAccountName ?? "—")</MudTd>
         <MudTd>
@@ -101,14 +102,15 @@
             </MudChip>
         </MudTd>
         <MudTd>
-            <AuthorizeView Roles="@AppRoles.Posters" Context="completeAuth">
+            @if (Session.CanPost)
+            {
                 <MudButton Size="Size.Small" Variant="Variant.Outlined"
                            Color="@(context.IsCompleted ? Color.Default : Color.Success)"
                            StartIcon="@(context.IsCompleted ? Icons.Material.Filled.Replay : Icons.Material.Filled.CheckCircle)"
                            OnClick="@(() => ToggleCompletion(context))">
                     @(context.IsCompleted ? "Reopen" : "Complete")
                 </MudButton>
-            </AuthorizeView>
+            }
         </MudTd>
     </RowTemplate>
     <NoRecordsContent>
