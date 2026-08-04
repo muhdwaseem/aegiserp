@@ -42,37 +42,55 @@
         <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">Out of balance by @Math.Abs(_tb.TotalClosingDebit - _tb.TotalClosingCredit).ToString("N2").</MudAlert>
     }
 
-    <MudTable Items="_tb.Rows" Dense="true" Hover="true" Bordered="true" Striped="true">
-        <HeaderContent>
-            <MudTh>Code</MudTh>
-            <MudTh>Account</MudTh>
-            <MudTh Style="text-align:right">Opening Debit</MudTh>
-            <MudTh Style="text-align:right">Opening Credit</MudTh>
-            <MudTh Style="text-align:right">Debit</MudTh>
-            <MudTh Style="text-align:right">Credit</MudTh>
-            <MudTh Style="text-align:right">Closing Debit</MudTh>
-            <MudTh Style="text-align:right">Closing Credit</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd Style="font-family:monospace"><AccountLink AccountId="context.AccountId">@context.Code</AccountLink></MudTd>
-            <MudTd><AccountLink AccountId="context.AccountId">@context.Name</AccountLink></MudTd>
-            <MudTd Style="text-align:right">@(context.OpeningDebit > 0 ? context.OpeningDebit.ToString("N2") : "")</MudTd>
-            <MudTd Style="text-align:right">@(context.OpeningCredit > 0 ? context.OpeningCredit.ToString("N2") : "")</MudTd>
-            <MudTd Style="text-align:right">@(context.PeriodDebit > 0 ? context.PeriodDebit.ToString("N2") : "")</MudTd>
-            <MudTd Style="text-align:right">@(context.PeriodCredit > 0 ? context.PeriodCredit.ToString("N2") : "")</MudTd>
-            <MudTd Style="text-align:right">@(context.ClosingDebit > 0 ? context.ClosingDebit.ToString("N2") : "")</MudTd>
-            <MudTd Style="text-align:right">@(context.ClosingCredit > 0 ? context.ClosingCredit.ToString("N2") : "")</MudTd>
-        </RowTemplate>
-        <FooterContent>
-            <MudTh Style="text-align:right" colspan="2"><b>Total (AED)</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalOpeningDebit.ToString("N2")</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalOpeningCredit.ToString("N2")</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalPeriodDebit.ToString("N2")</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalPeriodCredit.ToString("N2")</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalClosingDebit.ToString("N2")</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalClosingCredit.ToString("N2")</b></MudTh>
-        </FooterContent>
-    </MudTable>
+    <MudPaper Elevation="1" Class="pa-0">
+        <div style="overflow-x:auto">
+            <table class="tb-tbl">
+                <thead>
+                    <tr>
+                        <th rowspan="2">Code</th>
+                        <th rowspan="2">Account</th>
+                        <th colspan="2" class="grp">Opening Balance</th>
+                        <th colspan="2" class="grp">Transactions</th>
+                        <th colspan="2" class="grp">Closing Balance</th>
+                    </tr>
+                    <tr>
+                        <th class="amt">Debit</th>
+                        <th class="amt">Credit</th>
+                        <th class="amt">Debit</th>
+                        <th class="amt">Credit</th>
+                        <th class="amt">Debit</th>
+                        <th class="amt">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _tb.Rows)
+                    {
+                        <tr>
+                            <td class="mono"><AccountLink AccountId="r.AccountId">@r.Code</AccountLink></td>
+                            <td><AccountLink AccountId="r.AccountId">@r.Name</AccountLink></td>
+                            <td class="amt">@(r.OpeningDebit > 0 ? r.OpeningDebit.ToString("N2") : "")</td>
+                            <td class="amt">@(r.OpeningCredit > 0 ? r.OpeningCredit.ToString("N2") : "")</td>
+                            <td class="amt">@(r.PeriodDebit > 0 ? r.PeriodDebit.ToString("N2") : "")</td>
+                            <td class="amt">@(r.PeriodCredit > 0 ? r.PeriodCredit.ToString("N2") : "")</td>
+                            <td class="amt">@(r.ClosingDebit > 0 ? r.ClosingDebit.ToString("N2") : "")</td>
+                            <td class="amt">@(r.ClosingCredit > 0 ? r.ClosingCredit.ToString("N2") : "")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr class="tot">
+                        <td colspan="2">Total (AED)</td>
+                        <td class="amt">@_tb.TotalOpeningDebit.ToString("N2")</td>
+                        <td class="amt">@_tb.TotalOpeningCredit.ToString("N2")</td>
+                        <td class="amt">@_tb.TotalPeriodDebit.ToString("N2")</td>
+                        <td class="amt">@_tb.TotalPeriodCredit.ToString("N2")</td>
+                        <td class="amt">@_tb.TotalClosingDebit.ToString("N2")</td>
+                        <td class="amt">@_tb.TotalClosingCredit.ToString("N2")</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </MudPaper>
 }
 
 @code {
@@ -177,3 +195,16 @@
         _tb = await Ledger.GetTrialBalanceAsync(DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
     }
 }
+
+<style>
+    .tb-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
+    .tb-tbl th, .tb-tbl td { padding:7px 12px; border-bottom:1px solid var(--mud-palette-lines-default); border-right:1px solid var(--mud-palette-lines-default); }
+    .tb-tbl th:last-child, .tb-tbl td:last-child { border-right:0; }
+    .tb-tbl thead th { background:var(--mud-palette-background-grey); text-align:left; font-weight:700; }
+    .tb-tbl thead th.grp { text-align:center; }
+    .tb-tbl th.amt, .tb-tbl td.amt { text-align:right; font-family:monospace; }
+    .tb-tbl td.mono { font-family:monospace; color:var(--mud-palette-text-secondary); }
+    .tb-tbl tbody tr:nth-child(even) { background:var(--mud-palette-action-default-hover); }
+    .tb-tbl tbody tr:hover { background:var(--mud-palette-table-hover); }
+    .tb-tbl tfoot td { font-weight:700; border-top:2px solid var(--mud-palette-lines-default); border-bottom:0; background:var(--mud-palette-background-grey); }
+</style>
