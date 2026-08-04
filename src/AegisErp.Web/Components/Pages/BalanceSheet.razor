@@ -7,6 +7,10 @@
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
     <MudText Typo="Typo.h5">Balance Sheet</MudText>
     <MudSpacer />
+    <MudTooltip Text="Configuration">
+        <MudIconButton Icon="@Icons.Material.Filled.Tune" Color="@(_configOpen ? Color.Primary : Color.Default)"
+                       OnClick="@(() => _configOpen = !_configOpen)" />
+    </MudTooltip>
     @if (_periods is not null)
     {
         <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="As at period" Dense="true" Style="max-width:220px">
@@ -17,6 +21,37 @@
         </MudSelect>
     }
 </MudStack>
+
+@if (_configOpen)
+{
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-3">Configuration</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Percentages</span>
+                <MudSwitch T="bool" @bind-Value="_showPercentages" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Exclude Accounts with zero Closing Balance</span>
+                <MudSwitch T="bool" Value="_excludeZeroBalance" ValueChanged="OnExcludeZeroBalanceChanged" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" @bind-Value="_format" Label="Format of Report" Dense="true">
+                    <MudSelectItem Value="@("Detailed")">Detailed</MudSelectItem>
+                    <MudSelectItem Value="@("Summary")">Summary</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Vertical Balance Sheet</span>
+                <MudSwitch T="bool" @bind-Value="_verticalLayout" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Loss also under Liabilities</span>
+                <MudSwitch T="bool" @bind-Value="_showLossUnderLiabilities" Color="Color.Primary" />
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
 
 @if (_bs is not null)
 {
@@ -29,27 +64,35 @@
         <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">Out of balance by @Math.Abs(_bs.TotalAssets - _bs.TotalLiabilitiesAndEquity).ToString("N2").</MudAlert>
     }
 
-    <MudGrid>
-        <MudItem xs="12" md="6">
-            @Section("Assets", _bs.Assets, _bs.TotalAssets, null)
-        </MudItem>
-        <MudItem xs="12" md="6">
-            @Section("Liabilities", _bs.Liabilities, _bs.TotalLiabilities, null)
-            @Section("Equity", _bs.Equity, _bs.TotalEquity, _bs.CurrentYearEarnings)
-            <MudPaper Class="pa-3 mt-3" Elevation="1" Style="background:var(--mud-palette-background-grey)">
-                <div style="display:flex;justify-content:space-between;font-weight:700">
-                    <span>Total Liabilities &amp; Equity</span>
-                    <span style="font-family:monospace">@_bs.TotalLiabilitiesAndEquity.ToString("N2")</span>
-                </div>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+    @if (_verticalLayout)
+    {
+        @Section("Assets", _bs.Assets, _bs.TotalAssets, null, null, _bs.TotalAssets)
+        @LiabilitiesAndEquitySection()
+    }
+    else
+    {
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                @Section("Assets", _bs.Assets, _bs.TotalAssets, null, null, _bs.TotalAssets)
+            </MudItem>
+            <MudItem xs="12" md="6">
+                @LiabilitiesAndEquitySection()
+            </MudItem>
+        </MudGrid>
+    }
 }
 
 @code {
     private List<FiscalPeriod>? _periods;
     private int _periodId;
     private AegisErp.Infrastructure.Services.BalanceSheet? _bs;
+
+    private bool _configOpen;
+    private bool _showPercentages;
+    private bool _excludeZeroBalance = true;
+    private string _format = "Detailed";
+    private bool _verticalLayout;
+    private bool _showLossUnderLiabilities;
 
     protected override async Task OnInitializedAsync()
     {
@@ -60,31 +103,84 @@
     }
 
     private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
-    private async Task Load() { if (_periodId > 0) _bs = await Ledger.GetBalanceSheetAsync(_periodId); }
 
-    // extraLabel/extra: an optional roll-up line (used for current-year earnings under Equity).
-    private RenderFragment Section(string title, IReadOnlyList<BsLine> lines, decimal total, decimal? currentEarnings) => __builder =>
+    private async Task OnExcludeZeroBalanceChanged(bool v)
+    {
+        _excludeZeroBalance = v;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        if (_periodId > 0) _bs = await Ledger.GetBalanceSheetAsync(_periodId, _excludeZeroBalance);
+    }
+
+    private static string Pct(decimal amount, decimal baseAmount) =>
+        baseAmount == 0 ? "—" : (amount / baseAmount * 100m).ToString("N1") + "%";
+
+    /// <summary>Liabilities, Equity and the grand total, as one block so both the vertical and
+    /// side-by-side layouts can reuse it unchanged. When "Show Loss also under Liabilities" is on
+    /// and the period ran at a loss, the loss line is moved out of Equity and into Liabilities —
+    /// a pure regrouping that leaves <see cref="AegisErp.Infrastructure.Services.BalanceSheet.TotalLiabilitiesAndEquity"/> unchanged.</summary>
+    private RenderFragment LiabilitiesAndEquitySection() => __builder =>
+    {
+        var bs = _bs!;
+        var loss = _showLossUnderLiabilities && bs.CurrentYearEarnings < 0 ? bs.CurrentYearEarnings : (decimal?)null;
+        var liabTotal = bs.TotalLiabilities + (loss ?? 0m);
+        var equityTotal = loss is null ? bs.TotalEquity : bs.Equity.Sum(l => l.Amount);
+        var equityExtraLabel = loss is null ? "Current-year earnings" : null;
+        var equityExtraAmount = loss is null ? bs.CurrentYearEarnings : (decimal?)null;
+
+        @Section("Liabilities", bs.Liabilities, liabTotal, loss is not null ? "Current-year loss" : null, loss, bs.TotalAssets)
+        @Section("Equity", bs.Equity, equityTotal, equityExtraLabel, equityExtraAmount, bs.TotalAssets)
+        <MudPaper Class="pa-3 mt-3" Elevation="1" Style="background:var(--mud-palette-background-grey)">
+            <div style="display:flex;justify-content:space-between;font-weight:700">
+                <span>Total Liabilities &amp; Equity</span>
+                <span style="font-family:monospace">@bs.TotalLiabilitiesAndEquity.ToString("N2")</span>
+            </div>
+        </MudPaper>
+    };
+
+    // extraLabel/extraAmount: an optional roll-up line (current-year earnings, or a loss redirected
+    // here from Equity). pctBase: the denominator "Show Percentages" divides each line by.
+    private RenderFragment Section(string title, IReadOnlyList<BsLine> lines, decimal total,
+        string? extraLabel, decimal? extraAmount, decimal pctBase) => __builder =>
     {
         <MudPaper Class="pa-0 mt-0 mb-3" Elevation="1">
             <div class="bs-title">@title</div>
             <table class="bs-tbl">
-                @foreach (var l in lines)
+                @if (_format == "Detailed")
                 {
-                    <tr>
-                        <td><AccountLink AccountId="l.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@l.Code</span> @l.Name</AccountLink></td>
-                        <td class="amt">@l.Amount.ToString("N2")</td>
-                    </tr>
-                }
-                @if (currentEarnings is decimal ce)
-                {
-                    <tr>
-                        <td>Current-year earnings</td>
-                        <td class="amt">@ce.ToString("N2")</td>
-                    </tr>
+                    @foreach (var l in lines)
+                    {
+                        <tr>
+                            <td><AccountLink AccountId="l.AccountId"><span style="font-family:monospace;color:var(--mud-palette-text-secondary)">@l.Code</span> @l.Name</AccountLink></td>
+                            <td class="amt">@l.Amount.ToString("N2")</td>
+                            @if (_showPercentages)
+                            {
+                                <td class="pct">@Pct(l.Amount, pctBase)</td>
+                            }
+                        </tr>
+                    }
+                    @if (extraAmount is decimal ea)
+                    {
+                        <tr>
+                            <td>@extraLabel</td>
+                            <td class="amt">@ea.ToString("N2")</td>
+                            @if (_showPercentages)
+                            {
+                                <td class="pct">@Pct(ea, pctBase)</td>
+                            }
+                        </tr>
+                    }
                 }
                 <tr class="tot">
                     <td>Total @title</td>
                     <td class="amt">@total.ToString("N2")</td>
+                    @if (_showPercentages)
+                    {
+                        <td class="pct">@Pct(total, pctBase)</td>
+                    }
                 </tr>
             </table>
         </MudPaper>
@@ -96,5 +192,7 @@
     .bs-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
     .bs-tbl td { padding:7px 14px; border-bottom:1px solid var(--mud-palette-lines-default); }
     .bs-tbl td.amt { text-align:right; font-family:monospace; }
+    .bs-tbl td.pct { text-align:right; font-family:monospace; color:var(--mud-palette-text-secondary); width:64px; }
     .bs-tbl tr.tot td { font-weight:700; border-top:1px solid var(--mud-palette-lines-default); border-bottom:0; }
+    .cfg-row { display:flex; justify-content:space-between; align-items:center; }
 </style>

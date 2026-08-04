@@ -279,20 +279,25 @@ public class LedgerService
     };
 
     /// <summary>Balance sheet as at the period end. Current-year earnings roll into equity so it balances.</summary>
-    public async Task<BalanceSheet> GetBalanceSheetAsync(int periodId)
+    /// <summary>The balance sheet as of a fiscal period's end. Zero-balance accounts are omitted by
+    /// default (<paramref name="excludeZeroBalances"/> = true) — set it to false to list every
+    /// postable account of each type regardless of balance, mirroring Tally's "Exclude Accounts
+    /// with zero Closing Balance" report option.</summary>
+    public async Task<BalanceSheet> GetBalanceSheetAsync(int periodId, bool excludeZeroBalances = true)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
         var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
         var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= period.EndDate).ToList();
 
-        List<BsLine> Build(AccountType type, decimal sign) =>
-            accounts.Values.Where(a => a.Type == type)
+        List<BsLine> Build(AccountType type, decimal sign)
+        {
+            var q = accounts.Values.Where(a => a.Type == type)
                 .Select(a => new BsLine(a.Id, a.Code, a.Name,
-                    sign * lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)))
-                .Where(l => l.Amount != 0)
-                .OrderBy(l => l.Code)
-                .ToList();
+                    sign * lines.Where(l => l.AccountId == a.Id).Sum(l => l.Debit - l.Credit)));
+            if (excludeZeroBalances) q = q.Where(l => l.Amount != 0);
+            return q.OrderBy(l => l.Code).ToList();
+        }
 
         var assets = Build(AccountType.Asset, 1m);           // debit-normal
         var liabilities = Build(AccountType.Liability, -1m); // credit-normal
