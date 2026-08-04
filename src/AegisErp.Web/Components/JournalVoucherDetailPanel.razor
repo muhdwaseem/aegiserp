@@ -1,0 +1,95 @@
+@inject JournalService Journal
+
+@if (_loaded && _voucher is null)
+{
+    <MudAlert Severity="Severity.Error">Voucher not found.</MudAlert>
+}
+else if (_voucher is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudText Typo="Typo.h5">@_voucher.VoucherNo</MudText>
+        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">@_voucher.Type</MudChip>
+        <MudChip T="string" Size="Size.Small" Color="StatusColor(_voucher.Status)" Variant="Variant.Text">@_voucher.Status</MudChip>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudPaper Class="pa-4" Elevation="1">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Date</MudText>
+                <MudText Class="mb-2">@_voucher.Date.ToString("dd MMM yyyy")</MudText>
+                @if (!string.IsNullOrWhiteSpace(_voucher.Reference))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Reference</MudText>
+                    <MudText Class="mb-2">@_voucher.Reference</MudText>
+                }
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Created By</MudText>
+                <MudText Class="mb-2">@_voucher.CreatedBy</MudText>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Total</MudText>
+                <MudText Typo="Typo.h6" Class="mb-2">AED @_voucher.TotalDebit.ToString("N2")</MudText>
+            </MudItem>
+        </MudGrid>
+        @if (!string.IsNullOrWhiteSpace(_voucher.Narration))
+        {
+            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-2">Narration</MudText>
+            <MudText>@_voucher.Narration</MudText>
+        }
+
+        <MudDivider Class="my-4" />
+        <MudTable Items="_voucher.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Account</MudTh>
+                <MudTh>Cost Center</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="text-align:right">Debit</MudTh>
+                <MudTh Style="text-align:right">Credit</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><AccountLink AccountId="context.AccountId">@context.Account.Code — @context.Account.Name</AccountLink></MudTd>
+                <MudTd>@(context.CostCenter?.Name ?? "—")</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
+                <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+            </RowTemplate>
+            <FooterContent>
+                <MudTh colspan="3"><b>Total</b></MudTh>
+                <MudTh Style="text-align:right"><b>@_voucher.TotalDebit.ToString("N2")</b></MudTh>
+                <MudTh Style="text-align:right"><b>@_voucher.TotalCredit.ToString("N2")</b></MudTh>
+            </FooterContent>
+        </MudTable>
+    </MudPaper>
+}
+
+@code {
+    [Parameter, EditorRequired] public int JournalVoucherId { get; set; }
+
+    private int _loadedForId = -1;
+    private bool _loaded;
+    private AegisErp.Domain.Entities.JournalVoucher? _voucher;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (JournalVoucherId != _loadedForId)
+        {
+            _loadedForId = JournalVoucherId;
+            await Load();
+        }
+    }
+
+    private async Task Load()
+    {
+        _voucher = await Journal.GetByIdAsync(JournalVoucherId);
+        _loaded = true;
+    }
+
+    private static Color StatusColor(VoucherStatus status) => status switch
+    {
+        VoucherStatus.Draft => Color.Default,
+        VoucherStatus.Posted => Color.Success,
+        VoucherStatus.Void => Color.Dark,
+        _ => Color.Default,
+    };
+}

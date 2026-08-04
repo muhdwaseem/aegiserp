@@ -105,4 +105,40 @@ public class JournalPostingTests : IDisposable
         var next = await _journal.PeekNextVoucherNoAsync(VoucherType.Journal, 2026);
         Assert.Equal("JV-2026-0142", next);
     }
+
+    [Fact]
+    public async Task GetByIdAsync_returns_the_voucher_with_its_lines_and_returns_null_for_an_unknown_id()
+    {
+        var v = await _journal.CreateAndPostAsync(
+            VoucherType.Journal, new(2026, 5, 10), _db.May.Id, "Test", "REF-1", "tester",
+            new[]
+            {
+                new VoucherLineInput(_db.Expense.Id, null, "expense", 100, 0),
+                new VoucherLineInput(_db.Bank.Id, null, "bank", 0, 100),
+            }, Now);
+
+        var found = await _journal.GetByIdAsync(v.Id);
+
+        Assert.NotNull(found);
+        Assert.Equal("REF-1", found!.Reference);
+        Assert.Equal(2, found.Lines.Count);
+        Assert.Null(await _journal.GetByIdAsync(-1));
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_does_not_return_another_companys_voucher()
+    {
+        var v = await _journal.CreateAndPostAsync(
+            VoucherType.Journal, new(2026, 5, 10), _db.May.Id, null, null, "tester",
+            new[]
+            {
+                new VoucherLineInput(_db.Expense.Id, null, null, 100, 0),
+                new VoucherLineInput(_db.Bank.Id, null, null, 0, 100),
+            }, Now);
+
+        _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+
+        Assert.Null(await new JournalService(_db).GetByIdAsync(v.Id));
+    }
 }

@@ -34,6 +34,16 @@ public class JournalService
             .FirstOrDefaultAsync(v => v.VoucherNo == voucherNo);
     }
 
+    /// <summary>One voucher with full detail, by id — for the Journal Voucher page's detail panel.</summary>
+    public async Task<JournalVoucher?> GetByIdAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.JournalVouchers.AsNoTracking()
+            .Include(v => v.Lines).ThenInclude(l => l.Account)
+            .Include(v => v.Lines).ThenInclude(l => l.CostCenter)
+            .FirstOrDefaultAsync(v => v.Id == id);
+    }
+
     /// <summary>Next document number for a type within a year, e.g. "JV-2026-0007".</summary>
     public async Task<string> PeekNextVoucherNoAsync(VoucherType type, int year)
     {
