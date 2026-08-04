@@ -220,23 +220,36 @@ public class ArPostingTests : IDisposable
     }
 
     [Fact]
-    public async Task GetTrialBalanceAsync_by_date_matches_the_period_end_result()
+    public async Task GetTrialBalanceAsync_by_range_reports_opening_period_and_closing_movement()
     {
-        var inv = await PostInvoice();
-        await _receipts.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 15), _db.May.Id,
+        // Invoice on May 5 falls before the report's From date, so it becomes the opening balance;
+        // the May 20 receipt falls inside [From, To] and shows up as that range's movement.
+        var inv = await PostInvoice(date: new(2026, 5, 5));
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 20), _db.May.Id,
             _db.Bank.Id, 1050, null, "tester", Now);
 
         var ledger = new LedgerService(_db);
+        var tb = await ledger.GetTrialBalanceAsync(new DateOnly(2026, 5, 10), new DateOnly(2026, 5, 31));
+
+        Assert.True(tb.IsBalanced);
+        var arRow = tb.Rows.Single(r => r.AccountId == _db.Ar.Id);
+        Assert.Equal(1050m, arRow.OpeningDebit);       // carried in from the May 5 invoice
+        Assert.Equal(1050m, arRow.PeriodCredit);       // settled by the May 20 receipt
+        Assert.Equal(0m, arRow.ClosingDebit);          // opening 1050 Dr - 1050 Cr = 0
+        Assert.Equal(0m, arRow.ClosingCredit);
+
+        var bankRow = tb.Rows.Single(r => r.AccountId == _db.Bank.Id);
+        Assert.Equal(0m, bankRow.OpeningDebit);        // no activity on this account before May 10
+        Assert.Equal(1050m, bankRow.PeriodDebit);
+        Assert.Equal(1050m, bankRow.ClosingDebit);
+
+        // Closing totals for the movement report equal the plain period-end trial balance.
         var byPeriod = await ledger.GetTrialBalanceAsync(_db.May.Id);
-        var byDate = await ledger.GetTrialBalanceAsync(_db.May.EndDate);
+        Assert.Equal(byPeriod.TotalDebit, tb.TotalClosingDebit);
+        Assert.Equal(byPeriod.TotalCredit, tb.TotalClosingCredit);
 
-        Assert.True(byDate.IsBalanced);
-        Assert.Equal(byPeriod.TotalDebit, byDate.TotalDebit);
-        Assert.Equal(byPeriod.TotalCredit, byDate.TotalCredit);
-        Assert.Equal(byPeriod.Rows.Count, byDate.Rows.Count);
-
-        // A cut-off before any postings existed has nothing to report.
-        var beforeAnyPostings = await ledger.GetTrialBalanceAsync(new DateOnly(2026, 5, 1).AddDays(-1));
+        // A range entirely before any postings existed has nothing to report.
+        var beforeAnyPostings = await ledger.GetTrialBalanceAsync(new DateOnly(2026, 1, 1), new DateOnly(2026, 1, 31));
         Assert.Empty(beforeAnyPostings.Rows);
     }
 

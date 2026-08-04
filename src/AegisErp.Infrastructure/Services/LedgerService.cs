@@ -131,12 +131,47 @@ public class LedgerService
         return await BuildTrialBalanceAsync(db, period.EndDate, period.Name);
     }
 
-    /// <summary>Cumulative trial balance of every posted entry on or before <paramref name="asOfDate"/>
-    /// — mirrors Zoho's "As of Date" trial balance filter.</summary>
-    public async Task<TrialBalance> GetTrialBalanceAsync(DateOnly asOfDate)
+    /// <summary>
+    /// Trial balance with movement: each account's Opening balance (net position before
+    /// <paramref name="fromDate"/>), its total Debit/Credit activity within [fromDate, toDate], and
+    /// the resulting Closing balance — the standard "From/To" trial balance layout.
+    /// </summary>
+    public async Task<TrialBalanceMovement> GetTrialBalanceAsync(DateOnly fromDate, DateOnly toDate)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        return await BuildTrialBalanceAsync(db, asOfDate, $"As of {asOfDate:dd MMM yyyy}");
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
+        var lines = await PostedLinesAsync(db);
+
+        var opening = lines.Where(l => l.Date < fromDate)
+            .GroupBy(l => l.AccountId)
+            .ToDictionary(g => g.Key, g => g.Sum(l => l.Debit - l.Credit)); // signed, debit-positive
+
+        var period = lines.Where(l => l.Date >= fromDate && l.Date <= toDate)
+            .GroupBy(l => l.AccountId)
+            .ToDictionary(g => g.Key, g => (Debit: g.Sum(l => l.Debit), Credit: g.Sum(l => l.Credit)));
+
+        var rows = opening.Keys.Union(period.Keys)
+            .Select(id =>
+            {
+                var acc = accounts[id];
+                opening.TryGetValue(id, out var openNet);
+                period.TryGetValue(id, out var p);
+                var closeNet = openNet + p.Debit - p.Credit;
+                return new TrialBalanceMovementRow(acc.Id, acc.Code, acc.Name,
+                    openNet > 0 ? openNet : 0m, openNet < 0 ? -openNet : 0m,
+                    p.Debit, p.Credit,
+                    closeNet > 0 ? closeNet : 0m, closeNet < 0 ? -closeNet : 0m);
+            })
+            .Where(r => r.OpeningDebit != 0 || r.OpeningCredit != 0 || r.PeriodDebit != 0 || r.PeriodCredit != 0
+                        || r.ClosingDebit != 0 || r.ClosingCredit != 0)
+            .OrderBy(r => r.Code)
+            .ToList();
+
+        var label = $"{fromDate:dd MMM yyyy} – {toDate:dd MMM yyyy}";
+        return new TrialBalanceMovement(label, rows,
+            rows.Sum(r => r.OpeningDebit), rows.Sum(r => r.OpeningCredit),
+            rows.Sum(r => r.PeriodDebit), rows.Sum(r => r.PeriodCredit),
+            rows.Sum(r => r.ClosingDebit), rows.Sum(r => r.ClosingCredit));
     }
 
     private static async Task<TrialBalance> BuildTrialBalanceAsync(AegisDbContext db, DateOnly asOfDate, string label)

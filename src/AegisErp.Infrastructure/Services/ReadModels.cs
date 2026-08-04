@@ -63,6 +63,24 @@ public record TrialBalance(
     public bool IsBalanced => TotalDebit == TotalCredit;
 }
 
+/// <summary>One line of a From/To trial balance: an account's Opening balance, its Debit/Credit
+/// activity within the range, and the resulting Closing balance.</summary>
+public record TrialBalanceMovementRow(
+    int AccountId, string Code, string Name,
+    decimal OpeningDebit, decimal OpeningCredit,
+    decimal PeriodDebit, decimal PeriodCredit,
+    decimal ClosingDebit, decimal ClosingCredit);
+
+public record TrialBalanceMovement(
+    string RangeLabel,
+    IReadOnlyList<TrialBalanceMovementRow> Rows,
+    decimal TotalOpeningDebit, decimal TotalOpeningCredit,
+    decimal TotalPeriodDebit, decimal TotalPeriodCredit,
+    decimal TotalClosingDebit, decimal TotalClosingCredit)
+{
+    public bool IsBalanced => TotalClosingDebit == TotalClosingCredit;
+}
+
 /// <summary>One revenue or expense line on the P&amp;L, with period and year-to-date figures.</summary>
 public record PnlLine(int AccountId, string Code, string Name, decimal Period, decimal Ytd);
 

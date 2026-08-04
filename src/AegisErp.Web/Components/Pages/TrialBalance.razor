@@ -5,13 +5,13 @@
 <PageTitle>Trial Balance · Aegis ERP</PageTitle>
 
 <MudText Typo="Typo.h5">Trial Balance</MudText>
-@if (_asOfDate is { } d)
+@if (_fromDate is { } f && _toDate is { } t)
 {
-    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">As of @d.ToString("dd MMM yyyy")</MudText>
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">From @f.ToString("dd MMM yyyy") To @t.ToString("dd MMM yyyy")</MudText>
 }
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
-    <MudSelect T="string" Value="_preset" ValueChanged="OnPresetChanged" Label="As of Date" Dense="true" Style="max-width:200px">
+    <MudSelect T="string" Value="_preset" ValueChanged="OnPresetChanged" Label="Date Range" Dense="true" Style="max-width:200px">
         @foreach (var p in Presets)
         {
             <MudSelectItem Value="p">@p</MudSelectItem>
@@ -20,7 +20,10 @@
     @if (_preset == "Custom")
     {
         <div style="max-width:160px">
-            <MudDatePicker @bind-Date="_asOfDate" Label="As of" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+            <MudDatePicker @bind-Date="_fromDate" Label="From" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+        </div>
+        <div style="max-width:160px">
+            <MudDatePicker @bind-Date="_toDate" Label="To" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
         </div>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="Load">Run Report</MudButton>
     }
@@ -32,30 +35,42 @@
 {
     @if (_tb.IsBalanced)
     {
-        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">In balance — total debits equal total credits.</MudAlert>
+        <MudAlert Severity="Severity.Success" Dense="true" Class="mb-3">In balance — total closing debits equal total closing credits.</MudAlert>
     }
     else
     {
-        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">Out of balance by @Math.Abs(_tb.TotalDebit - _tb.TotalCredit).ToString("N2").</MudAlert>
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">Out of balance by @Math.Abs(_tb.TotalClosingDebit - _tb.TotalClosingCredit).ToString("N2").</MudAlert>
     }
 
     <MudTable Items="_tb.Rows" Dense="true" Hover="true" Bordered="true" Striped="true">
         <HeaderContent>
             <MudTh>Code</MudTh>
             <MudTh>Account</MudTh>
+            <MudTh Style="text-align:right">Opening Debit</MudTh>
+            <MudTh Style="text-align:right">Opening Credit</MudTh>
             <MudTh Style="text-align:right">Debit</MudTh>
             <MudTh Style="text-align:right">Credit</MudTh>
+            <MudTh Style="text-align:right">Closing Debit</MudTh>
+            <MudTh Style="text-align:right">Closing Credit</MudTh>
         </HeaderContent>
         <RowTemplate>
             <MudTd Style="font-family:monospace"><AccountLink AccountId="context.AccountId">@context.Code</AccountLink></MudTd>
             <MudTd><AccountLink AccountId="context.AccountId">@context.Name</AccountLink></MudTd>
-            <MudTd Style="text-align:right">@(context.Debit > 0 ? context.Debit.ToString("N2") : "")</MudTd>
-            <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.OpeningDebit > 0 ? context.OpeningDebit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.OpeningCredit > 0 ? context.OpeningCredit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.PeriodDebit > 0 ? context.PeriodDebit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.PeriodCredit > 0 ? context.PeriodCredit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.ClosingDebit > 0 ? context.ClosingDebit.ToString("N2") : "")</MudTd>
+            <MudTd Style="text-align:right">@(context.ClosingCredit > 0 ? context.ClosingCredit.ToString("N2") : "")</MudTd>
         </RowTemplate>
         <FooterContent>
             <MudTh Style="text-align:right" colspan="2"><b>Total (AED)</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalDebit.ToString("N2")</b></MudTh>
-            <MudTh Style="text-align:right"><b>@_tb.TotalCredit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalOpeningDebit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalOpeningCredit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalPeriodDebit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalPeriodCredit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalClosingDebit.ToString("N2")</b></MudTh>
+            <MudTh Style="text-align:right"><b>@_tb.TotalClosingCredit.ToString("N2")</b></MudTh>
         </FooterContent>
     </MudTable>
 }
@@ -63,13 +78,15 @@
 @code {
     private static readonly string[] Presets =
     {
-        "Today", "This Week", "This Month", "This Quarter", "This Year",
-        "Yesterday", "Previous Week", "Previous Month", "Previous Quarter", "Previous Year", "Custom",
+        "Today", "This Week", "This Month", "Month To Date", "This Quarter", "Quarter To Date",
+        "This Year", "Year To Date", "Previous Day", "Previous Week", "Previous Month",
+        "Previous Quarter", "Previous Year", "Custom",
     };
 
-    private string _preset = "Today";
-    private DateTime? _asOfDate;
-    private AegisErp.Infrastructure.Services.TrialBalance? _tb;
+    private string _preset = "This Month";
+    private DateTime? _fromDate;
+    private DateTime? _toDate;
+    private AegisErp.Infrastructure.Services.TrialBalanceMovement? _tb;
 
     protected override async Task OnInitializedAsync()
     {
@@ -83,9 +100,8 @@
         if (preset != "Custom") await Load();
     }
 
-    /// <summary>Resolves every preset to a single "as of" date — the period's end date, capped
-    /// implicitly at today since no postings exist beyond the current date. Matches Zoho's
-    /// Trial Balance "As of Date" quick filters.</summary>
+    /// <summary>Computes From/To for every preset except Custom, which leaves whatever the user
+    /// last set in the date pickers untouched. Mirrors the P&amp;L page's preset logic.</summary>
     private void ApplyPreset(string preset)
     {
         _preset = preset;
@@ -98,34 +114,57 @@
         switch (preset)
         {
             case "Today":
-                _asOfDate = today;
-                break;
-            case "Yesterday":
-                _asOfDate = today.AddDays(-1);
+                _fromDate = _toDate = today;
                 break;
             case "This Week":
-                _asOfDate = thisWeekStart.AddDays(6);
+                _fromDate = thisWeekStart;
+                _toDate = thisWeekStart.AddDays(6);
                 break;
             case "This Month":
-                _asOfDate = new DateTime(today.Year, today.Month, 1).AddMonths(1).AddDays(-1);
+                _fromDate = new DateTime(today.Year, today.Month, 1);
+                _toDate = _fromDate.Value.AddMonths(1).AddDays(-1);
+                break;
+            case "Month To Date":
+                _fromDate = new DateTime(today.Year, today.Month, 1);
+                _toDate = today;
                 break;
             case "This Quarter":
-                _asOfDate = thisQuarterStart.AddMonths(3).AddDays(-1);
+                _fromDate = thisQuarterStart;
+                _toDate = thisQuarterStart.AddMonths(3).AddDays(-1);
+                break;
+            case "Quarter To Date":
+                _fromDate = thisQuarterStart;
+                _toDate = today;
                 break;
             case "This Year":
-                _asOfDate = new DateTime(today.Year, 12, 31);
+                _fromDate = new DateTime(today.Year, 1, 1);
+                _toDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "Year To Date":
+                _fromDate = new DateTime(today.Year, 1, 1);
+                _toDate = today;
+                break;
+            case "Previous Day":
+                _fromDate = _toDate = today.AddDays(-1);
                 break;
             case "Previous Week":
-                _asOfDate = thisWeekStart.AddDays(-1);
+                var prevWeekStart = thisWeekStart.AddDays(-7);
+                _fromDate = prevWeekStart;
+                _toDate = prevWeekStart.AddDays(6);
                 break;
             case "Previous Month":
-                _asOfDate = new DateTime(today.Year, today.Month, 1).AddDays(-1);
+                var prevMonth = today.AddMonths(-1);
+                _fromDate = new DateTime(prevMonth.Year, prevMonth.Month, 1);
+                _toDate = _fromDate.Value.AddMonths(1).AddDays(-1);
                 break;
             case "Previous Quarter":
-                _asOfDate = thisQuarterStart.AddDays(-1);
+                var prevQuarterStart = thisQuarterStart.AddMonths(-3);
+                _fromDate = prevQuarterStart;
+                _toDate = prevQuarterStart.AddMonths(3).AddDays(-1);
                 break;
             case "Previous Year":
-                _asOfDate = new DateTime(today.Year - 1, 12, 31);
+                _fromDate = new DateTime(today.Year - 1, 1, 1);
+                _toDate = new DateTime(today.Year - 1, 12, 31);
                 break;
             case "Custom":
                 break;
@@ -134,7 +173,7 @@
 
     private async Task Load()
     {
-        if (_asOfDate is not { } d) return;
-        _tb = await Ledger.GetTrialBalanceAsync(DateOnly.FromDateTime(d));
+        if (_fromDate is not { } from || _toDate is not { } to) return;
+        _tb = await Ledger.GetTrialBalanceAsync(DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
     }
 }
