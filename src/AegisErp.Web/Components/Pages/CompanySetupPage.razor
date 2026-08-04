@@ -5,6 +5,7 @@
 @inject CompanySession Session
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <PageTitle>@(_isNew ? "New Company" : "Company Setup") · Aegis ERP</PageTitle>
 
@@ -290,19 +291,48 @@ else
 
             @* ── 10. Documents (UAE) ── *@
             <MudTabPanel Text="Documents">
-                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">Required UAE documents. File upload/storage is a planned enhancement.</MudText>
-                <MudList T="string" Dense="true">
-                    @foreach (var doc in RequiredDocs)
-                    {
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.Description">
-                            <div class="d-flex align-center" style="width:100%">
-                                <span>@doc</span>
-                                <MudSpacer />
-                                <MudButton Size="Size.Small" Variant="Variant.Text" Disabled="true" StartIcon="@Icons.Material.Filled.Upload">Upload</MudButton>
-                            </div>
-                        </MudListItem>
-                    }
-                </MudList>
+                @if (_isNew)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">Save the company first — then come back here to upload its documents.</MudAlert>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+                        Required UAE documents. Up to @(CompanyService.MaxDocumentBytes / (1024 * 1024)) MB per file.
+                    </MudText>
+                    <MudList T="string" Dense="true">
+                        @foreach (var docType in RequiredDocs)
+                        {
+                            var uploaded = _documents.FirstOrDefault(d => d.DocType == docType);
+                            <MudListItem T="string" Icon="@Icons.Material.Filled.Description">
+                                <div class="d-flex align-center" style="width:100%">
+                                    <div>
+                                        <span>@docType</span>
+                                        @if (uploaded is not null)
+                                        {
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">
+                                                @uploaded.FileName (@((uploaded.SizeBytes / 1024.0).ToString("N0")) KB) · uploaded @uploaded.UploadedAtUtc.ToLocalTime().ToString("dd MMM yyyy")
+                                            </MudText>
+                                        }
+                                    </div>
+                                    <MudSpacer />
+                                    @if (uploaded is not null)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="@(() => DownloadDocument(uploaded))" />
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveDocument(uploaded))" />
+                                    }
+                                    <MudFileUpload T="IBrowserFile" FilesChanged="@(f => OnDocumentSelected(docType, f))" Accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
+                                        <ActivatorContent>
+                                            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Upload">
+                                                @(uploaded is null ? "Upload" : "Replace")
+                                            </MudButton>
+                                        </ActivatorContent>
+                                    </MudFileUpload>
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                }
             </MudTabPanel>
         </MudTabs>
     </MudPaper>
@@ -320,6 +350,7 @@ else
     private bool _isNew;
     private bool _saving;
     private string _userName = "System Admin";
+    private List<CompanySetupDocumentInfo> _documents = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -335,6 +366,41 @@ else
         }
 
         _c = _isNew ? BlankCompany() : await Company.GetAsync();
+        if (!_isNew) _documents = await Company.GetDocumentsAsync(_c.Id);
+    }
+
+    private async Task OnDocumentSelected(string docType, IBrowserFile file)
+    {
+        if (file.Size > CompanyService.MaxDocumentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {CompanyService.MaxDocumentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(CompanyService.MaxDocumentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        try
+        {
+            await Company.UploadDocumentAsync(_c!.Id, docType, file.Name, file.ContentType, ms.ToArray(), DateTime.UtcNow);
+            _documents = await Company.GetDocumentsAsync(_c.Id);
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DownloadDocument(CompanySetupDocumentInfo doc)
+    {
+        var full = await Company.GetDocumentAsync(_c!.Id, doc.Id);
+        if (full is null) return;
+        var base64 = Convert.ToBase64String(full.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", full.Value.FileName, full.Value.ContentType, base64);
+    }
+
+    private async Task RemoveDocument(CompanySetupDocumentInfo doc)
+    {
+        await Company.RemoveDocumentAsync(_c!.Id, doc.Id);
+        _documents = await Company.GetDocumentsAsync(_c.Id);
     }
 
     /// <summary>Sensible starting point for a brand-new company; the user completes it in the tabs.</summary>

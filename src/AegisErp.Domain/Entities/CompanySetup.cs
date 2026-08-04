@@ -117,6 +117,23 @@ public class CompanySetup
     public Guid RowVersion { get; set; } = Guid.NewGuid();
 
     public List<CompanyBankAccount> BankAccounts { get; set; } = new();
+    public List<CompanySetupDocument> Documents { get; set; } = new();
+}
+
+/// <summary>One uploaded file against a required UAE document slot (Trade License, MOA, VAT
+/// Certificate, etc. — see <c>CompanySetupPage.RequiredDocs</c>). At most one row per
+/// (CompanySetupId, DocType); re-uploading replaces the previous file.</summary>
+public class CompanySetupDocument
+{
+    public int Id { get; set; }
+    public int CompanySetupId { get; set; }
+    public CompanySetup CompanySetup { get; set; } = null!;
+
+    public string DocType { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = "application/octet-stream";
+    public byte[] Data { get; set; } = Array.Empty<byte>();
+    public DateTime UploadedAtUtc { get; set; }
 }
 
 /// <summary>A company bank account (primary + additional). Section 9 of the requirement.</summary>

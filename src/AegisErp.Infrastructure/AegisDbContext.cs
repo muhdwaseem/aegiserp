@@ -61,6 +61,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<CompanySetup> CompanySetups => Set<CompanySetup>();
     public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
     public DbSet<Salesperson> Salespersons => Set<Salesperson>();
+    public DbSet<CompanySetupDocument> CompanySetupDocuments => Set<CompanySetupDocument>();
     public DbSet<Currency> Currencies => Set<Currency>();
     public DbSet<TaxCode> TaxCodes => Set<TaxCode>();
     public DbSet<Item> Items => Set<Item>();
@@ -622,6 +623,16 @@ public class AegisDbContext : IdentityDbContext<AppUser>
                 .HasForeignKey(a => a.CompanySetupId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(c => c.Salespersons).WithOne(s => s.CompanySetup)
                 .HasForeignKey(s => s.CompanySetupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.Documents).WithOne(d => d.CompanySetup)
+                .HasForeignKey(d => d.CompanySetupId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CompanySetupDocument>(e =>
+        {
+            e.Property(d => d.DocType).HasMaxLength(80).IsRequired();
+            e.Property(d => d.FileName).HasMaxLength(260).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(120).IsRequired();
+            e.HasIndex(d => new { d.CompanySetupId, d.DocType }).IsUnique();
         });
 
         b.Entity<CompanyBankAccount>(e =>

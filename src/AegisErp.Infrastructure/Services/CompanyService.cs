@@ -4,11 +4,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AegisErp.Infrastructure.Services;
 
+/// <summary>A required document slot's upload state (see <see cref="CompanyService.GetDocumentsAsync"/>
+/// to list, <see cref="CompanyService.GetDocumentAsync"/> to download).</summary>
+public record CompanySetupDocumentInfo(int Id, string DocType, string FileName, string ContentType, long SizeBytes, DateTime UploadedAtUtc);
+
 /// <summary>Loads and saves company records. Reads/writes the user's <em>active</em> company.</summary>
 public class CompanyService
 {
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     private readonly ICurrentCompany _current;
+
+    public const int MaxDocumentBytes = 10 * 1024 * 1024;
 
     public CompanyService(IDbContextFactory<AegisDbContext> dbf, ICurrentCompany current)
     {
@@ -115,4 +121,59 @@ public class CompanyService
         await JournalPoster.SaveChangesTranslatedAsync(db);
     }
 
+    // ── Documents ──
+
+    public async Task<List<CompanySetupDocumentInfo>> GetDocumentsAsync(int companySetupId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.CompanySetupDocuments.AsNoTracking()
+            .Where(d => d.CompanySetupId == companySetupId)
+            .OrderBy(d => d.DocType)
+            .Select(d => new CompanySetupDocumentInfo(d.Id, d.DocType, d.FileName, d.ContentType, d.Data.Length, d.UploadedAtUtc))
+            .ToListAsync();
+    }
+
+    /// <summary>Uploads (or replaces, if one already exists for this slot) the file for a required
+    /// document type.</summary>
+    public async Task<CompanySetupDocument> UploadDocumentAsync(int companySetupId, string docType, string fileName, string contentType, byte[] data, DateTime nowUtc)
+    {
+        if (data.Length > MaxDocumentBytes)
+            throw new PostingException($"'{fileName}' is too large — the limit is {MaxDocumentBytes / (1024 * 1024)} MB per file.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        if (await db.CompanySetups.FindAsync(companySetupId) is null)
+            throw new PostingException("Company not found.");
+
+        var doc = await db.CompanySetupDocuments.FirstOrDefaultAsync(d => d.CompanySetupId == companySetupId && d.DocType == docType);
+        if (doc is null)
+        {
+            doc = new CompanySetupDocument { CompanySetupId = companySetupId, DocType = docType };
+            db.CompanySetupDocuments.Add(doc);
+        }
+
+        doc.FileName = fileName;
+        doc.ContentType = contentType;
+        doc.Data = data;
+        doc.UploadedAtUtc = nowUtc;
+
+        await db.SaveChangesAsync();
+        return doc;
+    }
+
+    public async Task RemoveDocumentAsync(int companySetupId, int documentId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var doc = await db.CompanySetupDocuments.FirstOrDefaultAsync(d => d.Id == documentId && d.CompanySetupId == companySetupId)
+            ?? throw new PostingException("Document not found.");
+        db.CompanySetupDocuments.Remove(doc);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)?> GetDocumentAsync(int companySetupId, int documentId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var doc = await db.CompanySetupDocuments.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.CompanySetupId == companySetupId);
+        return doc is null ? null : (doc.FileName, doc.ContentType, doc.Data);
+    }
 }
