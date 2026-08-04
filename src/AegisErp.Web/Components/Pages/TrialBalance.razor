@@ -4,10 +4,58 @@
 
 <PageTitle>Trial Balance · Aegis ERP</PageTitle>
 
-<MudText Typo="Typo.h5">Trial Balance</MudText>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+    <MudText Typo="Typo.h5">Trial Balance</MudText>
+    <MudSpacer />
+    <MudTooltip Text="Configuration">
+        <MudIconButton Icon="@Icons.Material.Filled.Tune" Color="@(_configOpen ? Color.Primary : Color.Default)"
+                       OnClick="@(() => _configOpen = !_configOpen)" />
+    </MudTooltip>
+</MudStack>
 @if (_fromDate is { } f && _toDate is { } t)
 {
     <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">From @f.ToString("dd MMM yyyy") To @t.ToString("dd MMM yyyy")</MudText>
+}
+
+@if (_configOpen)
+{
+    <MudPaper Class="pa-4 mb-3" Elevation="1">
+        <MudText Typo="Typo.subtitle2" Class="mb-3">Configuration</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Opening Balance</span>
+                <MudSwitch T="bool" @bind-Value="_showOpeningBalance" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Transactions</span>
+                <MudSwitch T="bool" @bind-Value="_showTransactions" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span class="@(_showTransactions ? "" : "mud-text-secondary")">Nett Transactions only</span>
+                <MudSwitch T="bool" @bind-Value="_nettTransactionsOnly" Color="Color.Primary" Disabled="!_showTransactions" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Closing Balance</span>
+                <MudSwitch T="bool" @bind-Value="_showClosingBalance" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4" Class="cfg-row">
+                <span>Show Percentages</span>
+                <MudSwitch T="bool" @bind-Value="_showPercentages" Color="Color.Primary" />
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" @bind-Value="_format" Label="Format of Report" Dense="true">
+                    <MudSelectItem Value="@("Detailed")">Detailed</MudSelectItem>
+                    <MudSelectItem Value="@("Summary")">Summary</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="4">
+                <MudSelect T="string" @bind-Value="_sortBy" Label="Sorting Method" Dense="true">
+                    <MudSelectItem Value="@("Default")">Default (Code)</MudSelectItem>
+                    <MudSelectItem Value="@("Name")">Name</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
 }
 
 <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
@@ -49,43 +97,115 @@
                     <tr>
                         <th rowspan="2">Code</th>
                         <th rowspan="2">Account</th>
-                        <th colspan="2" class="grp">Opening Balance</th>
-                        <th colspan="2" class="grp">Transactions</th>
-                        <th colspan="2" class="grp">Closing Balance</th>
+                        @if (_showOpeningBalance)
+                        {
+                            <th colspan="2" class="grp">Opening Balance</th>
+                        }
+                        @if (_showTransactions)
+                        {
+                            <th colspan="@(_nettTransactionsOnly ? 1 : 2)" class="grp">Transactions</th>
+                        }
+                        @if (_showClosingBalance)
+                        {
+                            <th colspan="2" class="grp">Closing Balance</th>
+                        }
+                        @if (_showPercentages)
+                        {
+                            <th rowspan="2">% of Total</th>
+                        }
                     </tr>
                     <tr>
-                        <th class="amt">Debit</th>
-                        <th class="amt">Credit</th>
-                        <th class="amt">Debit</th>
-                        <th class="amt">Credit</th>
-                        <th class="amt">Debit</th>
-                        <th class="amt">Credit</th>
+                        @if (_showOpeningBalance)
+                        {
+                            <th class="amt">Debit</th>
+                            <th class="amt">Credit</th>
+                        }
+                        @if (_showTransactions)
+                        {
+                            @if (_nettTransactionsOnly)
+                            {
+                                <th class="amt">Net</th>
+                            }
+                            else
+                            {
+                                <th class="amt">Debit</th>
+                                <th class="amt">Credit</th>
+                            }
+                        }
+                        @if (_showClosingBalance)
+                        {
+                            <th class="amt">Debit</th>
+                            <th class="amt">Credit</th>
+                        }
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var r in _tb.Rows)
+                    @if (_format == "Detailed")
                     {
-                        <tr>
-                            <td class="mono"><AccountLink AccountId="r.AccountId">@r.Code</AccountLink></td>
-                            <td><AccountLink AccountId="r.AccountId">@r.Name</AccountLink></td>
-                            <td class="amt">@(r.OpeningDebit > 0 ? r.OpeningDebit.ToString("N2") : "")</td>
-                            <td class="amt">@(r.OpeningCredit > 0 ? r.OpeningCredit.ToString("N2") : "")</td>
-                            <td class="amt">@(r.PeriodDebit > 0 ? r.PeriodDebit.ToString("N2") : "")</td>
-                            <td class="amt">@(r.PeriodCredit > 0 ? r.PeriodCredit.ToString("N2") : "")</td>
-                            <td class="amt">@(r.ClosingDebit > 0 ? r.ClosingDebit.ToString("N2") : "")</td>
-                            <td class="amt">@(r.ClosingCredit > 0 ? r.ClosingCredit.ToString("N2") : "")</td>
-                        </tr>
+                        @foreach (var r in SortedRows)
+                        {
+                            <tr>
+                                <td class="mono"><AccountLink AccountId="r.AccountId">@r.Code</AccountLink></td>
+                                <td><AccountLink AccountId="r.AccountId">@r.Name</AccountLink></td>
+                                @if (_showOpeningBalance)
+                                {
+                                    <td class="amt">@(r.OpeningDebit > 0 ? r.OpeningDebit.ToString("N2") : "")</td>
+                                    <td class="amt">@(r.OpeningCredit > 0 ? r.OpeningCredit.ToString("N2") : "")</td>
+                                }
+                                @if (_showTransactions)
+                                {
+                                    @if (_nettTransactionsOnly)
+                                    {
+                                        <td class="amt">@NetLabel(r.PeriodDebit, r.PeriodCredit)</td>
+                                    }
+                                    else
+                                    {
+                                        <td class="amt">@(r.PeriodDebit > 0 ? r.PeriodDebit.ToString("N2") : "")</td>
+                                        <td class="amt">@(r.PeriodCredit > 0 ? r.PeriodCredit.ToString("N2") : "")</td>
+                                    }
+                                }
+                                @if (_showClosingBalance)
+                                {
+                                    <td class="amt">@(r.ClosingDebit > 0 ? r.ClosingDebit.ToString("N2") : "")</td>
+                                    <td class="amt">@(r.ClosingCredit > 0 ? r.ClosingCredit.ToString("N2") : "")</td>
+                                }
+                                @if (_showPercentages)
+                                {
+                                    <td class="amt">@Pct(r.ClosingDebit != 0 ? r.ClosingDebit : r.ClosingCredit, _tb.TotalClosingDebit)</td>
+                                }
+                            </tr>
+                        }
                     }
                 </tbody>
                 <tfoot>
                     <tr class="tot">
                         <td colspan="2">Total (AED)</td>
-                        <td class="amt">@_tb.TotalOpeningDebit.ToString("N2")</td>
-                        <td class="amt">@_tb.TotalOpeningCredit.ToString("N2")</td>
-                        <td class="amt">@_tb.TotalPeriodDebit.ToString("N2")</td>
-                        <td class="amt">@_tb.TotalPeriodCredit.ToString("N2")</td>
-                        <td class="amt">@_tb.TotalClosingDebit.ToString("N2")</td>
-                        <td class="amt">@_tb.TotalClosingCredit.ToString("N2")</td>
+                        @if (_showOpeningBalance)
+                        {
+                            <td class="amt">@_tb.TotalOpeningDebit.ToString("N2")</td>
+                            <td class="amt">@_tb.TotalOpeningCredit.ToString("N2")</td>
+                        }
+                        @if (_showTransactions)
+                        {
+                            @if (_nettTransactionsOnly)
+                            {
+                                <td class="amt">@NetLabel(_tb.TotalPeriodDebit, _tb.TotalPeriodCredit)</td>
+                            }
+                            else
+                            {
+                                <td class="amt">@_tb.TotalPeriodDebit.ToString("N2")</td>
+                                <td class="amt">@_tb.TotalPeriodCredit.ToString("N2")</td>
+                            }
+                        }
+                        @if (_showClosingBalance)
+                        {
+                            <td class="amt">@_tb.TotalClosingDebit.ToString("N2")</td>
+                            <td class="amt">@_tb.TotalClosingCredit.ToString("N2")</td>
+                        }
+                        @if (_showPercentages)
+                        {
+                            <td class="amt">100.0%</td>
+                        }
                     </tr>
                 </tfoot>
             </table>
@@ -105,6 +225,18 @@
     private DateTime? _fromDate;
     private DateTime? _toDate;
     private AegisErp.Infrastructure.Services.TrialBalanceMovement? _tb;
+
+    private bool _configOpen;
+    private bool _showOpeningBalance = true;
+    private bool _showTransactions = true;
+    private bool _nettTransactionsOnly;
+    private bool _showClosingBalance = true;
+    private bool _showPercentages;
+    private string _format = "Detailed";
+    private string _sortBy = "Default";
+
+    private IEnumerable<TrialBalanceMovementRow> SortedRows =>
+        _sortBy == "Name" ? _tb!.Rows.OrderBy(r => r.Name) : _tb!.Rows;
 
     protected override async Task OnInitializedAsync()
     {
@@ -194,6 +326,16 @@
         if (_fromDate is not { } from || _toDate is not { } to) return;
         _tb = await Ledger.GetTrialBalanceAsync(DateOnly.FromDateTime(from), DateOnly.FromDateTime(to));
     }
+
+    private static string Pct(decimal amount, decimal baseAmount) =>
+        baseAmount == 0 ? "—" : (amount / baseAmount * 100m).ToString("N1") + "%";
+
+    private static string NetLabel(decimal debit, decimal credit)
+    {
+        var net = debit - credit;
+        if (net == 0) return "";
+        return net > 0 ? $"{net:N2} Dr" : $"{-net:N2} Cr";
+    }
 }
 
 <style>
@@ -207,4 +349,5 @@
     .tb-tbl tbody tr:nth-child(even) { background:var(--mud-palette-action-default-hover); }
     .tb-tbl tbody tr:hover { background:var(--mud-palette-table-hover); }
     .tb-tbl tfoot td { font-weight:700; border-top:2px solid var(--mud-palette-lines-default); border-bottom:0; background:var(--mud-palette-background-grey); }
+    .cfg-row { display:flex; justify-content:space-between; align-items:center; }
 </style>
