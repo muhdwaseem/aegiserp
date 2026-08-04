@@ -191,16 +191,26 @@
         // No company exists/granted yet: a FirmAdmin goes straight to creating the first one; any
         // other user goes to the picker, which shows a friendly "ask an admin" message instead of
         // every company-scoped page failing with an unhandled exception under the error boundary.
-        if (Session.HasNoCompanies && Session.IsFirmAdmin
-            && !Navigation.Uri.Contains("/company-setup", StringComparison.OrdinalIgnoreCase))
+        // These two branches must be mutually exclusive — a FirmAdmin with no companies used to
+        // also match the "send to the picker" check below (HasNoCompanies is true either way),
+        // bouncing forever between /company-setup/new and /select-company (ERR_TOO_MANY_REDIRECTS).
+        if (Session.HasNoCompanies)
         {
-            Navigation.NavigateTo("company-setup/new");
+            if (Session.IsFirmAdmin)
+            {
+                if (!Navigation.Uri.Contains("/company-setup", StringComparison.OrdinalIgnoreCase))
+                    Navigation.NavigateTo("company-setup/new");
+                return;
+            }
+
+            if (!Navigation.Uri.Contains("/select-company", StringComparison.OrdinalIgnoreCase))
+                Navigation.NavigateTo("select-company");
             return;
         }
 
-        // Several companies and none chosen yet (or none at all) → make the user pick/see why not,
-        // so it is never ambiguous whose books are open. (Skip the redirect when already there.)
-        if ((Session.NeedsSelection || Session.HasNoCompanies)
+        // Several companies and none chosen yet → make the user pick, so it is never ambiguous
+        // whose books are open. (Skip the redirect when already there.)
+        if (Session.NeedsSelection
             && !Navigation.Uri.Contains("/select-company", StringComparison.OrdinalIgnoreCase))
         {
             Navigation.NavigateTo("select-company");
