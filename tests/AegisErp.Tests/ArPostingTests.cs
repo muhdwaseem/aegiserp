@@ -183,6 +183,43 @@ public class ArPostingTests : IDisposable
     }
 
     [Fact]
+    public async Task GetLastRevenueAccountForItemAsync_returns_the_account_from_the_most_recent_invoice()
+    {
+        var items = new ItemService(_db);
+        var item = await items.CreateAsync(new NewItemInput("Consulting", ItemKind.Service, "hr",
+            500, _db.Revenue.Id, null, null, null, null, null));
+
+        Assert.Null(await _invoices.GetLastRevenueAccountForItemAsync(item.Id)); // never billed yet
+
+        var otherRevenue = await new ChartOfAccountsService(_db).CreateAsync(
+            new NewAccountInput("41020", "Consulting Revenue", AccountType.Income, true, null, "AED", null, null, 0),
+            "tester");
+
+        await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Consulting", _db.Revenue.Id, null, 1, 500, 0.05m, item.Id) }, Now);
+        Assert.Equal(_db.Revenue.Id, await _invoices.GetLastRevenueAccountForItemAsync(item.Id));
+
+        // A later invoice billed to a different account becomes the new "last used" one.
+        await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 20), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Consulting", otherRevenue.Id, null, 1, 500, 0.05m, item.Id) }, Now);
+        Assert.Equal(otherRevenue.Id, await _invoices.GetLastRevenueAccountForItemAsync(item.Id));
+    }
+
+    [Fact]
+    public async Task GetLastRevenueAccountForItemAsync_does_not_leak_across_companies()
+    {
+        var items = new ItemService(_db);
+        var item = await items.CreateAsync(new NewItemInput("Consulting", ItemKind.Service, "hr",
+            500, _db.Revenue.Id, null, null, null, null, null));
+        await _invoices.CreateAndPostAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Consulting", _db.Revenue.Id, null, 1, 500, 0.05m, item.Id) }, Now);
+
+        _db.SwitchTo(_db.OtherCompany.Id);
+        // Same numeric item id, but a different company's line data must not leak through.
+        Assert.Null(await _invoices.GetLastRevenueAccountForItemAsync(item.Id));
+    }
+
+    [Fact]
     public async Task GetTrialBalanceAsync_by_date_matches_the_period_end_result()
     {
         var inv = await PostInvoice();
