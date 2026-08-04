@@ -79,7 +79,7 @@ public class TagService
     {
         if (string.IsNullOrWhiteSpace(input.Name)) throw new PostingException("Tag name is required.");
         await using var db = await _dbf.CreateDbContextAsync();
-        var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id) ?? throw new PostingException("Tag not found.");
+        var tag = await FindTagAsync(db, id) ?? throw new PostingException("Tag not found.");
         tag.Name = input.Name.Trim();
         tag.SortOrder = input.SortOrder;
         await db.SaveChangesAsync();
@@ -88,7 +88,7 @@ public class TagService
     public async Task SetTagActiveAsync(int id, bool isActive)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id) ?? throw new PostingException("Tag not found.");
+        var tag = await FindTagAsync(db, id) ?? throw new PostingException("Tag not found.");
         tag.IsActive = isActive;
         await db.SaveChangesAsync();
     }
@@ -97,10 +97,15 @@ public class TagService
     public async Task DeleteTagAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var tag = await db.Tags.FirstOrDefaultAsync(t => t.Id == id) ?? throw new PostingException("Tag not found.");
+        var tag = await FindTagAsync(db, id) ?? throw new PostingException("Tag not found.");
         if (await db.CustomerTags.AnyAsync(t => t.TagId == id))
             throw new PostingException("This tag is selected on at least one customer — deactivate it instead of deleting.");
         db.Tags.Remove(tag);
         await db.SaveChangesAsync();
     }
+
+    /// <summary>Tag has no CompanyId/query filter of its own — route through the company-scoped
+    /// TagGroups so a tagId belonging to another company is never found, let alone modified.</summary>
+    private static Task<Tag?> FindTagAsync(AegisDbContext db, int id) =>
+        db.TagGroups.SelectMany(g => g.Tags).FirstOrDefaultAsync(t => t.Id == id);
 }

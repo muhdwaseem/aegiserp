@@ -295,9 +295,13 @@ public class ReceiptService
         // Note: no .Include(l => l.SalesInvoice).ThenInclude(i => i.Lines) here — that Include path
         // cycles back to SalesInvoiceLine itself, which EF Core rejects on no-tracking queries.
         // Each invoice's full line list is instead fetched separately, per group, below.
+        //
+        // Routed through the company-scoped SalesInvoices (not db.SalesInvoiceLines directly) —
+        // otherwise a lineId belonging to another company would resolve here and leak that
+        // company's invoice number in the "belongs to a different customer" message below.
         var lineIds = inputs.Select(a => a.SalesInvoiceLineId).Distinct().ToList();
-        var lines = await db.SalesInvoiceLines.AsNoTracking()
-            .Include(l => l.SalesInvoice)
+        var lines = await db.SalesInvoices.AsNoTracking()
+            .SelectMany(i => i.Lines).Include(l => l.SalesInvoice)
             .Where(l => lineIds.Contains(l.Id))
             .ToListAsync();
         if (lines.Count != lineIds.Count)

@@ -87,8 +87,9 @@ public sealed class TestDb : IDbContextFactory<AegisDbContext>, IDisposable
     /// <summary>Switches the active company, as the company switcher does in the app.</summary>
     public void SwitchTo(int companyId) => _current.CompanyId = companyId;
 
-    /// <summary>Seeds a minimal chart of accounts and a customer for the secondary company.</summary>
-    public (Account Bank, Account Ar, Account Vat, Account Revenue, FiscalPeriod May, Customer Customer) SeedOtherCompany()
+    /// <summary>Seeds a minimal chart of accounts, a customer and a vendor for the secondary company.</summary>
+    public (Account Bank, Account Ar, Account Vat, Account Revenue, Account Ap, Account Expense,
+        FiscalPeriod May, Customer Customer, Vendor Vendor) SeedOtherCompany()
     {
         using var db = CreateUnscopedDbContext();
         var o = OtherCompany.Id;
@@ -99,14 +100,18 @@ public sealed class TestDb : IDbContextFactory<AegisDbContext>, IDisposable
         var ar = new Account { CompanyId = o, Code = WellKnownAccounts.AccountsReceivable, Name = "Accounts Receivable", Type = AccountType.Asset };
         var vat = new Account { CompanyId = o, Code = WellKnownAccounts.VatPayable, Name = "VAT Payable", Type = AccountType.Liability };
         var revenue = new Account { CompanyId = o, Code = "41010", Name = "Revenue", Type = AccountType.Income };
+        var ap = new Account { CompanyId = o, Code = WellKnownAccounts.AccountsPayable, Name = "Accounts Payable", Type = AccountType.Liability };
+        var expense = new Account { CompanyId = o, Code = "51010", Name = "Expense", Type = AccountType.Expense };
         var customer = new Customer { CompanyId = o, Code = "C-0001", Name = "Other Customer", PaymentTermsDays = 30 };
+        var vendor = new Vendor { CompanyId = o, Code = "V-0001", Name = "Other Vendor", PaymentTermsDays = 30 };
 
         db.FiscalPeriods.Add(may);
-        db.Accounts.AddRange(bank, ar, vat, revenue);
+        db.Accounts.AddRange(bank, ar, vat, revenue, ap, expense);
         db.Customers.Add(customer);
+        db.Vendors.Add(vendor);
         db.SaveChanges();
 
-        return (bank, ar, vat, revenue, may, customer);
+        return (bank, ar, vat, revenue, ap, expense, may, customer, vendor);
     }
 
     public void Dispose() => _connection.Dispose();

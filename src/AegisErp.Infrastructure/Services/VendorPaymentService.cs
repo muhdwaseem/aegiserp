@@ -294,9 +294,13 @@ public class VendorPaymentService
         // Note: no .Include(l => l.PurchaseInvoice).ThenInclude(i => i.Lines) here — that Include
         // path cycles back to PurchaseInvoiceLine itself, which EF Core rejects on no-tracking
         // queries. Each invoice's full line list is instead fetched separately, per group, below.
+        //
+        // Routed through the company-scoped PurchaseInvoices (not db.PurchaseInvoiceLines
+        // directly) — otherwise a lineId belonging to another company would resolve here and leak
+        // that company's invoice number in the "belongs to a different vendor" message below.
         var lineIds = inputs.Select(a => a.PurchaseInvoiceLineId).Distinct().ToList();
-        var lines = await db.PurchaseInvoiceLines.AsNoTracking()
-            .Include(l => l.PurchaseInvoice)
+        var lines = await db.PurchaseInvoices.AsNoTracking()
+            .SelectMany(i => i.Lines).Include(l => l.PurchaseInvoice)
             .Where(l => lineIds.Contains(l.Id))
             .ToListAsync();
         if (lines.Count != lineIds.Count)

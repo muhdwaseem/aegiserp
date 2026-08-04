@@ -302,7 +302,10 @@ public class CustomerService
         var ids = tagIds.Distinct().ToList();
         if (ids.Count == 0) return;
 
-        var tags = await db.Tags.AsNoTracking().Where(t => ids.Contains(t.Id)).ToListAsync();
+        // Tag has no CompanyId/query filter of its own — route through the company-scoped
+        // TagGroups so a tagId belonging to another company can never be attached here.
+        var tags = await db.TagGroups.AsNoTracking().SelectMany(g => g.Tags)
+            .Where(t => ids.Contains(t.Id)).ToListAsync();
         var groupsSeen = new HashSet<int>();
         foreach (var t in tags)
         {
@@ -317,6 +320,8 @@ public class CustomerService
     public async Task<List<CustomerDocumentInfo>> GetDocumentsAsync(int customerId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
+        _ = await db.Customers.FindAsync(customerId) ?? throw new PostingException("Customer not found.");
+
         return await db.CustomerDocuments.AsNoTracking()
             .Where(d => d.CustomerId == customerId)
             .OrderBy(d => d.Id)
@@ -352,6 +357,8 @@ public class CustomerService
     public async Task RemoveDocumentAsync(int customerId, int documentId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
+        _ = await db.Customers.FindAsync(customerId) ?? throw new PostingException("Customer not found.");
+
         var doc = await db.CustomerDocuments.FirstOrDefaultAsync(d => d.Id == documentId && d.CustomerId == customerId)
             ?? throw new PostingException("Document not found.");
         db.CustomerDocuments.Remove(doc);
@@ -361,6 +368,8 @@ public class CustomerService
     public async Task<(string FileName, string ContentType, byte[] Data)?> GetDocumentAsync(int customerId, int documentId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
+        if (await db.Customers.FindAsync(customerId) is null) return null;
+
         var doc = await db.CustomerDocuments.AsNoTracking()
             .FirstOrDefaultAsync(d => d.Id == documentId && d.CustomerId == customerId);
         return doc is null ? null : (doc.FileName, doc.ContentType, doc.Data);

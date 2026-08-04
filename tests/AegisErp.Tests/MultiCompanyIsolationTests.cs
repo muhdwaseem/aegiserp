@@ -16,6 +16,9 @@ public class MultiCompanyIsolationTests : IDisposable
     private readonly SalesInvoiceService _invoices;
     private readonly CustomerService _customers;
     private readonly ChartOfAccountsService _coa;
+    private readonly PurchaseInvoiceService _purchaseInvoices;
+    private readonly ReceiptService _receipts;
+    private readonly TagService _tags;
     private static readonly DateTime Now = new(2026, 7, 9, 12, 0, 0, DateTimeKind.Utc);
 
     public MultiCompanyIsolationTests()
@@ -23,6 +26,9 @@ public class MultiCompanyIsolationTests : IDisposable
         _invoices = new SalesInvoiceService(_db, new EmailService(Options.Create(new SmtpOptions())));
         _customers = new CustomerService(_db);
         _coa = new ChartOfAccountsService(_db);
+        _purchaseInvoices = new PurchaseInvoiceService(_db);
+        _receipts = new ReceiptService(_db);
+        _tags = new TagService(_db);
     }
 
     public void Dispose() => _db.Dispose();
@@ -182,6 +188,106 @@ public class MultiCompanyIsolationTests : IDisposable
             _invoices.SetLineAttachmentAsync(theirLineId, "spec.pdf", "application/pdf", new byte[] { 1, 2, 3 }));
         await Assert.ThrowsAsync<PostingException>(() => _invoices.RemoveLineAttachmentAsync(theirLineId));
         Assert.Null(await _invoices.GetLineAttachmentAsync(theirLineId));
+    }
+
+    [Fact]
+    public async Task GetLineBalancesAsync_rejects_a_sales_invoiceId_from_another_company()
+    {
+        // SalesInvoiceLine has no CompanyId/query filter of its own — GetLineBalancesAsync must
+        // route through the company-scoped SalesInvoices, not query db.SalesInvoiceLines directly.
+        var other = _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var theirs = await _invoices.CreateAndPostAsync(other.Customer.Id, new(2026, 5, 12), other.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", other.Revenue.Id, null, 1, 500, 0.05m) }, Now);
+        _db.SwitchTo(_db.Company.Id);
+
+        var balances = await _invoices.GetLineBalancesAsync(theirs.Id);
+
+        Assert.Empty(balances);
+    }
+
+    [Fact]
+    public async Task GetLineBalancesAsync_rejects_a_purchase_invoiceId_from_another_company()
+    {
+        var other = _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var theirs = await _purchaseInvoices.CreateAndPostAsync(other.Vendor.Id, null, new(2026, 5, 12), other.May.Id,
+            null, "tester", new[] { new PurchaseLineInput("Bill", other.Expense.Id, null, 1, 500, 0m) }, Now);
+        _db.SwitchTo(_db.Company.Id);
+
+        var balances = await _purchaseInvoices.GetLineBalancesAsync(theirs.Id);
+
+        Assert.Empty(balances);
+    }
+
+    [Fact]
+    public async Task Customer_document_methods_reject_a_customerId_from_another_company()
+    {
+        // CustomerDocument has no CompanyId/query filter of its own — every method taking a raw
+        // customerId must validate it against the company-scoped Customers first.
+        var other = _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var theirDoc = await _customers.AddDocumentAsync(other.Customer.Id, "trade-license.pdf", "application/pdf",
+            new byte[] { 1, 2, 3 }, Now);
+        _db.SwitchTo(_db.Company.Id);
+
+        await Assert.ThrowsAsync<PostingException>(() => _customers.GetDocumentsAsync(other.Customer.Id));
+        Assert.Null(await _customers.GetDocumentAsync(other.Customer.Id, theirDoc.Id));
+        await Assert.ThrowsAsync<PostingException>(() => _customers.RemoveDocumentAsync(other.Customer.Id, theirDoc.Id));
+    }
+
+    [Fact]
+    public async Task Tag_admin_methods_reject_a_tagId_from_another_company()
+    {
+        // Tag has no CompanyId/query filter of its own — TagService must route through the
+        // company-scoped TagGroups, not query db.Tags directly by id.
+        _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var group = await _tags.CreateGroupAsync(new NewTagGroupInput("Customer", "Region", 1));
+        var theirTag = await _tags.AddTagAsync(group.Id, new NewTagInput("EMEA", 1));
+        _db.SwitchTo(_db.Company.Id);
+
+        await Assert.ThrowsAsync<PostingException>(() => _tags.UpdateTagAsync(theirTag.Id, new NewTagInput("Hijacked", 1)));
+        await Assert.ThrowsAsync<PostingException>(() => _tags.SetTagActiveAsync(theirTag.Id, false));
+        await Assert.ThrowsAsync<PostingException>(() => _tags.DeleteTagAsync(theirTag.Id));
+    }
+
+    [Fact]
+    public async Task Creating_a_customer_silently_ignores_a_tagId_from_another_company()
+    {
+        _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var group = await _tags.CreateGroupAsync(new NewTagGroupInput("Customer", "Region", 1));
+        var theirTag = await _tags.AddTagAsync(group.Id, new NewTagInput("EMEA", 1));
+        _db.SwitchTo(_db.Company.Id);
+
+        var created = await _customers.CreateAsync(
+            new NewCustomerInput("Tag Test", null, "AED", 0, 30, null, null, null, null),
+            tagIds: new[] { theirTag.Id });
+
+        var full = await _customers.GetByIdAsync(created.Id);
+        Assert.Empty(full!.Tags);
+    }
+
+    [Fact]
+    public async Task Receipt_allocation_does_not_leak_another_companys_invoice_number_for_a_foreign_lineId()
+    {
+        // ValidateMultiInvoiceAsync must route through the company-scoped SalesInvoices — otherwise
+        // a lineId from another company resolves far enough to leak that company's invoice number
+        // in the "belongs to a different customer" exception message.
+        var other = _db.SeedOtherCompany();
+        _db.SwitchTo(_db.OtherCompany.Id);
+        var theirs = await _invoices.CreateAndPostAsync(other.Customer.Id, new(2026, 5, 12), other.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", other.Revenue.Id, null, 1, 500, 0.05m) }, Now);
+        _db.SwitchTo(_db.Company.Id);
+        var theirLineId = theirs.Lines.Single().Id;
+
+        var ex = await Assert.ThrowsAsync<PostingException>(() => _receipts.CreateAndPostAsync(
+            _db.Customer.Id, null, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 500, null, "tester", Now,
+            allocations: new[] { new ReceiptLineAllocationInput(theirLineId, 500) }));
+
+        Assert.DoesNotContain(theirs.InvoiceNo, ex.Message);
+        Assert.Equal("An allocation refers to a line that doesn't exist.", ex.Message);
     }
 
     [Fact]

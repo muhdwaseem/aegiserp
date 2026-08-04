@@ -99,7 +99,11 @@ public class SalesInvoiceService
     public async Task<List<SalesInvoiceLineBalance>> GetLineBalancesAsync(int invoiceId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        var lines = await db.SalesInvoiceLines.AsNoTracking().Include(l => l.Item)
+        // Route through the company-scoped SalesInvoices — SalesInvoiceLine has no CompanyId/query
+        // filter of its own, so querying db.SalesInvoiceLines directly by invoiceId would return
+        // another company's lines for a guessed/foreign id.
+        var lines = await db.SalesInvoices.AsNoTracking()
+            .SelectMany(i => i.Lines).Include(l => l.Item)
             .Where(l => l.SalesInvoiceId == invoiceId)
             .OrderBy(l => l.LineNo)
             .ToListAsync();
