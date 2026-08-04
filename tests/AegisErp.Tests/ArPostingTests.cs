@@ -183,6 +183,27 @@ public class ArPostingTests : IDisposable
     }
 
     [Fact]
+    public async Task GetTrialBalanceAsync_by_date_matches_the_period_end_result()
+    {
+        var inv = await PostInvoice();
+        await _receipts.CreateAndPostAsync(_db.Customer.Id, inv.Id, new(2026, 5, 15), _db.May.Id,
+            _db.Bank.Id, 1050, null, "tester", Now);
+
+        var ledger = new LedgerService(_db);
+        var byPeriod = await ledger.GetTrialBalanceAsync(_db.May.Id);
+        var byDate = await ledger.GetTrialBalanceAsync(_db.May.EndDate);
+
+        Assert.True(byDate.IsBalanced);
+        Assert.Equal(byPeriod.TotalDebit, byDate.TotalDebit);
+        Assert.Equal(byPeriod.TotalCredit, byDate.TotalCredit);
+        Assert.Equal(byPeriod.Rows.Count, byDate.Rows.Count);
+
+        // A cut-off before any postings existed has nothing to report.
+        var beforeAnyPostings = await ledger.GetTrialBalanceAsync(new DateOnly(2026, 5, 1).AddDays(-1));
+        Assert.Empty(beforeAnyPostings.Rows);
+    }
+
+    [Fact]
     public async Task Aging_buckets_open_invoices_by_days_past_due()
     {
         // Terms 30 days. Due 2026-06-09.

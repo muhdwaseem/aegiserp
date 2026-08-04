@@ -4,18 +4,28 @@
 
 <PageTitle>Trial Balance · Aegis ERP</PageTitle>
 
-<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
-    <MudText Typo="Typo.h5">Trial Balance</MudText>
-    <MudSpacer />
-    @if (_periods is not null)
+<MudText Typo="Typo.h5">Trial Balance</MudText>
+@if (_asOfDate is { } d)
+{
+    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">As of @d.ToString("dd MMM yyyy")</MudText>
+}
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+    <MudSelect T="string" Value="_preset" ValueChanged="OnPresetChanged" Label="As of Date" Dense="true" Style="max-width:200px">
+        @foreach (var p in Presets)
+        {
+            <MudSelectItem Value="p">@p</MudSelectItem>
+        }
+    </MudSelect>
+    @if (_preset == "Custom")
     {
-        <MudSelect T="int" Value="_periodId" ValueChanged="OnPeriodChanged" Label="As at period" Dense="true" Style="max-width:220px">
-            @foreach (var p in _periods)
-            {
-                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
-            }
-        </MudSelect>
+        <div style="max-width:160px">
+            <MudDatePicker @bind-Date="_asOfDate" Label="As of" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" />
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="Load">Run Report</MudButton>
     }
+    <MudSpacer />
+    <MudText Typo="Typo.body2" Class="mud-text-secondary">Report Basis: <b>Accrual</b></MudText>
 </MudStack>
 
 @if (_tb is not null)
@@ -51,17 +61,80 @@
 }
 
 @code {
-    private List<FiscalPeriod>? _periods;
-    private int _periodId;
+    private static readonly string[] Presets =
+    {
+        "Today", "This Week", "This Month", "This Quarter", "This Year",
+        "Yesterday", "Previous Week", "Previous Month", "Previous Quarter", "Previous Year", "Custom",
+    };
+
+    private string _preset = "Today";
+    private DateTime? _asOfDate;
     private AegisErp.Infrastructure.Services.TrialBalance? _tb;
 
     protected override async Task OnInitializedAsync()
     {
-        _periods = await Ledger.GetPeriodsAsync();
-        _periodId = _periods.LastOrDefault()?.Id ?? 0;
+        ApplyPreset(_preset);
         await Load();
     }
 
-    private async Task OnPeriodChanged(int id) { _periodId = id; await Load(); }
-    private async Task Load() { if (_periodId > 0) _tb = await Ledger.GetTrialBalanceAsync(_periodId); }
+    private async Task OnPresetChanged(string preset)
+    {
+        ApplyPreset(preset);
+        if (preset != "Custom") await Load();
+    }
+
+    /// <summary>Resolves every preset to a single "as of" date — the period's end date, capped
+    /// implicitly at today since no postings exist beyond the current date. Matches Zoho's
+    /// Trial Balance "As of Date" quick filters.</summary>
+    private void ApplyPreset(string preset)
+    {
+        _preset = preset;
+        var today = DateTime.Today;
+        int isoDow = today.DayOfWeek == DayOfWeek.Sunday ? 7 : (int)today.DayOfWeek; // Monday = 1
+        var thisWeekStart = today.AddDays(1 - isoDow);
+        int quarterStartMonth = ((today.Month - 1) / 3) * 3 + 1;
+        var thisQuarterStart = new DateTime(today.Year, quarterStartMonth, 1);
+
+        switch (preset)
+        {
+            case "Today":
+                _asOfDate = today;
+                break;
+            case "Yesterday":
+                _asOfDate = today.AddDays(-1);
+                break;
+            case "This Week":
+                _asOfDate = thisWeekStart.AddDays(6);
+                break;
+            case "This Month":
+                _asOfDate = new DateTime(today.Year, today.Month, 1).AddMonths(1).AddDays(-1);
+                break;
+            case "This Quarter":
+                _asOfDate = thisQuarterStart.AddMonths(3).AddDays(-1);
+                break;
+            case "This Year":
+                _asOfDate = new DateTime(today.Year, 12, 31);
+                break;
+            case "Previous Week":
+                _asOfDate = thisWeekStart.AddDays(-1);
+                break;
+            case "Previous Month":
+                _asOfDate = new DateTime(today.Year, today.Month, 1).AddDays(-1);
+                break;
+            case "Previous Quarter":
+                _asOfDate = thisQuarterStart.AddDays(-1);
+                break;
+            case "Previous Year":
+                _asOfDate = new DateTime(today.Year - 1, 12, 31);
+                break;
+            case "Custom":
+                break;
+        }
+    }
+
+    private async Task Load()
+    {
+        if (_asOfDate is not { } d) return;
+        _tb = await Ledger.GetTrialBalanceAsync(DateOnly.FromDateTime(d));
+    }
 }

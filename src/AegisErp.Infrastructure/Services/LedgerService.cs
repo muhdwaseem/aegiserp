@@ -128,8 +128,21 @@ public class LedgerService
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var period = await db.FiscalPeriods.AsNoTracking().FirstAsync(p => p.Id == periodId);
+        return await BuildTrialBalanceAsync(db, period.EndDate, period.Name);
+    }
+
+    /// <summary>Cumulative trial balance of every posted entry on or before <paramref name="asOfDate"/>
+    /// — mirrors Zoho's "As of Date" trial balance filter.</summary>
+    public async Task<TrialBalance> GetTrialBalanceAsync(DateOnly asOfDate)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await BuildTrialBalanceAsync(db, asOfDate, $"As of {asOfDate:dd MMM yyyy}");
+    }
+
+    private static async Task<TrialBalance> BuildTrialBalanceAsync(AegisDbContext db, DateOnly asOfDate, string label)
+    {
         var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id);
-        var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= period.EndDate).ToList();
+        var lines = (await PostedLinesAsync(db)).Where(l => l.Date <= asOfDate).ToList();
 
         var rows = lines
             .GroupBy(l => l.AccountId)
@@ -144,7 +157,7 @@ public class LedgerService
             .OrderBy(r => r.Code)
             .ToList();
 
-        return new TrialBalance(period.Name, rows, rows.Sum(r => r.Debit), rows.Sum(r => r.Credit));
+        return new TrialBalance(label, rows, rows.Sum(r => r.Debit), rows.Sum(r => r.Credit));
     }
 
     public async Task<DashboardKpis> GetDashboardAsync(int periodId)
