@@ -103,4 +103,59 @@ public class ChartOfAccountsServiceTests : IDisposable
         _db.SwitchTo(_db.OtherCompany.Id);
         Assert.DoesNotContain(await new ChartOfAccountsService(_db).GetAllAsync(), a => a.Code == "60060");
     }
+
+    [Fact]
+    public async Task CreateCostCenterAsync_creates_it_and_rejects_a_duplicate_code()
+    {
+        var created = await _coa.CreateCostCenterAsync("ADM", "Admin");
+        Assert.Equal("ADM", created.Code);
+        Assert.True(created.IsActive);
+
+        await Assert.ThrowsAsync<PostingException>(() => _coa.CreateCostCenterAsync("ADM", "Admin Again"));
+    }
+
+    [Fact]
+    public async Task UpdateCostCenterAsync_renames_it()
+    {
+        await _coa.UpdateCostCenterAsync(_db.CostCenter.Id, "Operations & Support");
+        Assert.Equal("Operations & Support", (await _coa.GetAllCostCentersAsync()).Single(c => c.Id == _db.CostCenter.Id).Name);
+    }
+
+    [Fact]
+    public async Task SetCostCenterActiveAsync_toggles_it_and_GetCostCentersAsync_excludes_inactive()
+    {
+        await _coa.SetCostCenterActiveAsync(_db.CostCenter.Id, false);
+        Assert.DoesNotContain(await _coa.GetCostCentersAsync(), c => c.Id == _db.CostCenter.Id);
+        Assert.Contains(await _coa.GetAllCostCentersAsync(), c => c.Id == _db.CostCenter.Id);
+
+        await _coa.SetCostCenterActiveAsync(_db.CostCenter.Id, true);
+        Assert.Contains(await _coa.GetCostCentersAsync(), c => c.Id == _db.CostCenter.Id);
+    }
+
+    [Fact]
+    public async Task DeleteCostCenterAsync_refuses_one_with_posted_entries_but_allows_an_unused_one()
+    {
+        await using (var db = _db.CreateDbContext())
+        {
+            var v = new AegisErp.Domain.Entities.JournalVoucher
+            {
+                VoucherNo = "JV-TEST-0001",
+                Type = VoucherType.Journal,
+                Date = new(2026, 5, 2),
+                FiscalPeriodId = _db.May.Id,
+                CreatedAtUtc = DateTime.UtcNow,
+            };
+            v.Lines.Add(new() { LineNo = 1, AccountId = _db.Expense.Id, CostCenterId = _db.CostCenter.Id, Debit = 10 });
+            v.Lines.Add(new() { LineNo = 2, AccountId = _db.Bank.Id, Credit = 10 });
+            v.Post(DateTime.UtcNow);
+            db.JournalVouchers.Add(v);
+            await db.SaveChangesAsync();
+        }
+
+        await Assert.ThrowsAsync<PostingException>(() => _coa.DeleteCostCenterAsync(_db.CostCenter.Id));
+
+        var unused = await _coa.CreateCostCenterAsync("UNUSED", "Unused");
+        await _coa.DeleteCostCenterAsync(unused.Id);
+        Assert.DoesNotContain(await _coa.GetAllCostCentersAsync(), c => c.Id == unused.Id);
+    }
 }

@@ -45,6 +45,62 @@ public class ChartOfAccountsService
         return await db.CostCenters.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
     }
 
+    /// <summary>Every cost centre including inactive ones — for the management page.</summary>
+    public async Task<List<CostCenter>> GetAllCostCentersAsync()
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        return await db.CostCenters.AsNoTracking().OrderBy(c => c.Code).ToListAsync();
+    }
+
+    public async Task<CostCenter> CreateCostCenterAsync(string code, string name)
+    {
+        code = code.Trim();
+        name = name.Trim();
+        if (string.IsNullOrWhiteSpace(code)) throw new PostingException("Cost centre code is required.");
+        if (string.IsNullOrWhiteSpace(name)) throw new PostingException("Cost centre name is required.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        if (await db.CostCenters.AnyAsync(c => c.Code == code))
+            throw new PostingException($"A cost centre with code {code} already exists.");
+
+        var cc = new CostCenter { Code = code, Name = name, IsActive = true };
+        db.CostCenters.Add(cc);
+        await db.SaveChangesAsync();
+        return cc;
+    }
+
+    public async Task UpdateCostCenterAsync(int id, string name)
+    {
+        name = name.Trim();
+        if (string.IsNullOrWhiteSpace(name)) throw new PostingException("Cost centre name is required.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        var cc = await db.CostCenters.FirstOrDefaultAsync(c => c.Id == id)
+            ?? throw new PostingException("Cost centre not found.");
+        cc.Name = name;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task SetCostCenterActiveAsync(int id, bool isActive)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var cc = await db.CostCenters.FirstOrDefaultAsync(c => c.Id == id)
+            ?? throw new PostingException("Cost centre not found.");
+        cc.IsActive = isActive;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task DeleteCostCenterAsync(int id)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var cc = await db.CostCenters.FirstOrDefaultAsync(c => c.Id == id)
+            ?? throw new PostingException("Cost centre not found.");
+        if (await db.JournalLines.AnyAsync(l => l.CostCenterId == id))
+            throw new PostingException("This cost centre has posted entries and cannot be deleted — deactivate it instead.");
+        db.CostCenters.Remove(cc);
+        await db.SaveChangesAsync();
+    }
+
     public async Task<bool> CodeExistsAsync(string code)
     {
         await using var db = await _dbf.CreateDbContextAsync();

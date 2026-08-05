@@ -1,0 +1,137 @@
+@page "/cost-centers"
+@attribute [Authorize]
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject CompanySession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Cost Centers · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">Cost Centers</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Optional tags for a journal line — a department, project or segment (e.g. Admin, Sales,
+    Travel). They're never required to post, but tagging lines lets <b>MIS &amp; Segment Reports →
+    Segment P&amp;L</b> break income and expense down by segment instead of just by account.
+</MudText>
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Add Cost Center</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_code" Label="Code" Placeholder="e.g. ADM" />
+        </MudItem>
+        <MudItem xs="12" sm="5">
+            <MudTextField @bind-Value="_name" Label="Name" Placeholder="e.g. Admin" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="Add">Add</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable Items="_rows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null">
+    <HeaderContent>
+        <MudTh>Code</MudTh>
+        <MudTh>Name</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh Style="width:160px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace"><b>@context.Code</b></MudTd>
+        <MudTd>
+            @if (_editingId == context.Id)
+            {
+                <MudTextField T="string" @bind-Value="_editName" Margin="Margin.Dense" Immediate="true" />
+            }
+            else
+            {
+                @context.Name
+            }
+        </MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                @(context.IsActive ? "Active" : "Inactive")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            @if (_editingId == context.Id)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" OnClick="SaveEdit" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _editingId = null)" />
+            }
+            else
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => StartEdit(context))" />
+                <MudIconButton Icon="@(context.IsActive ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                               Size="Size.Small" OnClick="@(() => Toggle(context))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => Delete(context))" />
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No cost centers yet — add one above if you want to track segments.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<CostCenter>? _rows;
+    private string _code = "";
+    private string _name = "";
+    private int? _editingId;
+    private string _editName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister) { Navigation.NavigateTo(""); return; }
+        await Load();
+    }
+
+    private async Task Load() => _rows = await Coa.GetAllCostCentersAsync();
+
+    private async Task Add()
+    {
+        try
+        {
+            await Coa.CreateCostCenterAsync(_code, _name);
+            Snackbar.Add($"Cost centre {_code.Trim().ToUpperInvariant()} added.", Severity.Success);
+            _code = ""; _name = "";
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void StartEdit(CostCenter c) { _editingId = c.Id; _editName = c.Name; }
+
+    private async Task SaveEdit()
+    {
+        if (_editingId is not int id) return;
+        try
+        {
+            await Coa.UpdateCostCenterAsync(id, _editName);
+            _editingId = null;
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task Toggle(CostCenter c)
+    {
+        await Coa.SetCostCenterActiveAsync(c.Id, !c.IsActive);
+        await Load();
+    }
+
+    private async Task Delete(CostCenter c)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete cost centre", $"Delete {c.Code} — {c.Name}?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await Coa.DeleteCostCenterAsync(c.Id);
+            Snackbar.Add($"Cost centre {c.Code} deleted.", Severity.Success);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

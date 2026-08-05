@@ -45,7 +45,11 @@
             <HeaderContent>
                 <MudTh Style="width:40px">#</MudTh>
                 <MudTh>Account</MudTh>
-                <MudTh>Cost Center</MudTh>
+                <MudTh>
+                    <MudTooltip Text="Optional — tags this line to a department/segment (e.g. Admin, Sales, Travel) so Segment P&L can report on it. Leave blank if you don't need that.">
+                        <span style="border-bottom:1px dotted currentColor; cursor:help">Cost Center</span>
+                    </MudTooltip>
+                </MudTh>
                 <MudTh>Description</MudTh>
                 <MudTh Style="text-align:right;width:140px">Debit</MudTh>
                 <MudTh Style="text-align:right;width:140px">Credit</MudTh>
@@ -66,15 +70,22 @@
                     </MudSelect>
                 </MudTd>
                 <MudTd>
-                    <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" FullWidth="true" Clearable="true">
-                        @if (_costCenters is not null)
-                        {
-                            @foreach (var c in _costCenters)
+                    @if (_costCenters is { Count: 0 })
+                    {
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">None set up — optional</MudText>
+                    }
+                    else
+                    {
+                        <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" FullWidth="true" Clearable="true">
+                            @if (_costCenters is not null)
                             {
-                                <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
+                                @foreach (var c in _costCenters)
+                                {
+                                    <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
+                                }
                             }
-                        }
-                    </MudSelect>
+                        </MudSelect>
+                    }
                 </MudTd>
                 <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" /></MudTd>
                 <MudTd Style="text-align:right">
