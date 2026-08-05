@@ -81,6 +81,7 @@
                         <MudSpacer />
                         <MudLink Typo="Typo.caption" OnClick="DisableItemize">Use a single account instead</MudLink>
                     </MudStack>
+                    <div class="line-table-scroll">
                     <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0">
                         <HeaderContent>
                             <MudTh Style="width:160px">Item</MudTh>
@@ -136,6 +137,7 @@
                             </MudTd>
                         </RowTemplate>
                     </MudTable>
+                    </div>
                     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
                         <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
                         <MudSpacer />

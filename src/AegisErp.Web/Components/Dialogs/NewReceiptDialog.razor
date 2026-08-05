@@ -102,6 +102,7 @@
                             <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ClearApplied" Disabled="@(!HasAnyApplied)">Clear Applied Amount</MudButton>
                         </MudStack>
 
+                        <div class="line-table-scroll">
                         <MudTable Items="_openInvoices" Dense="true" Bordered="true" Elevation="0">
                             <HeaderContent>
                                 <MudTh>Date</MudTh>
@@ -133,11 +134,13 @@
                                 </MudTd>
                             </RowTemplate>
                         </MudTable>
+                        </div>
 
                         @if (_splitInvoiceId is int splitId && _lineBalancesByInvoice.TryGetValue(splitId, out var splitLines))
                         {
                             <MudPaper Class="pa-2 mt-1" Elevation="0" Style="border:1px dashed var(--mud-palette-lines-default)">
                                 <MudText Typo="Typo.caption" Class="mb-1">Split @SplitInvoiceLabel across its services</MudText>
+                                <div class="line-table-scroll">
                                 <MudTable Items="splitLines" Dense="true" Elevation="0">
                                     <HeaderContent>
                                         <MudTh>Service / Description</MudTh>
@@ -159,6 +162,7 @@
                                         </MudTd>
                                     </RowTemplate>
                                 </MudTable>
+                                </div>
                             </MudPaper>
                         }
                     }

@@ -41,6 +41,7 @@
             </MudItem>
         </MudGrid>
 
+        <div class="line-table-scroll">
         <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-4 mb-2">
             <HeaderContent>
                 <MudTh Style="width:40px">#</MudTh>
@@ -100,6 +101,7 @@
                 </MudTd>
             </RowTemplate>
         </MudTable>
+        </div>
 
         <MudStack Row="true" AlignItems="AlignItems.Center">
             <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>

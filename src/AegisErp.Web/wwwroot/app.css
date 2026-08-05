@@ -215,3 +215,16 @@ h1:focus {
         background-color: var(--mud-palette-action-disabled-background);
     }
 
+/* Dense fields (every line-item table's Qty/UOM/Price/etc. cells) are already tight on width —
+   give them a smaller inset than the 12px above so the box doesn't eat most of a narrow column. */
+.mud-input-underline.mud-input-margin-dense {
+    padding: 0 8px;
+}
+
+/* Line-item tables (Sales/Purchase Invoice, Credit/Debit Note, Estimate, Journal Voucher, etc.)
+   can be wider than the dialog that hosts them — scroll horizontally instead of letting the
+   browser squeeze every column (and the inputs inside them) down to fit. */
+.line-table-scroll {
+    overflow-x: auto;
+}
+
