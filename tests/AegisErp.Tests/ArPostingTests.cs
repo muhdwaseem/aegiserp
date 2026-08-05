@@ -753,6 +753,27 @@ public class ArPostingTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateDraftAsync_rejects_a_line_with_no_revenue_account_instead_of_a_raw_FK_error()
+    {
+        var ex = await Assert.ThrowsAsync<PostingException>(() => _invoices.CreateDraftAsync(
+            _db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Service", 0, null, 1, 500, 0.05m) }, Now));
+        Assert.Contains("Revenue Account", ex.Message);
+    }
+
+    [Fact]
+    public async Task UpdateDraftAsync_rejects_a_line_with_no_revenue_account_instead_of_a_raw_FK_error()
+    {
+        var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
+            new[] { new InvoiceLineInput("Original", _db.Revenue.Id, null, 1, 500, 0.05m) }, Now);
+
+        var ex = await Assert.ThrowsAsync<PostingException>(() => _invoices.UpdateDraftAsync(
+            draft.Id, _db.Customer.Id, new(2026, 5, 10), _db.May.Id, null,
+            new[] { new InvoiceLineInput("Service", 0, null, 1, 500, 0.05m) }));
+        Assert.Contains("Revenue Account", ex.Message);
+    }
+
+    [Fact]
     public async Task Editing_then_posting_a_draft_reflects_the_edited_values()
     {
         var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",

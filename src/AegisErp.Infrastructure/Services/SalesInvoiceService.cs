@@ -216,6 +216,8 @@ public class SalesInvoiceService
 
         var no = 1;
         foreach (var l in lines)
+        {
+            ValidateDraftLine(no, l);
             invoice.Lines.Add(new SalesInvoiceLine
             {
                 LineNo = no++,
@@ -231,6 +233,7 @@ public class SalesInvoiceService
                 Uom = l.Uom,
                 Recognition = l.Recognition,
             });
+        }
         if (invoice.Lines.Count == 0)
             throw new PostingException("Invoice needs at least one line.");
 
@@ -279,6 +282,8 @@ public class SalesInvoiceService
         invoice.Lines.Clear();
         var no = 1;
         foreach (var l in lines)
+        {
+            ValidateDraftLine(no, l);
             invoice.Lines.Add(new SalesInvoiceLine
             {
                 LineNo = no++,
@@ -294,11 +299,24 @@ public class SalesInvoiceService
                 Uom = l.Uom,
                 Recognition = l.Recognition,
             });
+        }
         if (invoice.Lines.Count == 0)
             throw new PostingException("Invoice needs at least one line.");
 
         await JournalPoster.SaveChangesTranslatedAsync(db);
         return invoice;
+    }
+
+    /// <summary>
+    /// A draft is allowed to be incomplete in most respects (that's the point of a draft), but
+    /// RevenueAccountId is a required foreign key at the schema level — leaving it unset (the
+    /// form's "— select —" placeholder maps to 0) would otherwise reach SaveChanges as a raw FK
+    /// violation and surface as a confusing generic "record doesn't exist" error instead of this.
+    /// </summary>
+    private static void ValidateDraftLine(int lineNo, InvoiceLineInput l)
+    {
+        if (l.RevenueAccountId == 0)
+            throw new PostingException($"Line {lineNo}: pick a Revenue Account before saving (even as a draft).");
     }
 
     /// <summary>Posts a previously-saved draft, generating its GL voucher under the same invoice number.</summary>
