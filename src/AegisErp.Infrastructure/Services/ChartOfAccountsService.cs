@@ -24,6 +24,23 @@ public class ChartOfAccountsService
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     public ChartOfAccountsService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
 
+    /// <summary>
+    /// Every posting flow (Sales/Purchase Invoice, Receipt, Vendor Payment, Credit/Debit Note) and
+    /// opening-balance entry looks up a handful of control accounts by their exact well-known code
+    /// (see <see cref="WellKnownAccounts"/> and the "31010" equity account <see cref="CreateAsync"/>
+    /// uses) — a company with none of these can't post anything at all. Generating them up front for
+    /// a new company avoids that dead end; the user can still rename, recode or add more later.
+    /// </summary>
+    public static List<Account> BuildStarterControlAccounts() => new()
+    {
+        new() { Code = WellKnownAccounts.AccountsReceivable, Name = "Accounts Receivable", Type = AccountType.Asset, Category = "Accounts receivable" },
+        new() { Code = WellKnownAccounts.VatInput, Name = "VAT Input / Prepaid Expenses", Type = AccountType.Asset, Category = "Current asset" },
+        new() { Code = WellKnownAccounts.AccountsPayable, Name = "Accounts Payable", Type = AccountType.Liability, Category = "Accounts payable" },
+        new() { Code = WellKnownAccounts.VatPayable, Name = "VAT Payable", Type = AccountType.Liability, Category = "Current liability" },
+        new() { Code = WellKnownAccounts.DeferredRevenue, Name = "Deferred Revenue", Type = AccountType.Liability, Category = "Current liability" },
+        new() { Code = "31010", Name = "Share Capital & Retained Earnings", Type = AccountType.Equity, Category = "Equity" },
+    };
+
     public async Task<List<Account>> GetAllAsync(bool postableOnly = false)
     {
         await using var db = await _dbf.CreateDbContextAsync();

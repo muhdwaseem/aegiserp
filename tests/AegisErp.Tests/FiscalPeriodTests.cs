@@ -9,11 +9,13 @@ public class FiscalPeriodTests : IDisposable
     private readonly TestDb _db = new();
     private readonly FiscalPeriodService _periods;
     private readonly CompanyService _companies;
+    private readonly ChartOfAccountsService _coa;
 
     public FiscalPeriodTests()
     {
         _periods = new FiscalPeriodService(_db);
         _companies = new CompanyService(_db, new CurrentCompany { CompanyId = _db.Company.Id });
+        _coa = new ChartOfAccountsService(_db);
     }
 
     public void Dispose() => _db.Dispose();
@@ -38,6 +40,27 @@ public class FiscalPeriodTests : IDisposable
         Assert.Equal(new DateOnly(2027, 1, 31), generated[0].EndDate);
         Assert.Equal(new DateOnly(2027, 12, 1), generated[11].StartDate);
         Assert.Equal(new DateOnly(2027, 12, 31), generated[11].EndDate);
+    }
+
+    [Fact]
+    public async Task CreateAsync_on_a_new_company_seeds_the_control_accounts_every_posting_flow_needs()
+    {
+        var company = await _companies.CreateAsync(new()
+        {
+            LegalName = "New Client LLC",
+            CompanyCode = "NEWCO2",
+            BaseCurrency = "AED",
+        });
+
+        _db.SwitchTo(company.Id);
+        var codes = (await _coa.GetAllAsync()).Select(a => a.Code).ToHashSet();
+
+        Assert.Contains(WellKnownAccounts.AccountsReceivable, codes);
+        Assert.Contains(WellKnownAccounts.AccountsPayable, codes);
+        Assert.Contains(WellKnownAccounts.VatPayable, codes);
+        Assert.Contains(WellKnownAccounts.VatInput, codes);
+        Assert.Contains(WellKnownAccounts.DeferredRevenue, codes);
+        Assert.Contains("31010", codes);
     }
 
     [Fact]

@@ -59,13 +59,17 @@ public class CompanyService
         // Scoping this context to the just-created company (rather than whatever company the
         // FirmAdmin happened to have active) mirrors how SeedData builds a specific company's
         // books; ApplyCompanyScope would otherwise reject these rows as a cross-company write.
+        db.CurrentCompanyId = model.Id;
         if (model.FinancialYearStart is DateOnly yearStart)
-        {
-            db.CurrentCompanyId = model.Id;
             db.FiscalPeriods.AddRange(FiscalPeriodService.BuildMonthlyYear(yearStart));
-            await db.SaveChangesAsync();
-        }
 
+        // Same problem, different symptom: every posting flow requires a handful of control
+        // accounts by exact code (AR, AP, VAT Payable/Input, Deferred Revenue, Equity) — with none
+        // of them, the very first invoice or bill fails with a raw "control account is missing"
+        // error instead of the friendly guidance the rest of onboarding gives.
+        db.Accounts.AddRange(ChartOfAccountsService.BuildStarterControlAccounts());
+
+        await db.SaveChangesAsync();
         return model;
     }
 
