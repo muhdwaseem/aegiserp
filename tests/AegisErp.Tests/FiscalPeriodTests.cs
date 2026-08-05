@@ -53,7 +53,8 @@ public class FiscalPeriodTests : IDisposable
         });
 
         _db.SwitchTo(company.Id);
-        var codes = (await _coa.GetAllAsync()).Select(a => a.Code).ToHashSet();
+        var accounts = await _coa.GetAllAsync();
+        var codes = accounts.Select(a => a.Code).ToHashSet();
 
         Assert.Contains(WellKnownAccounts.AccountsReceivable, codes);
         Assert.Contains(WellKnownAccounts.AccountsPayable, codes);
@@ -61,6 +62,10 @@ public class FiscalPeriodTests : IDisposable
         Assert.Contains(WellKnownAccounts.VatInput, codes);
         Assert.Contains(WellKnownAccounts.DeferredRevenue, codes);
         Assert.Contains("31010", codes);
+
+        // Receipt/Payment Voucher and Direct Expense only offer Asset accounts coded "110*" as a
+        // bank/cash account to deposit into or pay from — a new company needs at least one.
+        Assert.Contains(accounts, a => a.Type == AccountType.Asset && a.Code.StartsWith("110"));
     }
 
     [Fact]

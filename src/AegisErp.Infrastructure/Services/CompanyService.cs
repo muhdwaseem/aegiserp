@@ -64,10 +64,12 @@ public class CompanyService
             db.FiscalPeriods.AddRange(FiscalPeriodService.BuildMonthlyYear(yearStart));
 
         // Same problem, different symptom: every posting flow requires a handful of control
-        // accounts by exact code (AR, AP, VAT Payable/Input, Deferred Revenue, Equity) — with none
-        // of them, the very first invoice or bill fails with a raw "control account is missing"
-        // error instead of the friendly guidance the rest of onboarding gives.
-        db.Accounts.AddRange(ChartOfAccountsService.BuildStarterControlAccounts());
+        // accounts by exact code (AR, AP, VAT Payable/Input, Deferred Revenue, Equity), and Receipt/
+        // Payment Voucher and Direct Expense additionally need at least one bank/cash account (code
+        // starting "110") to deposit into or pay from — with none of these, the very first invoice,
+        // bill or receipt fails outright instead of getting the friendly guidance the rest of
+        // onboarding gives.
+        db.Accounts.AddRange(ChartOfAccountsService.BuildStarterAccounts());
 
         await db.SaveChangesAsync();
         return model;

@@ -28,11 +28,16 @@ public class ChartOfAccountsService
     /// Every posting flow (Sales/Purchase Invoice, Receipt, Vendor Payment, Credit/Debit Note) and
     /// opening-balance entry looks up a handful of control accounts by their exact well-known code
     /// (see <see cref="WellKnownAccounts"/> and the "31010" equity account <see cref="CreateAsync"/>
-    /// uses) — a company with none of these can't post anything at all. Generating them up front for
-    /// a new company avoids that dead end; the user can still rename, recode or add more later.
+    /// uses) — a company with none of these can't post anything at all. The Receipt/Payment
+    /// Voucher and Direct Expense "bank account" pickers have their own undocumented convention on
+    /// top of that: they only offer Asset accounts whose code starts with "110" (see those dialogs'
+    /// OnInitializedAsync) — with none, there is nothing to select and nothing to deposit/pay from.
+    /// Generating all of this up front for a new company avoids both dead ends; the user can still
+    /// rename, recode or add more accounts later.
     /// </summary>
-    public static List<Account> BuildStarterControlAccounts() => new()
+    public static List<Account> BuildStarterAccounts() => new()
     {
+        new() { Code = "11020", Name = "Bank Account", Type = AccountType.Asset, Category = "Cash and cash equivalents" },
         new() { Code = WellKnownAccounts.AccountsReceivable, Name = "Accounts Receivable", Type = AccountType.Asset, Category = "Accounts receivable" },
         new() { Code = WellKnownAccounts.VatInput, Name = "VAT Input / Prepaid Expenses", Type = AccountType.Asset, Category = "Current asset" },
         new() { Code = WellKnownAccounts.AccountsPayable, Name = "Accounts Payable", Type = AccountType.Liability, Category = "Accounts payable" },
