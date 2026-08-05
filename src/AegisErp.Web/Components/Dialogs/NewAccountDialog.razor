@@ -144,7 +144,11 @@
             _isActive = e.IsActive; _description = e.Description;
             if (e.PnlSection is PnlSection s) _pnlSection = s;
         }
-        _pnlSection = PnlSectionsFor(_type).Contains(_pnlSection) ? _pnlSection : PnlSectionsFor(_type)[0];
+        // Asset/Liability/Equity accounts have no P&L sections at all (PnlSectionsFor returns
+        // empty) — editing one of those was crashing here before this guard, since it indexed
+        // into that empty array instead of just leaving _pnlSection at its harmless default.
+        var options = PnlSectionsFor(_type);
+        if (options.Length > 0 && !options.Contains(_pnlSection)) _pnlSection = options[0];
     }
 
     private void OnTypeChanged(AccountType type)

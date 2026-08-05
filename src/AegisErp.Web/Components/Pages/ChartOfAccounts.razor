@@ -78,7 +78,8 @@
                     {
                         var a = row.Acc;
                         <tr class="@(a.IsPostable ? "" : "hdr") @(a.Id == _selectedId ? "sel" : "")"
-                            @onclick="() => Select(a.Id)" @ondblclick="() => SelectAndEditAsync(a.Id)" title="Double-click to edit">
+                            @onclick="() => Select(a.Id)" @ondblclick="@(() => Session.CanPost ? SelectAndEditAsync(a.Id) : Task.CompletedTask)"
+                            title="@(Session.CanPost ? "Double-click to edit" : null)">
                             <td class="exp" style="padding-left:@(6 + row.Level * 20)px">
                                 @if (row.HasChildren)
                                 {
