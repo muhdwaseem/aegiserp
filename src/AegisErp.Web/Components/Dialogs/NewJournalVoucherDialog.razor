@@ -45,15 +45,15 @@
         <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-4 mb-2">
             <HeaderContent>
                 <MudTh Style="width:40px">#</MudTh>
-                <MudTh>Account</MudTh>
-                <MudTh>
+                <MudTh Style="min-width:220px">Account</MudTh>
+                <MudTh Style="min-width:160px">
                     <MudTooltip Text="Optional — tags this line to a department/segment (e.g. Admin, Sales, Travel) so Segment P&L can report on it. Leave blank if you don't need that.">
                         <span style="border-bottom:1px dotted currentColor; cursor:help">Cost Center</span>
                     </MudTooltip>
                 </MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh Style="text-align:right;width:140px">Debit</MudTh>
-                <MudTh Style="text-align:right;width:140px">Credit</MudTh>
+                <MudTh Style="min-width:180px">Description</MudTh>
+                <MudTh Style="text-align:right;min-width:140px">Debit</MudTh>
+                <MudTh Style="text-align:right;min-width:140px">Credit</MudTh>
                 <MudTh Style="width:48px"></MudTh>
             </HeaderContent>
             <RowTemplate>

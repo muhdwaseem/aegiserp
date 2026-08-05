@@ -91,17 +91,17 @@
         <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-4 mb-2">
             <HeaderContent>
                 <MudTh Style="width:40px">#</MudTh>
-                <MudTh Style="width:160px">Item</MudTh>
-                <MudTh>Description</MudTh>
-                <MudTh>Revenue Account</MudTh>
-                <MudTh Style="width:110px">Recognition</MudTh>
-                <MudTh>Cost Center</MudTh>
-                <MudTh Style="width:110px;text-align:right">Qty</MudTh>
-                <MudTh Style="width:100px">UOM</MudTh>
-                <MudTh Style="width:120px;text-align:right">Unit Price</MudTh>
-                <MudTh Style="width:140px;text-align:right">Discount</MudTh>
-                <MudTh Style="width:100px">VAT</MudTh>
-                <MudTh Style="width:120px;text-align:right">Line Total</MudTh>
+                <MudTh Style="min-width:180px">Item</MudTh>
+                <MudTh Style="min-width:160px">Description</MudTh>
+                <MudTh Style="min-width:200px">Revenue Account</MudTh>
+                <MudTh Style="min-width:120px">Recognition</MudTh>
+                <MudTh Style="min-width:160px">Cost Center</MudTh>
+                <MudTh Style="min-width:90px;text-align:right">Qty</MudTh>
+                <MudTh Style="min-width:90px">UOM</MudTh>
+                <MudTh Style="min-width:130px;text-align:right">Unit Price</MudTh>
+                <MudTh Style="min-width:160px;text-align:right">Discount</MudTh>
+                <MudTh Style="min-width:90px">VAT</MudTh>
+                <MudTh Style="min-width:130px;text-align:right">Line Total</MudTh>
                 <MudTh Style="width:48px">Doc</MudTh>
                 <MudTh Style="width:48px"></MudTh>
             </HeaderContent>
@@ -156,8 +156,8 @@
                     <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
                         <MudNumericField T="decimal" @bind-Value="context.DiscountValue" Min="0"
                                          Max="@(context.DiscountType == DiscountType.Percent ? 100m : decimal.MaxValue)"
-                                         HideSpinButtons="true" Margin="Margin.Dense" Style="width:80px" />
-                        <MudSelect T="DiscountType" @bind-Value="context.DiscountType" Dense="true" Margin="Margin.Dense" Style="width:72px">
+                                         HideSpinButtons="true" Margin="Margin.Dense" Style="min-width:80px" />
+                        <MudSelect T="DiscountType" @bind-Value="context.DiscountType" Dense="true" Margin="Margin.Dense" Style="min-width:80px">
                             <MudSelectItem Value="DiscountType.Percent">%</MudSelectItem>
                             <MudSelectItem Value="DiscountType.Amount">AED</MudSelectItem>
                         </MudSelect>
