@@ -183,3 +183,35 @@ h1:focus {
     border-color: #929292;
 }
 
+/* Every text field/select/date picker as a clean rounded box, regardless of which MudBlazor
+   Variant a given component happens to use. Outlined fields already render a box (see
+   .mud-input-outlined-border) and just pick up the rounder corners from the theme's
+   DefaultBorderRadius; this block gives the same box to the *default* underline style used by
+   most dialog/form fields, which otherwise draw only a bottom line. */
+.mud-input-underline {
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: var(--mud-default-borderradius);
+    background-color: var(--mud-palette-surface);
+    padding: 0 12px;
+    transition: border-color 0.15s ease;
+}
+
+    .mud-input-underline:before,
+    .mud-input-underline:after {
+        border-bottom: none !important;
+        content: none !important;
+    }
+
+    .mud-input-underline:focus-within {
+        border-color: var(--mud-palette-primary);
+    }
+
+    .mud-input-underline.mud-input-error {
+        border-color: var(--mud-palette-error);
+    }
+
+    .mud-input-underline.mud-disabled {
+        border-style: dashed;
+        background-color: var(--mud-palette-action-disabled-background);
+    }
+
