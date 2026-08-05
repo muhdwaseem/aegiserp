@@ -10,6 +10,15 @@ public record NewAccountInput(
     string? Category, string Currency, int? ParentId, string? Description, decimal OpeningBalance,
     PnlSection? PnlSection = null);
 
+/// <summary>One parsed row from an imported chart-of-accounts CSV, before its parent code has been
+/// resolved to an id (see <see cref="ChartOfAccountsService.ImportAsync"/>).</summary>
+public record ImportAccountRow(
+    string Code, string Name, AccountType Type, bool IsPostable,
+    string? ParentCode, string? Category, PnlSection? PnlSection, string? Currency);
+
+/// <summary>Outcome of importing one CSV row — surfaced per-row so a bad row doesn't block the rest.</summary>
+public record ImportRowResult(int RowNumber, string Code, bool Success, string Message);
+
 public class ChartOfAccountsService
 {
     private readonly IDbContextFactory<AegisDbContext> _dbf;
@@ -160,6 +169,60 @@ public class ChartOfAccountsService
         db.Entry(acc).Property(a => a.RowVersion).OriginalValue = expectedRowVersion;
         await JournalPoster.SaveChangesTranslatedAsync(db);
         return acc;
+    }
+
+    /// <summary>Quick activate/deactivate toggle that doesn't require re-submitting the whole edit
+    /// form — mirrors the same pattern used for currencies and tags.</summary>
+    public async Task SetActiveAsync(int id, bool isActive)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var acc = await db.Accounts.FirstOrDefaultAsync(a => a.Id == id)
+            ?? throw new PostingException("Account not found.");
+        acc.IsActive = isActive;
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Imports a batch of accounts (e.g. from a CSV) one at a time, so one bad row is reported
+    /// without blocking the rest. A row's parent must already exist — either from before this
+    /// import or from an earlier row in the same batch — so header/group rows should be listed
+    /// before the accounts that live under them.
+    /// </summary>
+    public async Task<List<ImportRowResult>> ImportAsync(List<ImportAccountRow> rows, string createdBy)
+    {
+        var codeToId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        await using (var db = await _dbf.CreateDbContextAsync())
+            foreach (var a in await db.Accounts.AsNoTracking().ToListAsync())
+                codeToId[a.Code] = a.Id;
+
+        var results = new List<ImportRowResult>();
+        var rowNo = 1; // row 1 is the header line in the source file
+        foreach (var row in rows)
+        {
+            rowNo++;
+            try
+            {
+                int? parentId = null;
+                if (!string.IsNullOrWhiteSpace(row.ParentCode))
+                {
+                    if (!codeToId.TryGetValue(row.ParentCode, out var pid))
+                        throw new PostingException(
+                            $"Parent account '{row.ParentCode}' was not found — list it on an earlier row or create it first.");
+                    parentId = pid;
+                }
+
+                var input = new NewAccountInput(row.Code, row.Name, row.Type, row.IsPostable,
+                    row.Category, row.Currency ?? "AED", parentId, null, 0, row.PnlSection);
+                var created = await CreateAsync(input, createdBy);
+                codeToId[created.Code] = created.Id;
+                results.Add(new ImportRowResult(rowNo, row.Code, true, "Created"));
+            }
+            catch (PostingException ex)
+            {
+                results.Add(new ImportRowResult(rowNo, row.Code, false, ex.Message));
+            }
+        }
+        return results;
     }
 
     /// <summary>The sensible default P&amp;L section for a newly created account of this type — Cost

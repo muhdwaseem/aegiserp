@@ -1,0 +1,245 @@
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Import Chart of Accounts</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">From a CSV file</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            The first row must be a header naming the columns below (any order; extra columns are
+            ignored). List header/group accounts <b>before</b> the accounts that sit under them, so
+            <b>Parent Account No</b> can find them.
+        </MudText>
+        <MudSimpleTable Dense="true" Class="mb-3">
+            <thead>
+                <tr><th>Column</th><th>Required</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>Account No</code></td><td>Yes</td><td>Must be unique</td></tr>
+                <tr><td><code>Account Name</code></td><td>Yes</td><td></td></tr>
+                <tr><td><code>Type</code></td><td>Yes</td><td>Asset, Liability, Equity, Revenue, Expense</td></tr>
+                <tr><td><code>Postable</code></td><td>No</td><td><code>Header</code> for a group; anything else (or blank) posts</td></tr>
+                <tr><td><code>Parent Account No</code></td><td>No</td><td>Code of an existing or earlier-row account</td></tr>
+                <tr><td><code>Category</code></td><td>No</td><td>Free text</td></tr>
+                <tr><td><code>P&amp;L Section</code></td><td>No</td><td>Revenue/Expense accounts only</td></tr>
+                <tr><td><code>Currency</code></td><td>No</td><td>Defaults to AED</td></tr>
+            </tbody>
+        </MudSimpleTable>
+
+        <MudStack Row="true" Spacing="2" Class="mb-3">
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadTemplate">
+                Download Template
+            </MudButton>
+            <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".csv">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">
+                        @(_fileName ?? "Choose CSV File")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+        </MudStack>
+
+        @if (_parseError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">@_parseError</MudAlert>
+        }
+
+        @if (_results is not null)
+        {
+            <MudAlert Severity="@(_results.Any(r => !r.Success) ? Severity.Warning : Severity.Success)" Dense="true" Class="mb-3">
+                @_results.Count(r => r.Success) of @_results.Count row(s) imported.
+            </MudAlert>
+            <MudSimpleTable Dense="true" Style="max-height:280px;overflow-y:auto">
+                <thead>
+                    <tr><th>Row</th><th>Account No</th><th>Result</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _results)
+                    {
+                        <tr>
+                            <td>@r.RowNumber</td>
+                            <td style="font-family:monospace">@r.Code</td>
+                            <td>
+                                @if (r.Success)
+                                {
+                                    <MudText Color="Color.Success">✔ @r.Message</MudText>
+                                }
+                                else
+                                {
+                                    <MudText Color="Color.Error">✘ @r.Message</MudText>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">@(_results is null ? "Cancel" : "Close")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile"
+                   OnClick="Import" Disabled="@(_pendingRows is null || _importing)">Import</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private const int MaxFileBytes = 2 * 1024 * 1024;
+    private string? _fileName;
+    private string? _parseError;
+    private List<ImportAccountRow>? _pendingRows;
+    private List<ImportRowResult>? _results;
+    private bool _importing;
+    private bool _anySucceeded;
+
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        _parseError = null;
+        _results = null;
+        _pendingRows = null;
+        _fileName = file.Name;
+
+        if (file.Size > MaxFileBytes)
+        {
+            _parseError = "That file is too large — the limit is 2 MB.";
+            return;
+        }
+
+        using var stream = file.OpenReadStream(MaxFileBytes);
+        using var reader = new StreamReader(stream);
+        var text = await reader.ReadToEndAsync();
+
+        try
+        {
+            _pendingRows = ParseCsv(text);
+            if (_pendingRows.Count == 0)
+                _parseError = "No data rows found below the header.";
+        }
+        catch (FormatException ex)
+        {
+            _parseError = ex.Message;
+        }
+    }
+
+    private async Task Import()
+    {
+        if (_pendingRows is null) return;
+        _importing = true;
+        try
+        {
+            var user = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            _results = await Coa.ImportAsync(_pendingRows, user);
+            _anySucceeded = _results.Any(r => r.Success);
+            _pendingRows = null;
+        }
+        finally { _importing = false; }
+    }
+
+    private async Task DownloadTemplate()
+    {
+        const string csv = "Account No,Account Name,Type,Postable,Parent Account No,Category,P&L Section,Currency\n" +
+                            "51000,Operating Expenses,Expense,Header,,,,\n" +
+                            "51030,Utilities Expense,Expense,,51000,Indirect expense,Operating Expense,AED\n";
+        await JS.InvokeVoidAsync("aegisDownload", "chart-of-accounts-template.csv", csv, "text/csv");
+    }
+
+    private void Close() => MudDialog.Close(_anySucceeded ? DialogResult.Ok(true) : DialogResult.Cancel());
+
+    // ── CSV parsing ──
+
+    private static List<ImportAccountRow> ParseCsv(string text)
+    {
+        var lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n')
+            .Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+        if (lines.Count == 0) throw new FormatException("The file is empty.");
+
+        var header = SplitCsvLine(lines[0]).Select(h => h.Trim()).ToList();
+        int Col(string name) => header.FindIndex(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
+
+        var codeIdx = Col("Account No");
+        var nameIdx = Col("Account Name");
+        var typeIdx = Col("Type");
+        if (codeIdx < 0 || nameIdx < 0 || typeIdx < 0)
+            throw new FormatException("The header must include at least Account No, Account Name and Type.");
+
+        var parentIdx = Col("Parent Account No");
+        var categoryIdx = Col("Category");
+        var pnlIdx = Col("P&L Section");
+        var currencyIdx = Col("Currency");
+        var postableIdx = Col("Postable");
+
+        string? Get(string[] fields, int idx) => idx >= 0 && idx < fields.Length && !string.IsNullOrWhiteSpace(fields[idx]) ? fields[idx].Trim() : null;
+
+        var rows = new List<ImportAccountRow>();
+        for (var i = 1; i < lines.Count; i++)
+        {
+            var fields = SplitCsvLine(lines[i]);
+            var code = Get(fields, codeIdx);
+            var name = Get(fields, nameIdx);
+            if (code is null && name is null) continue; // a stray blank line
+
+            rows.Add(new ImportAccountRow(
+                Code: code ?? "",
+                Name: name ?? "",
+                Type: ParseType(Get(fields, typeIdx)),
+                IsPostable: !string.Equals(Get(fields, postableIdx), "Header", StringComparison.OrdinalIgnoreCase),
+                ParentCode: Get(fields, parentIdx),
+                Category: Get(fields, categoryIdx),
+                PnlSection: ParsePnlSection(Get(fields, pnlIdx)),
+                Currency: Get(fields, currencyIdx)));
+        }
+        return rows;
+    }
+
+    private static AccountType ParseType(string? s) => s?.Trim().ToLowerInvariant() switch
+    {
+        "revenue" or "income" => AccountType.Income,
+        "expense" => AccountType.Expense,
+        "asset" => AccountType.Asset,
+        "liability" => AccountType.Liability,
+        "equity" => AccountType.Equity,
+        _ => AccountType.Expense,
+    };
+
+    private static PnlSection? ParsePnlSection(string? s) => s?.Trim().ToLowerInvariant() switch
+    {
+        "operating income" => PnlSection.OperatingIncome,
+        "cost of goods sold" or "cogs" => PnlSection.CostOfGoodsSold,
+        "operating expense" => PnlSection.OperatingExpense,
+        "non-operating income" => PnlSection.NonOperatingIncome,
+        "non-operating expense" => PnlSection.NonOperatingExpense,
+        _ => null,
+    };
+
+    /// <summary>Minimal RFC4180-style splitter: handles quoted fields, embedded commas and doubled
+    /// internal quotes — the same escaping <c>ChartOfAccounts.razor</c>'s export uses.</summary>
+    private static string[] SplitCsvLine(string line)
+    {
+        var fields = new List<string>();
+        var sb = new System.Text.StringBuilder();
+        var inQuotes = false;
+        for (var i = 0; i < line.Length; i++)
+        {
+            var c = line[i];
+            if (inQuotes)
+            {
+                if (c == '"' && i + 1 < line.Length && line[i + 1] == '"') { sb.Append('"'); i++; }
+                else if (c == '"') inQuotes = false;
+                else sb.Append(c);
+            }
+            else
+            {
+                if (c == '"') inQuotes = true;
+                else if (c == ',') { fields.Add(sb.ToString()); sb.Clear(); }
+                else sb.Append(c);
+            }
+        }
+        fields.Add(sb.ToString());
+        return fields.ToArray();
+    }
+}

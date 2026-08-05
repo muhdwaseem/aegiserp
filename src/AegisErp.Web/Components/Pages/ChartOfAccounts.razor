@@ -28,15 +28,15 @@
         <div class="tb-grp">
             <div class="tb-btns">
                 <button class="tb-b prim" @onclick="OpenNew"><span>➕</span>New</button>
-                <button class="tb-b" @onclick="OpenEdit" disabled="@(_selectedId is null)"><span>✏️</span>Edit</button>
-                <button class="tb-b dng" @onclick="DeleteSelected" disabled="@(_selectedId is null)"><span>🗑</span>Delete</button>
+                <button class="tb-b" @onclick="OpenEdit"><span>✏️</span>Edit</button>
+                <button class="tb-b dng" @onclick="DeleteSelected"><span>🗑</span>Delete</button>
             </div>
             <div class="tb-lbl">Manage</div>
         </div>
         <div class="tb-sep"></div>
         <div class="tb-grp">
             <div class="tb-btns">
-                <button class="tb-b" @onclick="@(() => Snackbar.Add("Import — coming soon", Severity.Info))"><span>📥</span>Import</button>
+                <button class="tb-b" @onclick="OpenImport"><span>📥</span>Import</button>
                 <button class="tb-b" @onclick="ExportCsv"><span>📤</span>Export</button>
             </div>
             <div class="tb-lbl">Data</div>
@@ -67,13 +67,18 @@
                         <th style="width:34px"></th>
                         <th>Account No.</th><th>Account Name</th><th>Type</th>
                         <th>Category</th><th>P&amp;L Section</th><th>Currency</th><th class="ctr">Dr/Cr</th><th>Status</th>
+                        @if (Session.CanPost)
+                        {
+                            <th style="width:44px"></th>
+                        }
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var row in DisplayRows())
                     {
                         var a = row.Acc;
-                        <tr class="@(a.IsPostable ? "" : "hdr") @(a.Id == _selectedId ? "sel" : "")" @onclick="() => Select(a.Id)">
+                        <tr class="@(a.IsPostable ? "" : "hdr") @(a.Id == _selectedId ? "sel" : "")"
+                            @onclick="() => Select(a.Id)" @ondblclick="() => SelectAndEditAsync(a.Id)" title="Double-click to edit">
                             <td class="exp" style="padding-left:@(6 + row.Level * 20)px">
                                 @if (row.HasChildren)
                                 {
@@ -128,6 +133,19 @@
                                     <span class="badge off">Inactive</span>
                                 }
                             </td>
+                            @if (Session.CanPost)
+                            {
+                                <td @onclick:stopPropagation="true">
+                                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small">
+                                        <MudMenuItem OnClick="@(() => SelectAndEditAsync(a.Id))">Edit</MudMenuItem>
+                                        @if (a.IsPostable)
+                                        {
+                                            <MudMenuItem OnClick="@(() => ToggleActive(a))">@(a.IsActive ? "Deactivate" : "Activate")</MudMenuItem>
+                                        }
+                                        <MudMenuItem OnClick="@(() => DeleteAccount(a))">Delete</MudMenuItem>
+                                    </MudMenu>
+                                </td>
+                            }
                         </tr>
                     }
                 </tbody>
@@ -202,8 +220,23 @@
 
     private async Task OpenEdit()
     {
-        if (_selectedId is not int id || _all is null) return;
-        var acc = _all.First(a => a.Id == id);
+        if (_selectedId is not int id || _all is null)
+        {
+            Snackbar.Add("Select an account row first.", Severity.Info);
+            return;
+        }
+        await EditAccount(_all.First(a => a.Id == id));
+    }
+
+    private async Task SelectAndEditAsync(int id)
+    {
+        if (_all is null) return;
+        Select(id);
+        await EditAccount(_all.First(a => a.Id == id));
+    }
+
+    private async Task EditAccount(Account acc)
+    {
         var parameters = new DialogParameters<NewAccountDialog> { { x => x.Headers, _headers }, { x => x.Existing, acc } };
         var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
         var dialog = await DialogService.ShowAsync<NewAccountDialog>("Edit Account", parameters, options);
@@ -212,30 +245,59 @@
 
     private async Task DeleteSelected()
     {
-        if (_selectedId is not int id || _all is null) return;
-        var acc = _all.First(a => a.Id == id);
+        if (_selectedId is not int id || _all is null)
+        {
+            Snackbar.Add("Select an account row first.", Severity.Info);
+            return;
+        }
+        await DeleteAccount(_all.First(a => a.Id == id));
+    }
+
+    private async Task DeleteAccount(Account acc)
+    {
         var ok = await DialogService.ShowMessageBox("Delete account",
             $"Delete {acc.Code} — {acc.Name}? This cannot be undone.", yesText: "Delete", cancelText: "Cancel");
         if (ok != true) return;
         try
         {
-            await Coa.DeleteAsync(id);
+            await Coa.DeleteAsync(acc.Id);
             Snackbar.Add($"Account {acc.Code} deleted.", Severity.Success);
-            _selectedId = null;
+            if (_selectedId == acc.Id) _selectedId = null;
             await Reload();
         }
         catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
     }
 
+    private async Task ToggleActive(Account acc)
+    {
+        try
+        {
+            await Coa.SetActiveAsync(acc.Id, !acc.IsActive);
+            Snackbar.Add($"Account {acc.Code} {(acc.IsActive ? "deactivated" : "activated")}.", Severity.Success);
+            await Reload();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task OpenImport()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<ImportChartOfAccountsDialog>("Import Chart of Accounts", options);
+        if ((await dialog.Result) is { Canceled: false }) await Reload();
+    }
+
     private async Task ExportCsv()
     {
         if (_all is null) return;
+        var codeById = _all.ToDictionary(a => a.Id, a => a.Code);
         var sb = new StringBuilder();
-        sb.AppendLine("Account No,Account Name,Type,Category,P&L Section,Currency,Postable,Normal Balance,Status");
+        sb.AppendLine("Account No,Account Name,Type,Postable,Parent Account No,Category,P&L Section,Currency,Normal Balance,Status");
         foreach (var a in _all.OrderBy(a => a.Code))
             sb.AppendLine(string.Join(",",
-                Csv(a.Code), Csv(a.Name), Csv(TypeLabel(a.Type)), Csv(a.Category), Csv(a.PnlSection is { } s ? PnlSectionLabel(s) : null), Csv(a.Currency),
+                Csv(a.Code), Csv(a.Name), Csv(TypeLabel(a.Type)),
                 a.IsPostable ? "Yes" : "Header",
+                Csv(a.ParentId is int pid && codeById.TryGetValue(pid, out var pcode) ? pcode : null),
+                Csv(a.Category), Csv(a.PnlSection is { } s ? PnlSectionLabel(s) : null), Csv(a.Currency),
                 a.IsPostable ? (a.NormalBalance == NormalBalance.Debit ? "Dr" : "Cr") : "",
                 a.IsPostable ? (a.IsActive ? "Active" : "Inactive") : "Header"));
         await JS.InvokeVoidAsync("aegisDownload", "chart-of-accounts.csv", sb.ToString(), "text/csv");
