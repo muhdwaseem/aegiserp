@@ -52,7 +52,20 @@ public class CompanyService
 
         model.CompanyCode = code;
         db.CompanySetups.Add(model);
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(); // assigns model.Id
+
+        // A company with no fiscal periods can never post anything and its dashboard has nothing
+        // to show — so give it its first year up front instead of leaving that as a manual step.
+        // Scoping this context to the just-created company (rather than whatever company the
+        // FirmAdmin happened to have active) mirrors how SeedData builds a specific company's
+        // books; ApplyCompanyScope would otherwise reject these rows as a cross-company write.
+        if (model.FinancialYearStart is DateOnly yearStart)
+        {
+            db.CurrentCompanyId = model.Id;
+            db.FiscalPeriods.AddRange(FiscalPeriodService.BuildMonthlyYear(yearStart));
+            await db.SaveChangesAsync();
+        }
+
         return model;
     }
 

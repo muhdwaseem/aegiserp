@@ -1,0 +1,147 @@
+@page "/fiscal-periods"
+@attribute [Authorize]
+@inject FiscalPeriodService PeriodSvc
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject CompanySession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Fiscal Periods · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">Fiscal Periods</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Every voucher, invoice and bill posts into one of these periods — a company with none can't post
+    anything and its dashboard has nothing to show.
+</MudText>
+
+@if (_periods is { Count: 0 })
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4">
+        This company has no fiscal periods yet. Generate its first year below to get started.
+    </MudAlert>
+}
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Generate a Year</MudText>
+    <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mb-2">
+        Creates twelve monthly periods starting from the date below — the fastest way to set up a
+        new financial year.
+    </MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudDatePicker @bind-Date="_generateFrom" Label="Financial year starts" Editable="true" DateFormat="dd/MM/yyyy" />
+        </MudItem>
+        <MudItem xs="12" sm="3" Class="d-flex align-center">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="GenerateYear">Generate 12 Months</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle2" Class="mb-2">Add a Single Period</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudTextField @bind-Value="_name" Label="Name" Placeholder="e.g. Aug 2026" />
+        </MudItem>
+        <MudItem xs="12" sm="2">
+            <MudNumericField @bind-Value="_periodNo" Label="Period No." Min="1" Max="12" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker @bind-Date="_start" Label="Start Date" Editable="true" DateFormat="dd/MM/yyyy" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudDatePicker @bind-Date="_end" Label="End Date" Editable="true" DateFormat="dd/MM/yyyy" />
+        </MudItem>
+        <MudItem xs="12" sm="1" Class="d-flex align-center">
+            <MudButton Variant="Variant.Outlined" FullWidth="true" OnClick="AddOne">Add</MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudTable Items="_periods" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_periods is null">
+    <HeaderContent>
+        <MudTh>Period</MudTh>
+        <MudTh>Year</MudTh>
+        <MudTh>Start</MudTh>
+        <MudTh>End</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh Style="width:100px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><b>@context.Name</b></MudTd>
+        <MudTd>@context.Year</MudTd>
+        <MudTd>@context.StartDate.ToString("dd MMM yyyy")</MudTd>
+        <MudTd>@context.EndDate.ToString("dd MMM yyyy")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsClosed ? Color.Default : Color.Success)" Variant="Variant.Text">
+                @(context.IsClosed ? "Closed" : "Open")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => ToggleClosed(context))">
+                @(context.IsClosed ? "Reopen" : "Close")
+            </MudButton>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No periods yet — generate a year above.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<AegisErp.Domain.Entities.FiscalPeriod>? _periods;
+
+    private DateTime? _generateFrom = new DateTime(DateTime.Today.Year, 1, 1);
+    private string _name = "";
+    private int _periodNo = 1;
+    private DateTime? _start;
+    private DateTime? _end;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister) { Navigation.NavigateTo(""); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _periods = await PeriodSvc.GetAllAsync();
+        _periodNo = _periods.Count % 12 + 1;
+    }
+
+    private async Task GenerateYear()
+    {
+        if (_generateFrom is not DateTime from) return;
+        try
+        {
+            await PeriodSvc.GenerateMonthlyYearAsync(DateOnly.FromDateTime(from));
+            Snackbar.Add("Twelve monthly periods created.", Severity.Success);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task AddOne()
+    {
+        if (_start is not DateTime start || _end is not DateTime end)
+        {
+            Snackbar.Add("Start and end dates are required.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            await PeriodSvc.CreateAsync(_name, start.Year, _periodNo, DateOnly.FromDateTime(start), DateOnly.FromDateTime(end));
+            Snackbar.Add("Period added.", Severity.Success);
+            _name = ""; _start = null; _end = null;
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ToggleClosed(AegisErp.Domain.Entities.FiscalPeriod p)
+    {
+        await PeriodSvc.SetClosedAsync(p.Id, !p.IsClosed);
+        await Load();
+    }
+}

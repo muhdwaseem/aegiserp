@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<TagService>();
         services.AddScoped<RecurringInvoiceService>();
         services.AddScoped<TransactionService>();
+        services.AddScoped<FiscalPeriodService>();
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
         services.AddScoped<EmailService>();
         services.AddHostedService<InvoiceAutomationHostedService>();
