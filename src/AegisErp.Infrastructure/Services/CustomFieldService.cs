@@ -67,8 +67,8 @@ public class CustomFieldService
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Refuses to delete a field that already has values recorded against customers —
-    /// deactivate it instead so that data isn't silently lost.</summary>
+    /// <summary>Refuses to delete a field that already has values recorded against a customer or
+    /// vendor — deactivate it instead so that data isn't silently lost.</summary>
     public async Task DeleteAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
@@ -76,6 +76,8 @@ public class CustomFieldService
             ?? throw new PostingException("Custom field not found.");
         if (await db.CustomerCustomFieldValues.AnyAsync(v => v.CustomFieldDefinitionId == id))
             throw new PostingException("This field has values recorded against customers — deactivate it instead of deleting.");
+        if (await db.VendorCustomFieldValues.AnyAsync(v => v.CustomFieldDefinitionId == id))
+            throw new PostingException("This field has values recorded against vendors — deactivate it instead of deleting.");
         db.CustomFieldDefinitions.Remove(def);
         await db.SaveChangesAsync();
     }

@@ -4,13 +4,40 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AegisErp.Infrastructure.Services;
 
-/// <summary>Everything the "New Vendor" form collects.</summary>
+/// <summary>One billing or shipping address block — same shape reused for both. Mirrors
+/// <see cref="CustomerAddressInput"/>.</summary>
+public record VendorAddressInput(
+    string? Attention, string? Country, string? AddressLine1, string? AddressLine1Arabic,
+    string? AddressLine2, string? AddressLine2Arabic, string? City, string? Emirate,
+    string? Zip, string? Phone, string? Fax);
+
+/// <summary>Metadata for one attached document — never carries the file bytes themselves (use
+/// <see cref="VendorService.GetDocumentAsync"/> to download). Mirrors <see cref="CustomerDocumentInfo"/>.</summary>
+public record VendorDocumentInfo(int Id, string FileName, string ContentType, long SizeBytes, DateTime UploadedAtUtc);
+
+/// <summary>Everything the "New Vendor" / "Edit Vendor" form collects, aside from documents
+/// (added/removed after the vendor exists — see <see cref="VendorService.AddDocumentAsync"/>).
+/// Field set mirrors <see cref="NewCustomerInput"/> minus the AR-only concepts (Salesperson,
+/// EnablePortal) that have no AP equivalent.</summary>
 public record NewVendorInput(
-    string Name, string? Group, string Currency,
-    int PaymentTermsDays, string? Trn, string? Email, string? Phone, string? Address);
+    string Name, string? Group, string Currency, decimal CreditLimit,
+    int PaymentTermsDays, string? Trn, string? Email, string? Phone, string? Address,
+    CustomerType VendorType = CustomerType.Business,
+    string? Salutation = null, string? FirstName = null, string? LastName = null, string? CompanyName = null,
+    string? DisplayNameArabic = null, string VendorLanguage = "English",
+    string? WorkPhone = null, string? Mobile = null,
+    TaxTreatment? TaxTreatment = null, string? PlaceOfSupply = null, decimal OpeningBalance = 0,
+    string? Remarks = null,
+    VendorAddressInput? Billing = null, VendorAddressInput? Shipping = null);
 
 public class VendorService
 {
+    /// <summary>Custom Fields / Reporting Tags module key this form uses.</summary>
+    public const string Module = "Vendor";
+
+    public const int MaxDocumentBytes = 10 * 1024 * 1024;
+    public const int MaxDocumentsPerVendor = 10;
+
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     public VendorService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
 
@@ -22,35 +49,273 @@ public class VendorService
         return await q.ToListAsync();
     }
 
-    /// <summary>One vendor, for the vendor detail view.</summary>
+    /// <summary>One vendor with full detail for the vendor detail view / Edit dialog — contact
+    /// persons, custom field values and tag selections. Documents are deliberately excluded (see
+    /// <see cref="GetDocumentsAsync"/>) so this never pulls file bytes into memory.</summary>
     public async Task<Vendor?> GetByIdAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
-        return await db.Vendors.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
+        return await db.Vendors.AsNoTracking()
+            .Include(v => v.ContactPersons)
+            .Include(v => v.CustomFieldValues).ThenInclude(cf => cf.CustomFieldDefinition)
+            .Include(v => v.Tags).ThenInclude(t => t.Tag).ThenInclude(t => t.TagGroup)
+            .FirstOrDefaultAsync(v => v.Id == id);
     }
 
-    public async Task<Vendor> CreateAsync(NewVendorInput input)
+    public async Task<Vendor> CreateAsync(
+        NewVendorInput input,
+        IEnumerable<ContactPersonInput>? contactPersons = null,
+        IEnumerable<CustomFieldValueInput>? customFieldValues = null,
+        IEnumerable<int>? tagIds = null)
     {
-        if (string.IsNullOrWhiteSpace(input.Name)) throw new PostingException("Vendor name is required.");
-        if (input.PaymentTermsDays < 0) throw new PostingException("Payment terms cannot be negative.");
+        ValidateHeader(input);
 
         await using var db = await _dbf.CreateDbContextAsync();
+        var vendor = new Vendor { Code = await NextCodeAsync(db), CreatedAtUtc = DateTime.UtcNow };
+        ApplyScalarFields(vendor, input);
+        foreach (var p in BuildContactPersons(contactPersons ?? Enumerable.Empty<ContactPersonInput>()))
+            vendor.ContactPersons.Add(p);
+        await ValidateAndBuildCustomFieldValuesAsync(db, customFieldValues ?? Enumerable.Empty<CustomFieldValueInput>(), vendor.CustomFieldValues);
+        await ValidateAndBuildTagsAsync(db, tagIds ?? Enumerable.Empty<int>(), vendor.Tags);
 
-        var vendor = new Vendor
-        {
-            Code = await NextCodeAsync(db),
-            Name = input.Name.Trim(),
-            Group = string.IsNullOrWhiteSpace(input.Group) ? null : input.Group.Trim(),
-            Currency = string.IsNullOrWhiteSpace(input.Currency) ? "AED" : input.Currency.Trim(),
-            Trn = input.Trn?.Trim(),
-            Email = input.Email?.Trim(),
-            Phone = input.Phone?.Trim(),
-            Address = input.Address?.Trim(),
-            PaymentTermsDays = input.PaymentTermsDays,
-        };
         db.Vendors.Add(vendor);
         await db.SaveChangesAsync();
         return vendor;
+    }
+
+    /// <summary>Updates an existing vendor's fields, contact persons, custom field values and tag
+    /// selections — each child collection is fully replaced with what's submitted (the form always
+    /// sends its complete current state, not a diff).</summary>
+    public async Task UpdateAsync(
+        int id, NewVendorInput input,
+        IEnumerable<ContactPersonInput>? contactPersons = null,
+        IEnumerable<CustomFieldValueInput>? customFieldValues = null,
+        IEnumerable<int>? tagIds = null)
+    {
+        ValidateHeader(input);
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        var vendor = await db.Vendors
+            .Include(v => v.ContactPersons).Include(v => v.CustomFieldValues).Include(v => v.Tags)
+            .FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new PostingException("Vendor not found.");
+
+        ApplyScalarFields(vendor, input);
+
+        vendor.ContactPersons.Clear();
+        foreach (var p in BuildContactPersons(contactPersons ?? Enumerable.Empty<ContactPersonInput>()))
+            vendor.ContactPersons.Add(p);
+
+        vendor.CustomFieldValues.Clear();
+        await ValidateAndBuildCustomFieldValuesAsync(db, customFieldValues ?? Enumerable.Empty<CustomFieldValueInput>(), vendor.CustomFieldValues);
+
+        vendor.Tags.Clear();
+        await ValidateAndBuildTagsAsync(db, tagIds ?? Enumerable.Empty<int>(), vendor.Tags);
+
+        await db.SaveChangesAsync();
+    }
+
+    private static void ValidateHeader(NewVendorInput input)
+    {
+        if (string.IsNullOrWhiteSpace(input.Name)) throw new PostingException("Vendor name is required.");
+        if (input.PaymentTermsDays < 0) throw new PostingException("Payment terms cannot be negative.");
+        if (input.CreditLimit < 0) throw new PostingException("Credit limit cannot be negative.");
+        if (input.OpeningBalance < 0) throw new PostingException("Opening balance cannot be negative.");
+    }
+
+    private static string? Trim(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+    private static void ApplyScalarFields(Vendor v, NewVendorInput input)
+    {
+        v.VendorType = input.VendorType;
+        v.Salutation = Trim(input.Salutation);
+        v.FirstName = Trim(input.FirstName);
+        v.LastName = Trim(input.LastName);
+        v.CompanyName = Trim(input.CompanyName);
+        v.Name = input.Name.Trim();
+        v.DisplayNameArabic = Trim(input.DisplayNameArabic);
+        v.VendorLanguage = string.IsNullOrWhiteSpace(input.VendorLanguage) ? "English" : input.VendorLanguage.Trim();
+        v.Trn = Trim(input.Trn);
+        v.Email = Trim(input.Email);
+        v.Phone = Trim(input.Phone);
+        v.WorkPhone = Trim(input.WorkPhone);
+        v.Mobile = Trim(input.Mobile);
+        v.Address = Trim(input.Address);
+        v.Group = Trim(input.Group);
+        v.Currency = string.IsNullOrWhiteSpace(input.Currency) ? "AED" : input.Currency.Trim();
+        v.CreditLimit = input.CreditLimit;
+        v.PaymentTermsDays = input.PaymentTermsDays;
+
+        v.TaxTreatment = input.TaxTreatment;
+        v.PlaceOfSupply = Trim(input.PlaceOfSupply);
+        v.OpeningBalance = input.OpeningBalance;
+        v.Remarks = Trim(input.Remarks);
+
+        var billing = input.Billing;
+        v.BillingAttention = Trim(billing?.Attention);
+        v.BillingCountry = Trim(billing?.Country);
+        v.BillingAddressLine1 = Trim(billing?.AddressLine1);
+        v.BillingAddressLine1Arabic = Trim(billing?.AddressLine1Arabic);
+        v.BillingAddressLine2 = Trim(billing?.AddressLine2);
+        v.BillingAddressLine2Arabic = Trim(billing?.AddressLine2Arabic);
+        v.BillingCity = Trim(billing?.City);
+        v.BillingEmirate = Trim(billing?.Emirate);
+        v.BillingZip = Trim(billing?.Zip);
+        v.BillingPhone = Trim(billing?.Phone);
+        v.BillingFax = Trim(billing?.Fax);
+
+        var shipping = input.Shipping;
+        v.ShippingAttention = Trim(shipping?.Attention);
+        v.ShippingCountry = Trim(shipping?.Country);
+        v.ShippingAddressLine1 = Trim(shipping?.AddressLine1);
+        v.ShippingAddressLine1Arabic = Trim(shipping?.AddressLine1Arabic);
+        v.ShippingAddressLine2 = Trim(shipping?.AddressLine2);
+        v.ShippingAddressLine2Arabic = Trim(shipping?.AddressLine2Arabic);
+        v.ShippingCity = Trim(shipping?.City);
+        v.ShippingEmirate = Trim(shipping?.Emirate);
+        v.ShippingZip = Trim(shipping?.Zip);
+        v.ShippingPhone = Trim(shipping?.Phone);
+        v.ShippingFax = Trim(shipping?.Fax);
+    }
+
+    private static List<VendorContactPerson> BuildContactPersons(IEnumerable<ContactPersonInput> inputs)
+    {
+        var list = new List<VendorContactPerson>();
+        var primaryCount = 0;
+        foreach (var i in inputs)
+        {
+            if (string.IsNullOrWhiteSpace(i.FirstName))
+                throw new PostingException("Each contact person needs a first name.");
+            if (i.IsPrimary) primaryCount++;
+            if (primaryCount > 1)
+                throw new PostingException("Only one contact person can be marked as primary.");
+
+            list.Add(new VendorContactPerson
+            {
+                Salutation = Trim(i.Salutation),
+                FirstName = i.FirstName.Trim(),
+                LastName = Trim(i.LastName),
+                Email = Trim(i.Email),
+                WorkPhone = Trim(i.WorkPhone),
+                Mobile = Trim(i.Mobile),
+                Designation = Trim(i.Designation),
+                Department = Trim(i.Department),
+                IsPrimary = i.IsPrimary,
+            });
+        }
+        return list;
+    }
+
+    /// <summary>Every active custom field defined for the Vendor module must have a value if
+    /// marked required, and a Dropdown field's value must be one of its own options.</summary>
+    private static async Task ValidateAndBuildCustomFieldValuesAsync(
+        AegisDbContext db, IEnumerable<CustomFieldValueInput> inputs, List<VendorCustomFieldValue> target)
+    {
+        var defs = await db.CustomFieldDefinitions.AsNoTracking()
+            .Where(f => f.Module == Module && f.IsActive).ToListAsync();
+        var defById = defs.ToDictionary(f => f.Id);
+        var provided = inputs
+            .Where(i => !string.IsNullOrWhiteSpace(i.Value))
+            .ToDictionary(i => i.CustomFieldDefinitionId, i => i.Value!.Trim());
+
+        foreach (var def in defs)
+        {
+            var hasValue = provided.TryGetValue(def.Id, out var value);
+            if (def.IsRequired && !hasValue)
+                throw new PostingException($"'{def.Label}' is required.");
+            if (hasValue && def.FieldType == CustomFieldType.Dropdown)
+            {
+                var options = (def.DropdownOptionsCsv ?? "")
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                if (!options.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    throw new PostingException($"'{value}' is not a valid option for '{def.Label}'.");
+            }
+        }
+
+        foreach (var (defId, value) in provided)
+        {
+            if (!defById.ContainsKey(defId)) continue; // stale/inactive definition — ignore silently
+            target.Add(new VendorCustomFieldValue { CustomFieldDefinitionId = defId, Value = value });
+        }
+    }
+
+    /// <summary>At most one tag per tag group.</summary>
+    private static async Task ValidateAndBuildTagsAsync(AegisDbContext db, IEnumerable<int> tagIds, List<VendorTag> target)
+    {
+        var ids = tagIds.Distinct().ToList();
+        if (ids.Count == 0) return;
+
+        // Tag has no CompanyId/query filter of its own — route through the company-scoped
+        // TagGroups so a tagId belonging to another company can never be attached here.
+        var tags = await db.TagGroups.AsNoTracking().SelectMany(g => g.Tags)
+            .Where(t => ids.Contains(t.Id)).ToListAsync();
+        var groupsSeen = new HashSet<int>();
+        foreach (var t in tags)
+        {
+            if (!groupsSeen.Add(t.TagGroupId))
+                throw new PostingException("Only one tag can be selected per tag group.");
+            target.Add(new VendorTag { TagId = t.Id });
+        }
+    }
+
+    // ── Documents ──
+
+    public async Task<List<VendorDocumentInfo>> GetDocumentsAsync(int vendorId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        _ = await db.Vendors.FindAsync(vendorId) ?? throw new PostingException("Vendor not found.");
+
+        return await db.VendorDocuments.AsNoTracking()
+            .Where(d => d.VendorId == vendorId)
+            .OrderBy(d => d.Id)
+            .Select(d => new VendorDocumentInfo(d.Id, d.FileName, d.ContentType, d.Data.Length, d.UploadedAtUtc))
+            .ToListAsync();
+    }
+
+    public async Task<VendorDocument> AddDocumentAsync(int vendorId, string fileName, string contentType, byte[] data, DateTime nowUtc)
+    {
+        if (data.Length > MaxDocumentBytes)
+            throw new PostingException($"'{fileName}' is too large — the limit is {MaxDocumentBytes / (1024 * 1024)} MB per file.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        _ = await db.Vendors.FindAsync(vendorId) ?? throw new PostingException("Vendor not found.");
+
+        var count = await db.VendorDocuments.CountAsync(d => d.VendorId == vendorId);
+        if (count >= MaxDocumentsPerVendor)
+            throw new PostingException($"A vendor can have at most {MaxDocumentsPerVendor} documents attached.");
+
+        var doc = new VendorDocument
+        {
+            VendorId = vendorId,
+            FileName = fileName,
+            ContentType = contentType,
+            Data = data,
+            UploadedAtUtc = nowUtc,
+        };
+        db.VendorDocuments.Add(doc);
+        await db.SaveChangesAsync();
+        return doc;
+    }
+
+    public async Task RemoveDocumentAsync(int vendorId, int documentId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        _ = await db.Vendors.FindAsync(vendorId) ?? throw new PostingException("Vendor not found.");
+
+        var doc = await db.VendorDocuments.FirstOrDefaultAsync(d => d.Id == documentId && d.VendorId == vendorId)
+            ?? throw new PostingException("Document not found.");
+        db.VendorDocuments.Remove(doc);
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)?> GetDocumentAsync(int vendorId, int documentId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        if (await db.Vendors.FindAsync(vendorId) is null) return null;
+
+        var doc = await db.VendorDocuments.AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.VendorId == vendorId);
+        return doc is null ? null : (doc.FileName, doc.ContentType, doc.Data);
     }
 
     /// <summary>The next vendor code that will be assigned (for display on the New form).</summary>

@@ -53,13 +53,16 @@ public class TagService
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Refuses to delete a group with any recorded customer selections — deactivate instead.</summary>
+    /// <summary>Refuses to delete a group with any recorded customer or vendor selections —
+    /// deactivate instead.</summary>
     public async Task DeleteGroupAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var group = await db.TagGroups.FirstOrDefaultAsync(g => g.Id == id) ?? throw new PostingException("Tag group not found.");
         if (await db.CustomerTags.AnyAsync(t => t.Tag.TagGroupId == id))
             throw new PostingException("This tag group has selections recorded against customers — deactivate it instead of deleting.");
+        if (await db.VendorTags.AnyAsync(t => t.Tag.TagGroupId == id))
+            throw new PostingException("This tag group has selections recorded against vendors — deactivate it instead of deleting.");
         db.TagGroups.Remove(group); // cascades to its Tags
         await db.SaveChangesAsync();
     }
@@ -93,13 +96,16 @@ public class TagService
         await db.SaveChangesAsync();
     }
 
-    /// <summary>Refuses to delete a tag already selected on at least one customer — deactivate instead.</summary>
+    /// <summary>Refuses to delete a tag already selected on at least one customer or vendor —
+    /// deactivate instead.</summary>
     public async Task DeleteTagAsync(int id)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         var tag = await FindTagAsync(db, id) ?? throw new PostingException("Tag not found.");
         if (await db.CustomerTags.AnyAsync(t => t.TagId == id))
             throw new PostingException("This tag is selected on at least one customer — deactivate it instead of deleting.");
+        if (await db.VendorTags.AnyAsync(t => t.TagId == id))
+            throw new PostingException("This tag is selected on at least one vendor — deactivate it instead of deleting.");
         db.Tags.Remove(tag);
         await db.SaveChangesAsync();
     }

@@ -212,7 +212,7 @@ public class ApPostingTests : IDisposable
     public async Task Payment_for_a_different_vendors_invoice_is_rejected()
     {
         var inv = await PostInvoice();
-        var other = await _vendors.CreateAsync(new NewVendorInput("Other Supplier Co", null, "AED", 30, null, null, null, null));
+        var other = await _vendors.CreateAsync(new NewVendorInput("Other Supplier Co", null, "AED", 0, 30, null, null, null, null));
 
         await Assert.ThrowsAsync<PostingException>(() => _payments.CreateAndPostAsync(
             other.Id, inv.Id, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 100, null, "tester", Now));
@@ -593,7 +593,7 @@ public class ApPostingTests : IDisposable
     [Fact]
     public async Task GetByVendorAsync_only_returns_that_vendors_payments_and_debit_notes()
     {
-        var other = await _vendors.CreateAsync(new NewVendorInput("Other Supplier", null, "AED", 30, null, null, null, null));
+        var other = await _vendors.CreateAsync(new NewVendorInput("Other Supplier", null, "AED", 0, 30, null, null, null, null));
 
         var invMine = await PostInvoice();
         await _payments.CreateAndPostAsync(_db.Vendor.Id, invMine.Id, new(2026, 5, 15), _db.May.Id, _db.Bank.Id, 1050, null, "tester", Now);

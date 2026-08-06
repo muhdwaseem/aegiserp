@@ -164,7 +164,7 @@
     {
         try
         {
-            var input = new NewVendorInput(_name, _group, _currency, _terms, _trn, _email, _phone, _address);
+            var input = new NewVendorInput(_name, _group, _currency, 0, _terms, _trn, _email, _phone, _address);
             var v = await VendorSvc.CreateAsync(input);
             Snackbar.Add($"Vendor {v.Code} created.", Severity.Success);
             _name = ""; _group = null; _currency = "AED";
