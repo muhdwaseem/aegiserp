@@ -52,6 +52,10 @@ else if (_invoice is not null)
                 {
                     <MudText Typo="Typo.body2">LPO No.: @_invoice.LpoNo</MudText>
                 }
+                @if (_invoice.CostCenter is not null)
+                {
+                    <MudText Typo="Typo.body2">Cost Center: @_invoice.CostCenter.Name</MudText>
+                }
             </MudItem>
             <MudItem xs="12" sm="6" Class="text-right">
                 <MudText Typo="Typo.h4">PURCHASE INVOICE</MudText>
@@ -86,11 +90,23 @@ else if (_invoice is not null)
             </RowTemplate>
         </MudTable>
 
-        <MudStack Class="mt-3" AlignItems="AlignItems.End">
-            <MudText>Net: @_invoice.TotalNet.ToString("N2")</MudText>
-            <MudText>VAT: @_invoice.TotalVat.ToString("N2")</MudText>
-            <MudText Typo="Typo.h6">Total: AED @_invoice.TotalGross.ToString("N2")</MudText>
-        </MudStack>
+        @if (_invoice.Lines.Any(l => l.NonTaxableAmount > 0))
+        {
+            <MudStack Class="mt-3" AlignItems="AlignItems.End">
+                <MudText>Non-Taxable: @_invoice.Lines.Sum(l => l.NonTaxableAmount).ToString("N2")</MudText>
+                <MudText>Taxable: @_invoice.Lines.Sum(l => l.Quantity * l.UnitPrice).ToString("N2")</MudText>
+                <MudText>VAT: @_invoice.TotalVat.ToString("N2")</MudText>
+                <MudText Typo="Typo.h6">Grand Total: AED @_invoice.TotalGross.ToString("N2")</MudText>
+            </MudStack>
+        }
+        else
+        {
+            <MudStack Class="mt-3" AlignItems="AlignItems.End">
+                <MudText>Net: @_invoice.TotalNet.ToString("N2")</MudText>
+                <MudText>VAT: @_invoice.TotalVat.ToString("N2")</MudText>
+                <MudText Typo="Typo.h6">Total: AED @_invoice.TotalGross.ToString("N2")</MudText>
+            </MudStack>
+        }
 
         @if (!string.IsNullOrWhiteSpace(_invoice.Notes))
         {

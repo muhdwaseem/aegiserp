@@ -40,7 +40,7 @@ public class PurchaseInvoiceService
     {
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.PurchaseInvoices.AsNoTracking()
-            .Include(i => i.Vendor).Include(i => i.Lines).Include(i => i.JournalVoucher)
+            .Include(i => i.Vendor).Include(i => i.Lines).Include(i => i.JournalVoucher).Include(i => i.CostCenter)
             .FirstOrDefaultAsync(i => i.Id == id);
     }
 

@@ -1,4 +1,5 @@
 using AegisErp.Domain;
+using AegisErp.Domain.Entities;
 using AegisErp.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -77,6 +78,64 @@ public class ApPostingTests : IDisposable
         await Assert.ThrowsAsync<PostingException>(() => _invoices.CreateAndPostAsync(
             _db.Vendor.Id, null, new(2026, 5, 10), _db.May.Id, null, "tester",
             Array.Empty<PurchaseLineInput>(), Now));
+    }
+
+    [Fact]
+    public async Task PRO_service_line_taxes_only_the_taxable_amount_and_combines_both_into_net()
+    {
+        // 300 non-taxable (e.g. a government fee disbursement) + 200 taxable @ 5% = 10 VAT.
+        var inv = await _invoices.CreateAndPostAsync(_db.Vendor.Id, null, new(2026, 5, 10), _db.May.Id, null,
+            "tester", new[] { new PurchaseLineInput("Visa fee + service charge", _db.Expense.Id, null, 1, 200, 0.05m, NonTaxableAmount: 300) },
+            Now);
+
+        var line = inv.Lines.Single();
+        Assert.Equal(500m, line.Net);   // 300 non-taxable + 200 taxable base
+        Assert.Equal(10m, line.Vat);    // 5% of the 200 taxable base only, not the full 500
+        Assert.Equal(510m, line.Gross);
+
+        await using var db = _db.CreateDbContext();
+        var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == inv.JournalVoucherId);
+        Assert.Equal(500m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit); // combined Net, no other code change needed
+        Assert.Equal(10m, voucher.Lines.Single(l => l.AccountId == _db.VatInput.Id).Debit);
+        Assert.Equal(510m, voucher.Lines.Single(l => l.AccountId == _db.Ap.Id).Credit);
+    }
+
+    [Fact]
+    public async Task Header_cost_center_applies_to_lines_that_do_not_set_their_own()
+    {
+        var inv = await _invoices.CreateAndPostAsync(_db.Vendor.Id, null, new(2026, 5, 10), _db.May.Id, null,
+            "tester", new[] { new PurchaseLineInput("Service", _db.Expense.Id, null, 1, 1000, 0.05m) }, Now,
+            costCenterId: _db.CostCenter.Id);
+
+        Assert.Equal(_db.CostCenter.Id, inv.CostCenterId);
+        Assert.Equal(_db.CostCenter.Id, inv.Lines.Single().CostCenterId);
+    }
+
+    [Fact]
+    public async Task A_lines_own_cost_center_wins_over_the_header_one()
+    {
+        await using var db = _db.CreateUnscopedDbContext();
+        var other = new CostCenter { CompanyId = _db.Company.Id, Code = "SALES", Name = "Sales" };
+        db.CostCenters.Add(other);
+        await db.SaveChangesAsync();
+
+        var inv = await _invoices.CreateAndPostAsync(_db.Vendor.Id, null, new(2026, 5, 10), _db.May.Id, null,
+            "tester", new[] { new PurchaseLineInput("Service", _db.Expense.Id, other.Id, 1, 1000, 0.05m) }, Now,
+            costCenterId: _db.CostCenter.Id);
+
+        Assert.Equal(other.Id, inv.Lines.Single().CostCenterId);
+    }
+
+    [Fact]
+    public async Task Standard_entry_shape_is_unaffected_by_the_PRO_service_fields()
+    {
+        // No NonTaxableAmount, no header cost center — must behave byte-identical to before.
+        var inv = await PostInvoice(qty: 2, price: 500, vat: 0.05m);
+
+        Assert.Null(inv.CostCenterId);
+        Assert.Equal(1000m, inv.TotalNet);
+        Assert.Equal(50m, inv.TotalVat);
+        Assert.Equal(1050m, inv.TotalGross);
     }
 
     [Fact]
