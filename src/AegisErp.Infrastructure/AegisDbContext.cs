@@ -72,6 +72,10 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<TagGroup> TagGroups => Set<TagGroup>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
+    public DbSet<VendorContactPerson> VendorContactPersons => Set<VendorContactPerson>();
+    public DbSet<VendorDocument> VendorDocuments => Set<VendorDocument>();
+    public DbSet<VendorCustomFieldValue> VendorCustomFieldValues => Set<VendorCustomFieldValue>();
+    public DbSet<VendorTag> VendorTags => Set<VendorTag>();
     public DbSet<SalespersonAssignmentHistory> SalespersonAssignmentHistories => Set<SalespersonAssignmentHistory>();
     public DbSet<InvoiceReminderLog> InvoiceReminderLogs => Set<InvoiceReminderLog>();
     public DbSet<RecurringInvoiceProfile> RecurringInvoiceProfiles => Set<RecurringInvoiceProfile>();
@@ -460,6 +464,80 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(v => v.Address).HasMaxLength(300);
             e.Property(v => v.Group).HasMaxLength(40);
             e.Property(v => v.Currency).HasMaxLength(3).IsRequired();
+            e.Property(v => v.CreditLimit).HasPrecision(18, 2);
+
+            e.Property(v => v.VendorType).HasConversion<string>().HasMaxLength(20);
+            e.Property(v => v.Salutation).HasMaxLength(20);
+            e.Property(v => v.FirstName).HasMaxLength(80);
+            e.Property(v => v.LastName).HasMaxLength(80);
+            e.Property(v => v.CompanyName).HasMaxLength(160);
+            e.Property(v => v.DisplayNameArabic).HasMaxLength(160);
+            e.Property(v => v.VendorLanguage).HasMaxLength(40).IsRequired();
+            e.Property(v => v.WorkPhone).HasMaxLength(40);
+            e.Property(v => v.Mobile).HasMaxLength(40);
+
+            e.Property(v => v.TaxTreatment).HasConversion<string>().HasMaxLength(40);
+            e.Property(v => v.PlaceOfSupply).HasMaxLength(40);
+            e.Property(v => v.OpeningBalance).HasPrecision(18, 2);
+            e.Property(v => v.Remarks).HasMaxLength(1000);
+
+            e.Property(v => v.BillingAttention).HasMaxLength(160);
+            e.Property(v => v.BillingCountry).HasMaxLength(80);
+            e.Property(v => v.BillingAddressLine1).HasMaxLength(200);
+            e.Property(v => v.BillingAddressLine1Arabic).HasMaxLength(200);
+            e.Property(v => v.BillingAddressLine2).HasMaxLength(200);
+            e.Property(v => v.BillingAddressLine2Arabic).HasMaxLength(200);
+            e.Property(v => v.BillingCity).HasMaxLength(80);
+            e.Property(v => v.BillingEmirate).HasMaxLength(40);
+            e.Property(v => v.BillingZip).HasMaxLength(20);
+            e.Property(v => v.BillingPhone).HasMaxLength(40);
+            e.Property(v => v.BillingFax).HasMaxLength(40);
+
+            e.Property(v => v.ShippingAttention).HasMaxLength(160);
+            e.Property(v => v.ShippingCountry).HasMaxLength(80);
+            e.Property(v => v.ShippingAddressLine1).HasMaxLength(200);
+            e.Property(v => v.ShippingAddressLine1Arabic).HasMaxLength(200);
+            e.Property(v => v.ShippingAddressLine2).HasMaxLength(200);
+            e.Property(v => v.ShippingAddressLine2Arabic).HasMaxLength(200);
+            e.Property(v => v.ShippingCity).HasMaxLength(80);
+            e.Property(v => v.ShippingEmirate).HasMaxLength(40);
+            e.Property(v => v.ShippingZip).HasMaxLength(20);
+            e.Property(v => v.ShippingPhone).HasMaxLength(40);
+            e.Property(v => v.ShippingFax).HasMaxLength(40);
+
+            e.HasMany(v => v.ContactPersons).WithOne(p => p.Vendor).HasForeignKey(p => p.VendorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(v => v.Documents).WithOne(d => d.Vendor).HasForeignKey(d => d.VendorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(v => v.CustomFieldValues).WithOne(cf => cf.Vendor).HasForeignKey(cf => cf.VendorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(v => v.Tags).WithOne(t => t.Vendor).HasForeignKey(t => t.VendorId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<VendorContactPerson>(e =>
+        {
+            e.Property(p => p.Salutation).HasMaxLength(20);
+            e.Property(p => p.FirstName).HasMaxLength(80).IsRequired();
+            e.Property(p => p.LastName).HasMaxLength(80);
+            e.Property(p => p.Email).HasMaxLength(160);
+            e.Property(p => p.WorkPhone).HasMaxLength(40);
+            e.Property(p => p.Mobile).HasMaxLength(40);
+            e.Property(p => p.Designation).HasMaxLength(100);
+            e.Property(p => p.Department).HasMaxLength(100);
+        });
+
+        b.Entity<VendorDocument>(e =>
+        {
+            e.Property(d => d.FileName).HasMaxLength(260).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(100).IsRequired();
+        });
+
+        b.Entity<VendorCustomFieldValue>(e =>
+        {
+            e.Property(v => v.Value).HasMaxLength(1000);
+            e.HasOne(v => v.CustomFieldDefinition).WithMany().HasForeignKey(v => v.CustomFieldDefinitionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<VendorTag>(e =>
+        {
+            e.HasOne(t => t.Tag).WithMany().HasForeignKey(t => t.TagId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<PurchaseInvoice>(e =>
