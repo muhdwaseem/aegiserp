@@ -1,0 +1,151 @@
+@page "/opening-balances"
+@attribute [Authorize]
+@inject ChartOfAccountsService Coa
+@inject CompanySession Session
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Opening Balances · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+    <div>
+        <MudText Typo="Typo.h5">Opening Balances</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">@(Session.Active?.Name ?? "—") · AED</MudText>
+    </div>
+</MudStack>
+
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Enter each account's opening balance as a Debit or a Credit — the way you'd read it off an old
+    trial balance. Equity (31010) absorbs whatever plug the rest need automatically, so the two
+    columns don't have to balance by hand. Leave both blank to clear an account's opening balance.
+</MudText>
+
+@if (_rows is null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudPaper Elevation="1" Class="pa-0">
+        <div class="ob-scroll">
+            <table class="ob">
+                <thead>
+                    <tr>
+                        <th>Code</th><th>Account</th><th>Type</th>
+                        <th class="ctr">Debit</th><th class="ctr">Credit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td class="code">@row.Code</td>
+                            <td>@row.Name</td>
+                            <td class="muted">@TypeLabel(row.Type)</td>
+                            <td class="ctr">
+                                <MudNumericField T="decimal" Value="row.Debit" ValueChanged="@(v => OnDebitChanged(row, v))"
+                                                  Disabled="@(!Session.CanPost)" HideSpinButtons="true" Min="0" Margin="Margin.Dense"
+                                                  Culture="System.Globalization.CultureInfo.InvariantCulture" />
+                            </td>
+                            <td class="ctr">
+                                <MudNumericField T="decimal" Value="row.Credit" ValueChanged="@(v => OnCreditChanged(row, v))"
+                                                  Disabled="@(!Session.CanPost)" HideSpinButtons="true" Min="0" Margin="Margin.Dense"
+                                                  Culture="System.Globalization.CultureInfo.InvariantCulture" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3"><b>Total</b></td>
+                        <td class="ctr"><b>@_rows.Sum(r => r.Debit).ToString("N2")</b></td>
+                        <td class="ctr"><b>@_rows.Sum(r => r.Credit).ToString("N2")</b></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        @if (Session.CanPost)
+        {
+            <div class="pa-3">
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="Save" Disabled="_saving">Save Opening Balances</MudButton>
+            </div>
+        }
+    </MudPaper>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<Row>? _rows;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    private async Task Reload()
+    {
+        var data = await Coa.GetOpeningBalancesAsync();
+        _rows = data.Select(r => new Row(r.AccountId, r.Code, r.Name, r.Type, r.Debit, r.Credit)).ToList();
+    }
+
+    private void OnDebitChanged(Row row, decimal value)
+    {
+        row.Debit = value;
+        if (value != 0) row.Credit = 0;
+    }
+
+    private void OnCreditChanged(Row row, decimal value)
+    {
+        row.Credit = value;
+        if (value != 0) row.Debit = 0;
+    }
+
+    private async Task Save()
+    {
+        if (_rows is null) return;
+        _saving = true;
+        try
+        {
+            var user = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            var entries = _rows.Select(r => new OpeningBalanceEntry(r.AccountId, r.Debit, r.Credit));
+            await Coa.SetOpeningBalancesAsync(entries, user);
+            Snackbar.Add("Opening balances saved.", Severity.Success);
+            await Reload();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _saving = false; }
+    }
+
+    private static string TypeLabel(AccountType t) => t == AccountType.Income ? "Revenue" : t.ToString();
+
+    private class Row
+    {
+        public Row(int accountId, string code, string name, AccountType type, decimal debit, decimal credit)
+        {
+            AccountId = accountId; Code = code; Name = name; Type = type; Debit = debit; Credit = credit;
+        }
+        public int AccountId { get; }
+        public string Code { get; }
+        public string Name { get; }
+        public AccountType Type { get; }
+        public decimal Debit { get; set; }
+        public decimal Credit { get; set; }
+    }
+}
+
+<style>
+    .ob-scroll { overflow-x:auto; }
+    table.ob { width:100%; border-collapse:collapse; font-size:13.5px; }
+    table.ob thead th { text-align:left; padding:9px 14px; background:var(--mud-palette-background-grey);
+        font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--mud-palette-text-secondary);
+        border-bottom:1px solid var(--mud-palette-lines-default); white-space:nowrap; }
+    table.ob td { padding:6px 14px; border-bottom:1px solid var(--mud-palette-lines-default); vertical-align:middle; }
+    table.ob td.code { font-family:monospace; }
+    table.ob .muted { color:var(--mud-palette-text-secondary); font-size:12.5px; }
+    table.ob th.ctr, table.ob td.ctr { text-align:center; width:180px; }
+    table.ob tfoot td { border-top:2px solid var(--mud-palette-lines-default); border-bottom:none;
+        background:var(--mud-palette-background-grey); }
+</style>

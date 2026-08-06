@@ -32,6 +32,67 @@ public class ChartOfAccountsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetOpeningBalancesAsync_excludes_the_equity_account_itself()
+    {
+        await _coa.CreateAsync(
+            new("31010", "Equity", AccountType.Equity, IsPostable: true, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+
+        var rows = await _coa.GetOpeningBalancesAsync();
+
+        Assert.DoesNotContain(rows, r => r.Code == "31010");
+        Assert.Contains(rows, r => r.AccountId == _db.Bank.Id);
+    }
+
+    [Fact]
+    public async Task SetOpeningBalancesAsync_sets_balances_dated_before_the_earliest_period_so_they_read_as_opening_not_transactions()
+    {
+        await _coa.CreateAsync(
+            new("31010", "Equity", AccountType.Equity, IsPostable: true, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+
+        await _coa.SetOpeningBalancesAsync(new[]
+        {
+            new OpeningBalanceEntry(_db.Bank.Id, 5000, 0),
+            new OpeningBalanceEntry(_db.Ar.Id, 2000, 0),
+        }, "tester");
+
+        var rows = await _coa.GetOpeningBalancesAsync();
+        Assert.Equal(5000, rows.Single(r => r.AccountId == _db.Bank.Id).Debit);
+        Assert.Equal(2000, rows.Single(r => r.AccountId == _db.Ar.Id).Debit);
+    }
+
+    [Fact]
+    public async Task SetOpeningBalancesAsync_re_saving_adjusts_the_existing_entry_instead_of_duplicating_it()
+    {
+        await _coa.CreateAsync(
+            new("31010", "Equity", AccountType.Equity, IsPostable: true, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+
+        await _coa.SetOpeningBalancesAsync(new[] { new OpeningBalanceEntry(_db.Bank.Id, 5000, 0) }, "tester");
+        await _coa.SetOpeningBalancesAsync(new[] { new OpeningBalanceEntry(_db.Bank.Id, 7000, 0) }, "tester");
+
+        var row = (await _coa.GetOpeningBalancesAsync()).Single(r => r.AccountId == _db.Bank.Id);
+        Assert.Equal(7000, row.Debit); // corrected, not 5000 + 7000
+        Assert.Equal(0, row.Credit);
+    }
+
+    [Fact]
+    public async Task SetOpeningBalancesAsync_zero_zero_clears_a_previously_set_balance()
+    {
+        await _coa.CreateAsync(
+            new("31010", "Equity", AccountType.Equity, IsPostable: true, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+
+        await _coa.SetOpeningBalancesAsync(new[] { new OpeningBalanceEntry(_db.Bank.Id, 5000, 0) }, "tester");
+        await _coa.SetOpeningBalancesAsync(new[] { new OpeningBalanceEntry(_db.Bank.Id, 0, 0) }, "tester");
+
+        var row = (await _coa.GetOpeningBalancesAsync()).Single(r => r.AccountId == _db.Bank.Id);
+        Assert.Equal(0, row.Debit);
+        Assert.Equal(0, row.Credit);
+    }
+
+    [Fact]
     public async Task DeleteManyAsync_deletes_a_header_and_its_children_regardless_of_selection_order()
     {
         var header = await _coa.CreateAsync(

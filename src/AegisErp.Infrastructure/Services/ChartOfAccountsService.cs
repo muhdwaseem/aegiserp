@@ -22,6 +22,13 @@ public record ImportRowResult(int RowNumber, string Code, bool Success, string M
 /// <summary>Outcome of one account in a <see cref="ChartOfAccountsService.DeleteManyAsync"/> batch.</summary>
 public record BulkDeleteResult(int Id, string Code, bool Success, string Message);
 
+/// <summary>One row of the bulk Opening Balances screen — an account and whatever opening balance
+/// it currently carries (both zero if it doesn't have one yet).</summary>
+public record OpeningBalanceRow(int AccountId, string Code, string Name, AccountType Type, decimal Debit, decimal Credit);
+
+/// <summary>One account's opening balance as entered on that screen.</summary>
+public record OpeningBalanceEntry(int AccountId, decimal Debit, decimal Credit);
+
 public class ChartOfAccountsService
 {
     private readonly IDbContextFactory<AegisDbContext> _dbf;
@@ -204,7 +211,10 @@ public class ChartOfAccountsService
         {
             var equity = await db.Accounts.FirstOrDefaultAsync(a => a.Code == "31010")
                 ?? throw new PostingException("Opening-balance equity account 31010 is missing.");
-            var period = await db.FiscalPeriods.OrderByDescending(p => p.StartDate).FirstOrDefaultAsync()
+            // Dated at the very start of the books (earliest period), not the latest one — an
+            // opening balance has to predate every reporting range it should show up in, or the
+            // Trial Balance's "Opening Balance" column treats it as an in-period transaction instead.
+            var period = await db.FiscalPeriods.OrderBy(p => p.StartDate).FirstOrDefaultAsync()
                 ?? throw new PostingException("No fiscal period is defined for the opening entry.");
 
             var now = DateTime.UtcNow;
@@ -228,6 +238,105 @@ public class ChartOfAccountsService
 
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return account;
+    }
+
+    /// <summary>
+    /// Every postable account (except the opening-balance equity account itself, which only ever
+    /// absorbs whatever the others need to balance) alongside whatever opening balance it currently
+    /// carries — for the bulk Opening Balances screen. A small firm switching from another system
+    /// can key in each account's Debit or Credit balance here in one sitting, the way they'd read it
+    /// off their old trial balance, instead of re-creating every account just to set one field.
+    /// </summary>
+    public async Task<List<OpeningBalanceRow>> GetOpeningBalancesAsync()
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var accounts = await db.Accounts.AsNoTracking()
+            .Where(a => a.IsPostable && a.Code != "31010")
+            .OrderBy(a => a.Code)
+            .ToListAsync();
+
+        // Grouped and summed client-side (not once the values reach SQL) rather than a straight
+        // dictionary lookup, because the equity account (excluded above) carries one contra line
+        // per account that has an opening balance — a plain ToDictionaryAsync on AccountId would
+        // throw the moment a second one exists.
+        var openingLines = await db.JournalLines.AsNoTracking()
+            .Where(l => l.JournalVoucher.Type == VoucherType.Opening)
+            .Select(l => new { l.AccountId, l.Debit, l.Credit })
+            .ToListAsync();
+        var openingByAccount = openingLines.GroupBy(l => l.AccountId)
+            .ToDictionary(g => g.Key, g => (Debit: g.Sum(l => l.Debit), Credit: g.Sum(l => l.Credit)));
+
+        return accounts.Select(a =>
+        {
+            openingByAccount.TryGetValue(a.Id, out var line);
+            return new OpeningBalanceRow(a.Id, a.Code, a.Name, a.Type, line.Debit, line.Credit);
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Saves opening balances for any number of accounts in one go. Each account's entry is
+    /// upserted independently: a zero/zero entry clears a previously-set balance, a nonzero one
+    /// creates or adjusts a two-line "Opening" voucher against the equity account (31010) — so
+    /// re-saving after fixing a typo just corrects the existing entry rather than piling up a second
+    /// one. Every entry is dated at the very start of the books (earliest fiscal period), so it
+    /// shows as a true opening balance rather than an in-period transaction on every report.
+    /// </summary>
+    public async Task SetOpeningBalancesAsync(IEnumerable<OpeningBalanceEntry> entries, string updatedBy)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var equity = await db.Accounts.FirstOrDefaultAsync(a => a.Code == "31010")
+            ?? throw new PostingException("Opening-balance equity account 31010 is missing.");
+        var period = await db.FiscalPeriods.OrderBy(p => p.StartDate).FirstOrDefaultAsync()
+            ?? throw new PostingException("No fiscal period is defined for the opening entry.");
+        var now = DateTime.UtcNow;
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        foreach (var entry in entries)
+        {
+            if (entry.Debit < 0 || entry.Credit < 0)
+                throw new PostingException("Opening balances cannot be negative.");
+            if (entry.Debit != 0 && entry.Credit != 0)
+                throw new PostingException("An account can't have both a debit and a credit opening balance.");
+            if (entry.AccountId == equity.Id)
+                continue; // the equity account absorbs the plug automatically; it has no row to edit
+
+            var account = await db.Accounts.FirstOrDefaultAsync(a => a.Id == entry.AccountId)
+                ?? throw new PostingException("Account not found.");
+
+            var existing = await db.JournalVouchers.Include(v => v.Lines)
+                .FirstOrDefaultAsync(v => v.Type == VoucherType.Opening && v.Reference == account.Code);
+
+            if (entry.Debit == 0 && entry.Credit == 0)
+            {
+                if (existing is not null) db.JournalVouchers.Remove(existing);
+                continue;
+            }
+
+            if (existing is not null)
+            {
+                existing.Lines.First(l => l.AccountId == account.Id).Debit = entry.Debit;
+                existing.Lines.First(l => l.AccountId == account.Id).Credit = entry.Credit;
+                existing.Lines.First(l => l.AccountId == equity.Id).Debit = entry.Credit;
+                existing.Lines.First(l => l.AccountId == equity.Id).Credit = entry.Debit;
+            }
+            else
+            {
+                var lines = new List<VoucherLineInput>
+                {
+                    new(account.Id, null, "Opening balance", entry.Debit, entry.Credit),
+                    new(equity.Id, null, $"Opening balance — {account.Code}", entry.Credit, entry.Debit),
+                };
+                await JournalPoster.PostAsync(db, VoucherType.Opening, explicitNo: null,
+                    period.StartDate, period.Id, $"Opening balance — {account.Name}", account.Code, updatedBy, lines, now);
+                // Voucher numbers are allocated by counting existing rows in the database, not the
+                // change tracker — each one has to land before the next PostAsync call in this loop
+                // computes its own number, or two accounts in the same batch collide on one number.
+                await db.SaveChangesAsync();
+            }
+        }
+
+        await JournalPoster.SaveAndCommitAsync(db, tx);
     }
 
     /// <summary>
