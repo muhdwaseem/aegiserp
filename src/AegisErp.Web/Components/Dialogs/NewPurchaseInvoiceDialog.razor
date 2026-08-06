@@ -1,8 +1,10 @@
+@using Microsoft.AspNetCore.Components.Forms
 @inject PurchaseInvoiceService InvoiceSvc
 @inject VendorService VendorSvc
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudDialog>
     <TitleContent>
@@ -103,6 +105,29 @@
             <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
             <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
         </MudStack>
+
+        @* Notes / Attachment sit below the line items, same as Sales Invoice — not up top before
+           the bill's own detail has even been entered. *@
+        <MudGrid Class="mt-2">
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="Notes" Lines="2" Placeholder="Internal note about this bill (payment arrangement, dispute, etc.)" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudFileUpload T="IBrowserFile" FilesChanged="OnInvoiceFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile" Size="Size.Small">
+                                Attach Document
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                    @if (_invoiceAttachmentFileName is not null)
+                    {
+                        <MudChip T="string" Size="Size.Small" OnClose="RemoveInvoiceAttachment" CloseIcon="@Icons.Material.Filled.Close">@_invoiceAttachmentFileName</MudChip>
+                    }
+                </MudStack>
+            </MudItem>
+        </MudGrid>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
@@ -129,8 +154,13 @@
     private DateTime? _date = DateTime.Today;
     private int _periodId;
     private string? _narration;
+    private string? _notes;
     private bool _posting;
     private string _dueLabel = "—";
+
+    private string? _invoiceAttachmentFileName;
+    private string? _invoiceAttachmentContentType;
+    private byte[]? _invoiceAttachmentBytes;
 
     private readonly List<LineVm> _lines = new() { new() };
 
@@ -153,6 +183,7 @@
         {
             _vendorId = CloneFrom.VendorId;
             _narration = CloneFrom.Narration;
+            _notes = CloneFrom.Notes;
             _lines.Clear();
             foreach (var l in CloneFrom.Lines.OrderBy(l => l.LineNo))
                 _lines.Add(new LineVm
@@ -204,7 +235,11 @@
 
             var inv = await InvoiceSvc.CreateAndPostAsync(
                 _vendorId, _vendorRef, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
-                _narration, userName, inputs, DateTime.UtcNow, _lpoNo);
+                _narration, userName, inputs, DateTime.UtcNow, _lpoNo, _notes);
+
+            if (_invoiceAttachmentBytes is not null)
+                await InvoiceSvc.SetAttachmentAsync(inv.Id, _invoiceAttachmentFileName!,
+                    _invoiceAttachmentContentType ?? "application/octet-stream", _invoiceAttachmentBytes);
 
             Snackbar.Add($"Posted {inv.InvoiceNo} — GL voucher {inv.JournalVoucher?.VoucherNo} generated.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(inv.Id));
@@ -214,6 +249,29 @@
             Snackbar.Add(ex.Message, Severity.Error);
         }
         finally { _posting = false; }
+    }
+
+    private async Task OnInvoiceFileSelected(IBrowserFile file)
+    {
+        if (file.Size > PurchaseInvoiceService.MaxAttachmentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {PurchaseInvoiceService.MaxAttachmentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(PurchaseInvoiceService.MaxAttachmentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _invoiceAttachmentBytes = ms.ToArray();
+        _invoiceAttachmentFileName = file.Name;
+        _invoiceAttachmentContentType = file.ContentType;
+    }
+
+    private void RemoveInvoiceAttachment()
+    {
+        _invoiceAttachmentFileName = null;
+        _invoiceAttachmentContentType = null;
+        _invoiceAttachmentBytes = null;
     }
 
     private void Cancel() => MudDialog.Cancel();

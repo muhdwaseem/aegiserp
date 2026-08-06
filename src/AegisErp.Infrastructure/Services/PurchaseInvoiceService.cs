@@ -10,6 +10,8 @@ public record PurchaseLineInput(string Description, int ExpenseAccountId, int? C
 
 public class PurchaseInvoiceService
 {
+    public const int MaxAttachmentBytes = 5 * 1024 * 1024;
+
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     public PurchaseInvoiceService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
 
@@ -100,7 +102,8 @@ public class PurchaseInvoiceService
     /// </summary>
     public async Task<PurchaseInvoice> CreateAndPostAsync(
         int vendorId, string? vendorRef, DateOnly date, int fiscalPeriodId, string? narration,
-        string createdBy, IEnumerable<PurchaseLineInput> lines, DateTime nowUtc, string? lpoNo = null)
+        string createdBy, IEnumerable<PurchaseLineInput> lines, DateTime nowUtc, string? lpoNo = null,
+        string? notes = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -120,6 +123,7 @@ public class PurchaseInvoiceService
             DueDate = date.AddDays(vendor.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
             Narration = string.IsNullOrWhiteSpace(narration) ? $"Purchase invoice — {vendor.Name}" : narration,
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
         };
@@ -158,5 +162,45 @@ public class PurchaseInvoiceService
         db.PurchaseInvoices.Add(invoice);
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return invoice;
+    }
+
+    /// <summary>
+    /// Attaches (or replaces) the invoice's single supporting document (e.g. the vendor's own
+    /// bill/receipt). Allowed regardless of posting status — attaching a document doesn't touch
+    /// financial data.
+    /// </summary>
+    public async Task SetAttachmentAsync(int invoiceId, string fileName, string contentType, byte[] data)
+    {
+        if (data.Length > MaxAttachmentBytes)
+            throw new PostingException($"Attachment is too large — the limit is {MaxAttachmentBytes / (1024 * 1024)} MB.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.PurchaseInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.AttachmentFileName = fileName;
+        invoice.AttachmentContentType = contentType;
+        invoice.AttachmentData = data;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task RemoveAttachmentAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.PurchaseInvoices.FirstOrDefaultAsync(i => i.Id == invoiceId)
+            ?? throw new PostingException("Invoice not found.");
+
+        invoice.AttachmentFileName = null;
+        invoice.AttachmentContentType = null;
+        invoice.AttachmentData = null;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)?> GetAttachmentAsync(int invoiceId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var invoice = await db.PurchaseInvoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == invoiceId);
+        if (invoice?.AttachmentData is null || invoice.AttachmentFileName is null) return null;
+        return (invoice.AttachmentFileName, invoice.AttachmentContentType ?? "application/octet-stream", invoice.AttachmentData);
     }
 }

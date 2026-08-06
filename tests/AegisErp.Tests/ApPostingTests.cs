@@ -80,6 +80,44 @@ public class ApPostingTests : IDisposable
     }
 
     [Fact]
+    public async Task Notes_are_persisted_and_optional()
+    {
+        var withNotes = await _invoices.CreateAndPostAsync(_db.Vendor.Id, "BILL-1", new(2026, 5, 10), _db.May.Id, null,
+            "tester", new[] { new PurchaseLineInput("Service", _db.Expense.Id, null, 1, 1000, 0.05m) }, Now,
+            notes: "Awaiting vendor credit note for the damaged batch.");
+        Assert.Equal("Awaiting vendor credit note for the damaged batch.", withNotes.Notes);
+
+        var withoutNotes = await PostInvoice();
+        Assert.Null(withoutNotes.Notes);
+    }
+
+    [Fact]
+    public async Task Attachment_can_be_set_downloaded_and_removed()
+    {
+        var inv = await PostInvoice();
+        var bytes = new byte[] { 1, 2, 3, 4 };
+
+        await _invoices.SetAttachmentAsync(inv.Id, "bill.pdf", "application/pdf", bytes);
+        var att = await _invoices.GetAttachmentAsync(inv.Id);
+        Assert.NotNull(att);
+        Assert.Equal("bill.pdf", att!.Value.FileName);
+        Assert.Equal(bytes, att.Value.Data);
+
+        await _invoices.RemoveAttachmentAsync(inv.Id);
+        Assert.Null(await _invoices.GetAttachmentAsync(inv.Id));
+    }
+
+    [Fact]
+    public async Task Attachment_over_the_size_limit_is_rejected()
+    {
+        var inv = await PostInvoice();
+        var tooBig = new byte[PurchaseInvoiceService.MaxAttachmentBytes + 1];
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _invoices.SetAttachmentAsync(inv.Id, "big.pdf", "application/pdf", tooBig));
+    }
+
+    [Fact]
     public async Task Allocated_payment_reduces_the_invoice_outstanding()
     {
         var inv = await PostInvoice(); // gross 1050

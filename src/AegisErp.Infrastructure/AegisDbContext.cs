@@ -548,6 +548,9 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(i => i.LpoNo).HasMaxLength(60);
             e.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(i => i.Narration).HasMaxLength(400);
+            e.Property(i => i.Notes).HasMaxLength(1000);
+            e.Property(i => i.AttachmentFileName).HasMaxLength(260);
+            e.Property(i => i.AttachmentContentType).HasMaxLength(100);
             e.Property(i => i.CreatedBy).HasMaxLength(80);
             e.Ignore(i => i.TotalNet);
             e.Ignore(i => i.TotalVat);

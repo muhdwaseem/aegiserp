@@ -33,6 +33,15 @@ public class PurchaseInvoice : ICompanyScoped
 
     public string? Narration { get; set; }
 
+    /// <summary>Internal note about this bill (payment arrangement, dispute, etc.) — distinct from
+    /// <see cref="Narration"/>, which is the GL voucher description.</summary>
+    public string? Notes { get; set; }
+
+    /// <summary>One supporting document attached to the invoice (e.g. the vendor's bill/receipt).</summary>
+    public string? AttachmentFileName { get; set; }
+    public string? AttachmentContentType { get; set; }
+    public byte[]? AttachmentData { get; set; }
+
     /// <summary>The GL voucher generated when this invoice was posted.</summary>
     public int? JournalVoucherId { get; set; }
     public JournalVoucher? JournalVoucher { get; set; }
