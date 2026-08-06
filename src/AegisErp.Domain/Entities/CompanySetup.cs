@@ -105,6 +105,12 @@ public class CompanySetup
     /// (this whole page is <c>[Authorize(Roles = AppRoles.Admins)]</c>).</summary>
     public bool SalespersonEnabled { get; set; }
 
+    /// <summary>When on, Sales Invoice shows a header-level Direct/Deferred revenue recognition
+    /// choice that applies to every line — off by default, in which case every line simply posts
+    /// as Direct without asking. A company recognising revenue over time (subscriptions, retainers)
+    /// would turn this on at setup instead of picking Recognition per line on every invoice.</summary>
+    public bool RevenueRecognitionEnabled { get; set; }
+
     /// <summary>The company's maintained list of salesperson names — admin-curated here, offered
     /// as a dropdown on the New Customer form instead of free text, so names stay consistent.</summary>
     public List<Salesperson> Salespersons { get; set; } = new();

@@ -46,7 +46,7 @@
             <MudItem xs="12" sm="4">
                 <MudTextField @bind-Value="_salesOrderRef" Label="Sales Order Ref." Placeholder="Optional" />
             </MudItem>
-            <MudItem xs="12" sm="@(_salespersonEnabled ? 8 : 12)">
+            <MudItem xs="12" sm="@SubjectWidth">
                 <MudTextField @bind-Value="_subject" Label="Subject" Placeholder="Let your customer know what this invoice is for" />
             </MudItem>
             @if (_salespersonEnabled)
@@ -57,6 +57,16 @@
                         {
                             <MudSelectItem Value="@sp">@sp</MudSelectItem>
                         }
+                    </MudSelect>
+                </MudItem>
+            }
+            @if (_revenueRecognitionEnabled)
+            {
+                <MudItem xs="12" sm="4">
+                    <MudSelect T="RevenueRecognition" @bind-Value="_recognition" Label="Revenue Recognition"
+                               HelperText="Applies to every line on this invoice">
+                        <MudSelectItem Value="RevenueRecognition.Direct">Direct</MudSelectItem>
+                        <MudSelectItem Value="RevenueRecognition.Deferred">Deferred</MudSelectItem>
                     </MudSelect>
                 </MudItem>
             }
@@ -84,8 +94,6 @@
                 <MudTh Style="min-width:180px">Item</MudTh>
                 <MudTh Style="min-width:160px">Description</MudTh>
                 <MudTh Style="min-width:200px">Revenue Account</MudTh>
-                <MudTh Style="min-width:120px">Recognition</MudTh>
-                <MudTh Style="min-width:160px">Cost Center</MudTh>
                 <MudTh Style="min-width:90px;text-align:right">Qty</MudTh>
                 <MudTh Style="min-width:90px">UOM</MudTh>
                 <MudTh Style="min-width:130px;text-align:right">Unit Price</MudTh>
@@ -118,23 +126,6 @@
                             @foreach (var a in _revenueAccounts)
                             {
                                 <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
-                            }
-                        }
-                    </MudSelect>
-                </MudTd>
-                <MudTd>
-                    <MudSelect T="RevenueRecognition" @bind-Value="context.Recognition" Dense="true" Margin="Margin.Dense">
-                        <MudSelectItem Value="RevenueRecognition.Direct">Direct</MudSelectItem>
-                        <MudSelectItem Value="RevenueRecognition.Deferred">Deferred</MudSelectItem>
-                    </MudSelect>
-                </MudTd>
-                <MudTd>
-                    <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" Clearable="true">
-                        @if (_costCenters is not null)
-                        {
-                            @foreach (var c in _costCenters)
-                            {
-                                <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
                             }
                         }
                     </MudSelect>
@@ -228,7 +219,6 @@
 
     private List<Customer>? _customers;
     private List<Account>? _revenueAccounts;
-    private List<CostCenter>? _costCenters;
     private List<FiscalPeriod>? _periods;
     private List<Item>? _items;
 
@@ -245,6 +235,8 @@
     private string? _salesperson;
     private bool _salespersonEnabled;
     private List<string> _salespersons = new();
+    private RevenueRecognition _recognition = RevenueRecognition.Direct;
+    private bool _revenueRecognitionEnabled;
     private bool _posting;
     private string _dueLabel = "—";
     private string _invoiceNo = "—";
@@ -266,12 +258,15 @@
     private bool CanSaveDraft => _customerId > 0 && _periodId > 0
                             && _lines.Any(l => !string.IsNullOrWhiteSpace(l.Description));
 
+    /// <summary>Subject fills whatever room Salesperson/Revenue Recognition don't need — both off
+    /// (the common case) gives it the full row, same as before either setting existed.</summary>
+    private int SubjectWidth => 12 - (_salespersonEnabled ? 4 : 0) - (_revenueRecognitionEnabled ? 4 : 0);
+
     protected override async Task OnInitializedAsync()
     {
         _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
         var accounts = await Coa.GetAllAsync(postableOnly: true);
         _revenueAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
-        _costCenters = await Coa.GetCostCentersAsync();
         _periods = await Ledger.GetPeriodsAsync();
         _items = await ItemSvc.GetAllAsync(activeOnly: true);
 
@@ -280,6 +275,7 @@
         catch (PostingException) { /* no company selected yet — keep the built-in defaults */ }
         _salespersonEnabled = company?.SalespersonEnabled ?? false;
         _salespersons = company?.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList() ?? new();
+        _revenueRecognitionEnabled = company?.RevenueRecognitionEnabled ?? false;
 
         var seed = Existing ?? CloneFrom;
         if (seed is not null)
@@ -316,11 +312,15 @@
                     DiscountValue = l.DiscountValue,
                     DiscountType = l.DiscountType,
                     Uom = l.Uom,
-                    Recognition = l.Recognition,
                     AttachmentFileName = l.AttachmentFileName,
                     AttachmentContentType = l.AttachmentContentType,
                     AttachmentBytes = l.AttachmentData,
                 });
+            // Recognition is now one choice for the whole invoice — an older invoice posted before
+            // that could in principle have mixed per-line values, so fall back to Direct rather than
+            // guess if they disagree, instead of silently picking one line's value for all of them.
+            var recognitions = seed.Lines.Select(l => l.Recognition).Distinct().ToList();
+            _recognition = recognitions.Count == 1 ? recognitions[0] : RevenueRecognition.Direct;
             UpdateDueLabel();
         }
         else
@@ -484,7 +484,7 @@
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new InvoiceLineInput(
                 l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate, l.ItemId,
-                l.DiscountValue, l.Uom, l.Recognition, l.DiscountType));
+                l.DiscountValue, l.Uom, _recognition, l.DiscountType));
 
             SalesInvoice inv;
             if (IsEdit)
@@ -524,7 +524,7 @@
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new InvoiceLineInput(
                 l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate, l.ItemId,
-                l.DiscountValue, l.Uom, l.Recognition, l.DiscountType));
+                l.DiscountValue, l.Uom, _recognition, l.DiscountType));
 
             SalesInvoice inv;
             if (IsEdit)
@@ -588,7 +588,6 @@
         public decimal DiscountValue { get; set; }
         public DiscountType DiscountType { get; set; } = DiscountType.Percent;
         public string? Uom { get; set; }
-        public RevenueRecognition Recognition { get; set; } = RevenueRecognition.Direct;
 
         public string? AttachmentFileName { get; set; }
         public string? AttachmentContentType { get; set; }
