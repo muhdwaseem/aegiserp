@@ -1,6 +1,9 @@
 @inject EstimateService EstimateSvc
 @inject CustomerService CustomerSvc
 @inject ChartOfAccountsService Coa
+@inject ItemService ItemSvc
+@inject ServiceKitService KitSvc
+@inject CompanyService CompanySvc
 @inject ISnackbar Snackbar
 
 <MudDialog>
@@ -11,7 +14,7 @@
     <DialogContent>
         <MudGrid>
             <MudItem xs="12" sm="4">
-                <MudSelect T="int" @bind-Value="_customerId" Label="Customer" Dense="true">
+                <MudSelect T="int" Value="_customerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true">
                     <MudSelectItem Value="0">— select —</MudSelectItem>
                     @if (_customers is not null)
                     {
@@ -23,77 +26,210 @@
                 </MudSelect>
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Estimate date" />
+                <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="@(_proServiceFormat ? "Order Date" : "Estimate date")" />
             </MudItem>
             <MudItem xs="12" sm="3">
                 <MudDatePicker @bind-Date="_validUntil" Label="Valid until" />
             </MudItem>
-            <MudItem xs="12" sm="2" />
+            @if (_proServiceFormat)
+            {
+                <MudItem xs="12" sm="2">
+                    <MudSelect T="int?" Value="_organizationId" ValueChanged="OnOrganizationChanged" Label="Organization" Dense="true" Clearable="true">
+                        @if (_organizations is not null)
+                        {
+                            @foreach (var o in _organizations)
+                            {
+                                <MudSelectItem T="int?" Value="o.Id">@o.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_billingAddress" Label="Billing Address" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_contactMobile" Label="Mobile" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_contactEmail" Label="Email" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_contactTrn" Label="Customer TRN" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_contactPerson" Label="Contact Person" Placeholder="Optional" />
+                </MudItem>
+            }
             <MudItem xs="12">
                 <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Defaults to 'Quotation — customer'" />
             </MudItem>
         </MudGrid>
 
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-3">
+            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
+            @if (_proServiceFormat)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.Widgets" Variant="Variant.Outlined" Label="Insert Kit" EndIcon="@Icons.Material.Filled.ArrowDropDown">
+                    @if (_kits is null || _kits.Count == 0)
+                    {
+                        <MudMenuItem Disabled="true">No kits defined yet</MudMenuItem>
+                    }
+                    else
+                    {
+                        @foreach (var k in _kits)
+                        {
+                            <MudMenuItem OnClick="@(() => InsertKit(k))">@k.Name (@k.Lines.Count)</MudMenuItem>
+                        }
+                    }
+                </MudMenu>
+            }
+        </MudStack>
+
         <div class="line-table-scroll">
-        <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-3 mb-2">
-            <HeaderContent>
-                <MudTh Style="width:40px">#</MudTh>
-                <MudTh Style="min-width:180px">Description</MudTh>
-                <MudTh Style="min-width:200px">Revenue Account</MudTh>
-                <MudTh Style="min-width:160px">Cost Center</MudTh>
-                <MudTh Style="min-width:90px;text-align:right">Qty</MudTh>
-                <MudTh Style="min-width:130px;text-align:right">Unit Price</MudTh>
-                <MudTh Style="min-width:90px">VAT</MudTh>
-                <MudTh Style="min-width:130px;text-align:right">Line Total</MudTh>
-                <MudTh Style="width:48px"></MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
-                <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service / item" /></MudTd>
-                <MudTd>
-                    <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
-                        <MudSelectItem Value="0">— select —</MudSelectItem>
-                        @if (_revenueAccounts is not null)
-                        {
-                            @foreach (var a in _revenueAccounts)
+        @if (_proServiceFormat)
+        {
+            <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-3 mb-2">
+                <HeaderContent>
+                    <MudTh Style="width:40px">#</MudTh>
+                    <MudTh Style="min-width:160px">Service Type</MudTh>
+                    <MudTh Style="min-width:180px">Description</MudTh>
+                    <MudTh Style="min-width:200px">Revenue Account</MudTh>
+                    <MudTh Style="min-width:80px;text-align:right">Qty</MudTh>
+                    <MudTh Style="min-width:110px;text-align:right">Govt Fee</MudTh>
+                    <MudTh Style="min-width:110px;text-align:right">Center Fee</MudTh>
+                    <MudTh Style="min-width:110px;text-align:right">Bank Charge</MudTh>
+                    <MudTh Style="min-width:90px">VAT</MudTh>
+                    <MudTh Style="min-width:100px;text-align:right">VAT Amt</MudTh>
+                    <MudTh Style="min-width:130px;text-align:right">Total</MudTh>
+                    <MudTh Style="min-width:160px">Assigned To</MudTh>
+                    <MudTh Style="width:48px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
+                    <MudTd>
+                        <MudSelect T="int" Value="context.ItemId ?? 0" ValueChanged="v => OnItemChanged(context, v)" Dense="true" Margin="Margin.Dense" Clearable="true">
+                            <MudSelectItem Value="0">— Custom —</MudSelectItem>
+                            @if (_items is not null)
                             {
-                                <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                                @foreach (var it in _items)
+                                {
+                                    <MudSelectItem Value="it.Id">@it.Code — @it.Name</MudSelectItem>
+                                }
                             }
-                        }
-                    </MudSelect>
-                </MudTd>
-                <MudTd>
-                    <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" Clearable="true">
-                        @if (_costCenters is not null)
-                        {
-                            @foreach (var c in _costCenters)
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service line" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0">— select —</MudSelectItem>
+                            @if (_revenueAccounts is not null)
                             {
-                                <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
+                                @foreach (var a in _revenueAccounts)
+                                {
+                                    <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                                }
                             }
-                        }
-                    </MudSelect>
-                </MudTd>
-                <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
-                <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
-                <MudTd>
-                    <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
-                        <MudSelectItem Value="0.05m">5%</MudSelectItem>
-                        <MudSelectItem Value="0m">0%</MudSelectItem>
-                    </MudSelect>
-                </MudTd>
-                <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
-                <MudTd>
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.GovtFee" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.BankCharge" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                            <MudSelectItem Value="0m">0%</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd Style="text-align:right">@context.Vat.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudSelect T="string" @bind-Value="context.AssignedTo" Dense="true" Margin="Margin.Dense" Clearable="true">
+                            @foreach (var sp in _salespersons)
+                            {
+                                <MudSelectItem Value="@sp">@sp</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-3 mb-2">
+                <HeaderContent>
+                    <MudTh Style="width:40px">#</MudTh>
+                    <MudTh Style="min-width:180px">Description</MudTh>
+                    <MudTh Style="min-width:200px">Revenue Account</MudTh>
+                    <MudTh Style="min-width:160px">Cost Center</MudTh>
+                    <MudTh Style="min-width:90px;text-align:right">Qty</MudTh>
+                    <MudTh Style="min-width:130px;text-align:right">Unit Price</MudTh>
+                    <MudTh Style="min-width:90px">VAT</MudTh>
+                    <MudTh Style="min-width:130px;text-align:right">Line Total</MudTh>
+                    <MudTh Style="width:48px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
+                    <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service / item" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0">— select —</MudSelectItem>
+                            @if (_revenueAccounts is not null)
+                            {
+                                @foreach (var a in _revenueAccounts)
+                                {
+                                    <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudSelect T="int?" @bind-Value="context.CostCenterId" Dense="true" Margin="Margin.Dense" Clearable="true">
+                            @if (_costCenters is not null)
+                            {
+                                @foreach (var c in _costCenters)
+                                {
+                                    <MudSelectItem T="int?" Value="c.Id">@c.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                            <MudSelectItem Value="0m">0%</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
         </div>
 
         <MudStack Row="true" AlignItems="AlignItems.Center">
-            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
             <MudSpacer />
-            <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+            @if (_proServiceFormat)
+            {
+                <MudText Class="mr-4">Govt Fee: <b>@TotalGovtFee.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Center Fee: <b>@TotalCenterFee.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Bank Charge: <b>@TotalBankCharge.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Grand Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+            }
+            else
+            {
+                <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+            }
         </MudStack>
     </DialogContent>
     <DialogActions>
@@ -112,8 +248,19 @@
     private List<Customer>? _customers;
     private List<Account>? _revenueAccounts;
     private List<CostCenter>? _costCenters;
+    private List<Item>? _items;
+    private List<ServiceKit>? _kits;
+    private List<CustomerOrganization>? _organizations;
+    private List<string> _salespersons = new();
 
+    private bool _proServiceFormat;
     private int _customerId;
+    private int? _organizationId;
+    private string? _contactMobile;
+    private string? _contactEmail;
+    private string? _contactTrn;
+    private string? _contactPerson;
+    private string? _billingAddress;
     private DateTime? _date = DateTime.Today;
     private DateTime? _validUntil = DateTime.Today.AddDays(30);
     private string? _narration;
@@ -122,8 +269,12 @@
     private readonly List<LineVm> _lines = new() { new() };
 
     private decimal TotalGross => _lines.Sum(l => l.Gross);
+    private decimal TotalVat => _lines.Sum(l => l.Vat);
+    private decimal TotalGovtFee => _lines.Sum(l => l.Quantity * l.GovtFee);
+    private decimal TotalCenterFee => _lines.Sum(l => l.TaxableNet);
+    private decimal TotalBankCharge => _lines.Sum(l => l.Quantity * l.BankCharge);
     private bool CanSave => _customerId > 0 && TotalGross > 0
-                            && _lines.All(l => l.RevenueAccountId > 0 && !string.IsNullOrWhiteSpace(l.Description));
+                            && _lines.All(l => !string.IsNullOrWhiteSpace(l.Description) && l.RevenueAccountId > 0);
 
     protected override async Task OnInitializedAsync()
     {
@@ -131,7 +282,21 @@
         var accounts = await Coa.GetAllAsync(postableOnly: true);
         _revenueAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
         _costCenters = await Coa.GetCostCentersAsync();
-        if (CustomerId is int custId) _customerId = custId;
+        _items = await ItemSvc.GetAllAsync(activeOnly: true);
+
+        CompanySetup? company = null;
+        try { company = await CompanySvc.GetAsync(); }
+        catch (PostingException) { /* no company selected yet — keep the built-in defaults */ }
+        _proServiceFormat = company?.ProServiceModeEnabled ?? false;
+        _salespersons = company?.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList() ?? new();
+
+        if (_proServiceFormat)
+        {
+            _kits = await KitSvc.GetAllAsync(activeOnly: true);
+            _lines[0].VatRate = 0m;
+        }
+
+        if (CustomerId is int custId) await OnCustomerChanged(custId);
     }
 
     private void OnDateChanged(DateTime? d)
@@ -141,7 +306,67 @@
             _validUntil = d.Value.AddDays(30);
     }
 
-    private void AddLine() => _lines.Add(new());
+    /// <summary>Auto-fills the contact snapshot fields from the newly selected customer — mirrors
+    /// Sales Invoice's own <c>OnCustomerChanged</c>. Fields stay editable afterwards.</summary>
+    private async Task OnCustomerChanged(int id)
+    {
+        _customerId = id;
+        _organizationId = null;
+        _organizations = null;
+        if (!_proServiceFormat || id == 0) return;
+
+        var customer = await CustomerSvc.GetByIdAsync(id);
+        if (customer is null) return;
+
+        _organizations = customer.Organizations.Where(o => o.IsActive).ToList();
+        _contactMobile = customer.Mobile;
+        _contactEmail = customer.Email;
+        _contactTrn = customer.Trn;
+        _contactPerson = customer.ContactPersons.FirstOrDefault()?.FirstName;
+        _billingAddress = customer.BillingAddressLine1;
+    }
+
+    /// <summary>Picking an Organization overwrites the Contact TRN with the organization's own —
+    /// a PRO services company processes government paperwork per specific trade license.</summary>
+    private void OnOrganizationChanged(int? id)
+    {
+        _organizationId = id;
+        var org = _organizations?.FirstOrDefault(o => o.Id == id);
+        if (org is not null) _contactTrn = org.Trn;
+    }
+
+    /// <summary>Picking an item pre-fills its description and VAT, same as Purchase Invoice's own
+    /// <c>OnItemChanged</c> — Center Fee (UnitPrice) is left for the user to enter.</summary>
+    private void OnItemChanged(LineVm line, int itemId)
+    {
+        line.ItemId = itemId == 0 ? null : itemId;
+        var item = _items?.FirstOrDefault(i => i.Id == itemId);
+        if (item is null) return;
+
+        line.Description = item.SalesDescription ?? item.Name;
+        line.VatRate = item.TaxCode?.Rate ?? line.VatRate;
+        line.RevenueAccountId = item.SalesAccountId ?? line.RevenueAccountId;
+    }
+
+    /// <summary>Appends a kit's predefined lines to the document — pure client-side line
+    /// population, no relationship persisted between the kit and this estimate.</summary>
+    private void InsertKit(ServiceKit kit)
+    {
+        foreach (var l in kit.Lines.OrderBy(l => l.SortOrder))
+            _lines.Add(new LineVm
+            {
+                Description = l.Description,
+                RevenueAccountId = l.RevenueAccountId ?? 0,
+                GovtFee = l.GovtFee,
+                UnitPrice = l.CenterFee,
+                BankCharge = l.BankCharge,
+                VatRate = l.VatRate,
+            });
+        if (_lines.Count > 1 && _lines[0].Description == "" && _lines[0].GovtFee == 0 && _lines[0].UnitPrice == 0 && _lines[0].BankCharge == 0)
+            _lines.RemoveAt(0); // drop the still-blank starter row once real lines exist
+    }
+
+    private void AddLine() => _lines.Add(_proServiceFormat ? new() { VatRate = 0m } : new());
     private void RemoveLine(LineVm l) { if (_lines.Count > 1) _lines.Remove(l); }
 
     private async Task Save()
@@ -151,12 +376,17 @@
         {
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new EstimateLineInput(
-                l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate));
+                l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate,
+                l.GovtFee, l.BankCharge, l.AssignedTo));
 
             var est = await EstimateSvc.CreateAsync(
                 _customerId, DateOnly.FromDateTime(_date ?? DateTime.Today),
                 DateOnly.FromDateTime(_validUntil ?? DateTime.Today.AddDays(30)),
-                _narration, userName, inputs, DateTime.UtcNow);
+                _narration, userName, inputs, DateTime.UtcNow,
+                _proServiceFormat ? _organizationId : null,
+                _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
+                _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
+                _proServiceFormat ? _billingAddress : null);
 
             Snackbar.Add($"Saved quotation {est.EstimateNo}.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(est.Id));
@@ -172,15 +402,20 @@
 
     private class LineVm
     {
+        public int? ItemId { get; set; }
         public string Description { get; set; } = "";
         public int RevenueAccountId { get; set; }
         public int? CostCenterId { get; set; }
         public decimal Quantity { get; set; } = 1;
         public decimal UnitPrice { get; set; }
         public decimal VatRate { get; set; } = 0.05m;
+        public decimal GovtFee { get; set; }
+        public decimal BankCharge { get; set; }
+        public string? AssignedTo { get; set; }
 
-        public decimal Net => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
-        public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
+        public decimal TaxableNet => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
+        public decimal Net => TaxableNet + Math.Round(Quantity * (GovtFee + BankCharge), 2, MidpointRounding.AwayFromZero);
+        public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
         public decimal Gross => Net + Vat;
     }
 }

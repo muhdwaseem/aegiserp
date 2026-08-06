@@ -6,7 +6,8 @@ namespace AegisErp.Infrastructure.Services;
 
 /// <summary>Input line for creating an estimate / quotation from the UI.</summary>
 public record EstimateLineInput(string Description, int RevenueAccountId, int? CostCenterId,
-    decimal Quantity, decimal UnitPrice, decimal VatRate);
+    decimal Quantity, decimal UnitPrice, decimal VatRate,
+    decimal GovtFee = 0, decimal BankCharge = 0, string? AssignedTo = null);
 
 public class EstimateService
 {
@@ -39,7 +40,9 @@ public class EstimateService
     /// <summary>Creates a quotation (non-posting). Validity defaults to 30 days if not given.</summary>
     public async Task<Estimate> CreateAsync(
         int customerId, DateOnly date, DateOnly validUntil, string? narration,
-        string createdBy, IEnumerable<EstimateLineInput> lines, DateTime nowUtc)
+        string createdBy, IEnumerable<EstimateLineInput> lines, DateTime nowUtc,
+        int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
     {
         if (customerId == 0) throw new PostingException("Estimate has no customer.");
         var lineList = lines.ToList();
@@ -56,6 +59,12 @@ public class EstimateService
         {
             EstimateNo = JournalPoster.NextDocNo(numbers, "EST", date.Year),
             CustomerId = customerId,
+            OrganizationId = organizationId,
+            ContactMobile = contactMobile,
+            ContactEmail = contactEmail,
+            ContactTrn = contactTrn,
+            ContactPerson = contactPerson,
+            BillingAddressSnapshot = billingAddress,
             Date = date,
             ValidUntil = validUntil,
             Status = DocumentStatus.Draft,
@@ -78,6 +87,9 @@ public class EstimateService
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
+                GovtFee = l.GovtFee,
+                BankCharge = l.BankCharge,
+                AssignedTo = l.AssignedTo,
             });
         }
 

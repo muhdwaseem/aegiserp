@@ -437,10 +437,16 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(n => n.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(n => n.Narration).HasMaxLength(400);
             e.Property(n => n.CreatedBy).HasMaxLength(80);
+            e.Property(n => n.ContactMobile).HasMaxLength(30);
+            e.Property(n => n.ContactEmail).HasMaxLength(160);
+            e.Property(n => n.ContactTrn).HasMaxLength(20);
+            e.Property(n => n.ContactPerson).HasMaxLength(160);
+            e.Property(n => n.BillingAddressSnapshot).HasMaxLength(400);
             e.Ignore(n => n.TotalNet);
             e.Ignore(n => n.TotalVat);
             e.Ignore(n => n.TotalGross);
             e.HasOne(n => n.Customer).WithMany().HasForeignKey(n => n.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(n => n.Organization).WithMany().HasForeignKey(n => n.OrganizationId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(n => n.ConvertedInvoice).WithMany().HasForeignKey(n => n.ConvertedInvoiceId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(n => n.Lines).WithOne(l => l.Estimate).HasForeignKey(l => l.EstimateId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -451,6 +457,10 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.Quantity).HasPrecision(18, 3);
             e.Property(l => l.UnitPrice).HasPrecision(18, 2);
             e.Property(l => l.VatRate).HasPrecision(5, 4);
+            e.Property(l => l.GovtFee).HasPrecision(18, 2);
+            e.Property(l => l.BankCharge).HasPrecision(18, 2);
+            e.Property(l => l.AssignedTo).HasMaxLength(160);
+            e.Ignore(l => l.TaxableNet);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);
