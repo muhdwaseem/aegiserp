@@ -132,36 +132,46 @@
                 <tbody>
                     @if (_format == "Detailed")
                     {
-                        @foreach (var r in SortedRows)
+                        @* Head / sub-head, the same shape as Chart of Accounts: a bold, amount-free
+                           heading for each of the five account types, with that type's accounts
+                           listed and indented underneath — shown even when a type has no activity,
+                           rather than a flat list sorted only by code or name. *@
+                        @foreach (var (type, rows) in DetailedGroups)
                         {
-                            <tr>
-                                <td class="mono"><AccountLink AccountId="r.AccountId">@r.Code</AccountLink></td>
-                                <td><AccountLink AccountId="r.AccountId">@r.Name</AccountLink></td>
-                                @if (_showOpeningBalance)
-                                {
-                                    <td class="amt">@NetLabel(r.OpeningDebit, r.OpeningCredit)</td>
-                                }
-                                @if (_showTransactions)
-                                {
-                                    @if (_nettTransactionsOnly)
-                                    {
-                                        <td class="amt">@NetLabel(r.PeriodDebit, r.PeriodCredit)</td>
-                                    }
-                                    else
-                                    {
-                                        <td class="amt">@(r.PeriodDebit > 0 ? r.PeriodDebit.ToString("N2") : "")</td>
-                                        <td class="amt">@(r.PeriodCredit > 0 ? r.PeriodCredit.ToString("N2") : "")</td>
-                                    }
-                                }
-                                @if (_showClosingBalance)
-                                {
-                                    <td class="amt">@NetLabel(r.ClosingDebit, r.ClosingCredit)</td>
-                                }
-                                @if (_showPercentages)
-                                {
-                                    <td class="amt">@Pct(r.ClosingDebit != 0 ? r.ClosingDebit : r.ClosingCredit, _tb.TotalClosingDebit)</td>
-                                }
+                            <tr class="grp-hdr">
+                                <td colspan="@ColumnCount"><b>@TypeLabel(type)</b></td>
                             </tr>
+                            @foreach (var r in rows)
+                            {
+                                <tr>
+                                    <td class="mono indent"><AccountLink AccountId="r.AccountId">@r.Code</AccountLink></td>
+                                    <td class="indent"><AccountLink AccountId="r.AccountId">@r.Name</AccountLink></td>
+                                    @if (_showOpeningBalance)
+                                    {
+                                        <td class="amt">@NetLabel(r.OpeningDebit, r.OpeningCredit)</td>
+                                    }
+                                    @if (_showTransactions)
+                                    {
+                                        @if (_nettTransactionsOnly)
+                                        {
+                                            <td class="amt">@NetLabel(r.PeriodDebit, r.PeriodCredit)</td>
+                                        }
+                                        else
+                                        {
+                                            <td class="amt">@(r.PeriodDebit > 0 ? r.PeriodDebit.ToString("N2") : "")</td>
+                                            <td class="amt">@(r.PeriodCredit > 0 ? r.PeriodCredit.ToString("N2") : "")</td>
+                                        }
+                                    }
+                                    @if (_showClosingBalance)
+                                    {
+                                        <td class="amt">@NetLabel(r.ClosingDebit, r.ClosingCredit)</td>
+                                    }
+                                    @if (_showPercentages)
+                                    {
+                                        <td class="amt">@Pct(r.ClosingDebit != 0 ? r.ClosingDebit : r.ClosingCredit, _tb.TotalClosingDebit)</td>
+                                    }
+                                </tr>
+                            }
                         }
                     }
                     else
@@ -275,6 +285,31 @@
         decimal OpeningDebit, decimal OpeningCredit,
         decimal PeriodDebit, decimal PeriodCredit,
         decimal ClosingDebit, decimal ClosingCredit);
+
+    private static readonly AccountType[] TypeOrder =
+        { AccountType.Asset, AccountType.Liability, AccountType.Equity, AccountType.Income, AccountType.Expense };
+
+    /// <summary>Detailed format's rows, bucketed under their account type in the fixed statement
+    /// order above — every type gets a heading even with nothing under it (e.g. a company with no
+    /// liabilities yet still shows an empty "Liability" heading), matching how Chart of Accounts
+    /// always shows its header rows regardless of what's posted under them.</summary>
+    private IEnumerable<(AccountType Type, List<TrialBalanceMovementRow> Rows)> DetailedGroups =>
+        TypeOrder.Select(t => (t, SortedRows.Where(r => r.Type == t).ToList()));
+
+    /// <summary>How many columns the table currently has, so a group heading row's single cell can
+    /// span all of them.</summary>
+    private int ColumnCount
+    {
+        get
+        {
+            var n = 2; // Code, Account
+            if (_showOpeningBalance) n++;
+            if (_showTransactions) n += _nettTransactionsOnly ? 1 : 2;
+            if (_showClosingBalance) n++;
+            if (_showPercentages) n++;
+            return n;
+        }
+    }
 
     /// <summary>Only the Transactions group ever splits into Debit/Credit sub-columns (Opening and
     /// Closing Balance are always a single net Dr/Cr figure) — so a second header row is needed
@@ -407,5 +442,7 @@
     .tb-tbl tfoot td { font-weight:700; border-top:2px solid var(--mud-palette-lines-default); border-bottom:0; background:var(--mud-palette-background-grey); }
     .tb-tbl tbody tr.grp-row { background:var(--mud-palette-action-default-hover); }
     .tb-tbl tbody tr.grp-row:hover { background:var(--mud-palette-table-hover); }
+    .tb-tbl tbody tr.grp-hdr td { background:var(--mud-palette-background-grey); font-weight:700; }
+    .tb-tbl tbody td.indent { padding-left:28px; }
     .cfg-row { display:flex; justify-content:space-between; align-items:center; }
 </style>
