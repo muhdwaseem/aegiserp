@@ -164,19 +164,56 @@
                             </tr>
                         }
                     }
+                    else
+                    {
+                        @* Summary: one subtotal row per account type instead of every ledger account.
+                           Unlike the grand total below, a single type's net position isn't
+                           guaranteed to balance to zero, so NetLabel (the same helper each detail
+                           row uses) is the right call here, not the non-cancelling grand-total one. *@
+                        @foreach (var g in GroupedByType)
+                        {
+                            <tr class="grp-row">
+                                <td colspan="2"><b>@TypeLabel(g.Type)</b></td>
+                                @if (_showOpeningBalance)
+                                {
+                                    <td class="amt"><b>@NetLabel(g.OpeningDebit, g.OpeningCredit)</b></td>
+                                }
+                                @if (_showTransactions)
+                                {
+                                    @if (_nettTransactionsOnly)
+                                    {
+                                        <td class="amt"><b>@NetLabel(g.PeriodDebit, g.PeriodCredit)</b></td>
+                                    }
+                                    else
+                                    {
+                                        <td class="amt"><b>@(g.PeriodDebit > 0 ? g.PeriodDebit.ToString("N2") : "")</b></td>
+                                        <td class="amt"><b>@(g.PeriodCredit > 0 ? g.PeriodCredit.ToString("N2") : "")</b></td>
+                                    }
+                                }
+                                @if (_showClosingBalance)
+                                {
+                                    <td class="amt"><b>@NetLabel(g.ClosingDebit, g.ClosingCredit)</b></td>
+                                }
+                                @if (_showPercentages)
+                                {
+                                    <td class="amt"><b>@Pct(g.ClosingDebit != 0 ? g.ClosingDebit : g.ClosingCredit, _tb.TotalClosingDebit)</b></td>
+                                }
+                            </tr>
+                        }
+                    }
                 </tbody>
                 <tfoot>
                     <tr class="tot">
                         <td colspan="2">Total (AED)</td>
                         @if (_showOpeningBalance)
                         {
-                            <td class="amt">@NetLabel(_tb.TotalOpeningDebit, _tb.TotalOpeningCredit)</td>
+                            <td class="amt">@TotalLabel(_tb.TotalOpeningDebit, _tb.TotalOpeningCredit)</td>
                         }
                         @if (_showTransactions)
                         {
                             @if (_nettTransactionsOnly)
                             {
-                                <td class="amt">@NetLabel(_tb.TotalPeriodDebit, _tb.TotalPeriodCredit)</td>
+                                <td class="amt">@TotalLabel(_tb.TotalPeriodDebit, _tb.TotalPeriodCredit)</td>
                             }
                             else
                             {
@@ -186,7 +223,7 @@
                         }
                         @if (_showClosingBalance)
                         {
-                            <td class="amt">@NetLabel(_tb.TotalClosingDebit, _tb.TotalClosingCredit)</td>
+                            <td class="amt">@TotalLabel(_tb.TotalClosingDebit, _tb.TotalClosingCredit)</td>
                         }
                         @if (_showPercentages)
                         {
@@ -223,6 +260,21 @@
 
     private IEnumerable<TrialBalanceMovementRow> SortedRows =>
         _sortBy == "Name" ? _tb!.Rows.OrderBy(r => r.Name) : _tb!.Rows;
+
+    /// <summary>Summary format's rows: one subtotal per account type (Asset, Liability, Equity,
+    /// Revenue, Expense), in that fixed statement order regardless of the Sorting Method setting
+    /// (which only affects the account-level ordering in Detailed).</summary>
+    private IEnumerable<TypeGroup> GroupedByType =>
+        _tb!.Rows.GroupBy(r => r.Type).OrderBy(g => (int)g.Key).Select(g => new TypeGroup(
+            g.Key,
+            g.Sum(r => r.OpeningDebit), g.Sum(r => r.OpeningCredit),
+            g.Sum(r => r.PeriodDebit), g.Sum(r => r.PeriodCredit),
+            g.Sum(r => r.ClosingDebit), g.Sum(r => r.ClosingCredit)));
+
+    private record TypeGroup(AccountType Type,
+        decimal OpeningDebit, decimal OpeningCredit,
+        decimal PeriodDebit, decimal PeriodCredit,
+        decimal ClosingDebit, decimal ClosingCredit);
 
     /// <summary>Only the Transactions group ever splits into Debit/Credit sub-columns (Opening and
     /// Closing Balance are always a single net Dr/Cr figure) — so a second header row is needed
@@ -327,6 +379,19 @@
         if (net == 0) return "";
         return net > 0 ? $"{net:N2} Dr" : $"{-net:N2} Cr";
     }
+
+    /// <summary>For the grand-total row only: unlike any single account or type subtotal, the sum
+    /// of every account's net position is guaranteed to be zero in double-entry bookkeeping — that's
+    /// what "in balance" means — so netting the two totals against each other the way
+    /// <see cref="NetLabel"/> does for a single row always collapses to a blank cell. This shows the
+    /// shared total plainly, or both sides only if something is genuinely out of balance.</summary>
+    private static string TotalLabel(decimal debitTotal, decimal creditTotal)
+    {
+        if (debitTotal == 0 && creditTotal == 0) return "";
+        return debitTotal == creditTotal ? debitTotal.ToString("N2") : $"{debitTotal:N2} Dr / {creditTotal:N2} Cr";
+    }
+
+    private static string TypeLabel(AccountType t) => t == AccountType.Income ? "Revenue" : t.ToString();
 }
 
 <style>
@@ -340,5 +405,7 @@
     .tb-tbl tbody tr:nth-child(even) { background:var(--mud-palette-action-default-hover); }
     .tb-tbl tbody tr:hover { background:var(--mud-palette-table-hover); }
     .tb-tbl tfoot td { font-weight:700; border-top:2px solid var(--mud-palette-lines-default); border-bottom:0; background:var(--mud-palette-background-grey); }
+    .tb-tbl tbody tr.grp-row { background:var(--mud-palette-action-default-hover); }
+    .tb-tbl tbody tr.grp-row:hover { background:var(--mud-palette-table-hover); }
     .cfg-row { display:flex; justify-content:space-between; align-items:center; }
 </style>

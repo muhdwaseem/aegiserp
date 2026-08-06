@@ -64,9 +64,10 @@ public record TrialBalance(
 }
 
 /// <summary>One line of a From/To trial balance: an account's Opening balance, its Debit/Credit
-/// activity within the range, and the resulting Closing balance.</summary>
+/// activity within the range, and the resulting Closing balance. <see cref="Type"/> is carried
+/// along so the report's Summary format can subtotal by account type without a second query.</summary>
 public record TrialBalanceMovementRow(
-    int AccountId, string Code, string Name,
+    int AccountId, string Code, string Name, AccountType Type,
     decimal OpeningDebit, decimal OpeningCredit,
     decimal PeriodDebit, decimal PeriodCredit,
     decimal ClosingDebit, decimal ClosingCredit);

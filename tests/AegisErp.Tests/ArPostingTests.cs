@@ -237,11 +237,13 @@ public class ArPostingTests : IDisposable
         Assert.Equal(1050m, arRow.PeriodCredit);       // settled by the May 20 receipt
         Assert.Equal(0m, arRow.ClosingDebit);          // opening 1050 Dr - 1050 Cr = 0
         Assert.Equal(0m, arRow.ClosingCredit);
+        Assert.Equal(AccountType.Asset, arRow.Type);   // carried along for the report's Summary-by-type grouping
 
         var bankRow = tb.Rows.Single(r => r.AccountId == _db.Bank.Id);
         Assert.Equal(0m, bankRow.OpeningDebit);        // no activity on this account before May 10
         Assert.Equal(1050m, bankRow.PeriodDebit);
         Assert.Equal(1050m, bankRow.ClosingDebit);
+        Assert.Equal(AccountType.Asset, bankRow.Type);
 
         // Closing totals for the movement report equal the plain period-end trial balance.
         var byPeriod = await ledger.GetTrialBalanceAsync(_db.May.Id);

@@ -157,7 +157,7 @@ public class LedgerService
                 opening.TryGetValue(id, out var openNet);
                 period.TryGetValue(id, out var p);
                 var closeNet = openNet + p.Debit - p.Credit;
-                return new TrialBalanceMovementRow(acc.Id, acc.Code, acc.Name,
+                return new TrialBalanceMovementRow(acc.Id, acc.Code, acc.Name, acc.Type,
                     openNet > 0 ? openNet : 0m, openNet < 0 ? -openNet : 0m,
                     p.Debit, p.Credit,
                     closeNet > 0 ? closeNet : 0m, closeNet < 0 ? -closeNet : 0m);
