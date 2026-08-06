@@ -111,15 +111,18 @@
                 @* ── Other Details ── *@
                 <MudTabPanel Text="Other Details">
                     <MudGrid>
-                        <MudItem xs="12" sm="4"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="Optional" /></MudItem>
                         <MudItem xs="12" sm="4">
-                            <MudSelect T="TaxTreatment?" @bind-Value="_taxTreatment" Label="Tax Treatment" Clearable="true">
+                            <MudSelect T="TaxTreatment?" Value="_taxTreatment" ValueChanged="OnTaxTreatmentChanged" Label="Tax Treatment" Clearable="true">
                                 @foreach (var t in Enum.GetValues<TaxTreatment>())
                                 {
                                     <MudSelectItem T="TaxTreatment?" Value="t">@TaxTreatmentLabel(t)</MudSelectItem>
                                 }
                             </MudSelect>
                         </MudItem>
+                        @if (RequiresTrn(_taxTreatment))
+                        {
+                            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="e.g. 100123456700003" /></MudItem>
+                        }
                         <MudItem xs="12" sm="4">@EmirateSelect("Place of Supply", () => _placeOfSupply, v => _placeOfSupply = v)</MudItem>
                         <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_openingBalance" Label="Opening Balance" HideSpinButtons="true" Adornment="Adornment.End" AdornmentText="@_currency" HelperText="Informational only — does not post to the ledger" /></MudItem>
                         <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_enablePortal" Label="Enable Portal" Color="Color.Primary" /></MudItem>
@@ -422,6 +425,18 @@
         TaxTreatment.NonVatRegisteredDesignatedZone => "Non VAT Registered — Designated Zone",
         _ => t.ToString(),
     };
+
+    /// <summary>Only a treatment that actually implies a registration has a TRN to enter — showing
+    /// the field for every treatment (or leaving a stale value behind once one is picked that
+    /// doesn't need it) just invites a meaningless number on record.</summary>
+    private static bool RequiresTrn(TaxTreatment? t) => t is
+        TaxTreatment.VatRegistered or TaxTreatment.GccVatRegistered or TaxTreatment.VatRegisteredDesignatedZone;
+
+    private void OnTaxTreatmentChanged(TaxTreatment? value)
+    {
+        _taxTreatment = value;
+        if (!RequiresTrn(value)) _trn = null;
+    }
 
     private RenderFragment EmirateSelect(string label, Func<string?> get, Action<string?> set) => __builder =>
     {
