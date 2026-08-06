@@ -90,6 +90,7 @@ public class SalesInvoiceService
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.SalesInvoices.AsNoTracking()
             .Include(i => i.Customer).Include(i => i.Lines).ThenInclude(l => l.Item).Include(i => i.JournalVoucher)
+            .Include(i => i.Organization)
             .FirstOrDefaultAsync(i => i.Id == id);
     }
 
@@ -557,6 +558,7 @@ public class SalesInvoiceService
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.SalesInvoices.AsNoTracking()
             .Include(i => i.Customer).Include(i => i.Lines).ThenInclude(l => l.Item)
+            .Include(i => i.Organization)
             .FirstOrDefaultAsync(i => i.ShareToken == token);
     }
 

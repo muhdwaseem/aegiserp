@@ -23,7 +23,7 @@ public class EstimateService
     {
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.Estimates.AsNoTracking()
-            .Include(e => e.Customer).Include(e => e.Lines).Include(e => e.ConvertedInvoice)
+            .Include(e => e.Customer).Include(e => e.Lines).Include(e => e.ConvertedInvoice).Include(e => e.Organization)
             .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
             .Take(take).ToListAsync();
     }
@@ -33,7 +33,7 @@ public class EstimateService
     {
         await using var db = await _dbf.CreateDbContextAsync();
         return await db.Estimates.AsNoTracking()
-            .Include(e => e.Customer).Include(e => e.Lines).Include(e => e.ConvertedInvoice)
+            .Include(e => e.Customer).Include(e => e.Lines).Include(e => e.ConvertedInvoice).Include(e => e.Organization)
             .FirstOrDefaultAsync(e => e.Id == id);
     }
 
@@ -123,12 +123,19 @@ public class EstimateService
         if (estimate.ConvertedInvoiceId is not null)
             throw new PostingException("This estimate has already been converted.");
 
+        // GovtFee/BankCharge/AssignedTo and the header snapshot fields must carry straight through —
+        // otherwise a PRO-format estimate's non-taxable disbursements would silently fold into the
+        // taxable UnitPrice on conversion and overcharge VAT on what should be a government fee.
         var inputs = estimate.Lines.OrderBy(l => l.LineNo).Select(l =>
-            new InvoiceLineInput(l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate));
+            new InvoiceLineInput(l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate,
+                GovtFee: l.GovtFee, BankCharge: l.BankCharge, AssignedTo: l.AssignedTo));
 
         var invoice = await _invoices.CreateAndPostAsync(
             estimate.CustomerId, DateOnly.FromDateTime(nowUtc.Date), fiscalPeriodId,
-            $"Converted from {estimate.EstimateNo}", createdBy, inputs, nowUtc);
+            $"Converted from {estimate.EstimateNo}", createdBy, inputs, nowUtc,
+            organizationId: estimate.OrganizationId, contactMobile: estimate.ContactMobile,
+            contactEmail: estimate.ContactEmail, contactTrn: estimate.ContactTrn,
+            contactPerson: estimate.ContactPerson, billingAddress: estimate.BillingAddressSnapshot);
 
         estimate.Status = DocumentStatus.Converted;
         estimate.ConvertedInvoiceId = invoice.Id;

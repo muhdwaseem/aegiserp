@@ -69,4 +69,36 @@ public class EstimateServiceTests : IDisposable
         Assert.Equal("John", found.ContactPerson);
         Assert.Equal("Dubai", found.BillingAddressSnapshot);
     }
+
+    [Fact]
+    public async Task ConvertToInvoiceAsync_carries_PRO_fields_through_without_overcharging_VAT()
+    {
+        var org = new CustomerOrganization { CustomerId = _db.Customer.Id, Name = "Acme FZE", Trn = "100111111100003" };
+        using (var db = _db.CreateUnscopedDbContext())
+        {
+            db.CustomerOrganizations.Add(org);
+            db.SaveChanges();
+        }
+
+        var est = await _estimates.CreateAsync(_db.Customer.Id, new(2026, 5, 1), new(2026, 5, 31), null,
+            "tester",
+            new[] { new EstimateLineInput("Trade License", _db.Revenue.Id, null, 1, 1000, 0.05m, GovtFee: 5000, BankCharge: 50, AssignedTo: "Ali") },
+            Now, organizationId: org.Id, contactMobile: "+971500000000", contactEmail: "x@example.com",
+            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai");
+
+        var invoice = await _estimates.ConvertToInvoiceAsync(est.Id, _db.May.Id, "tester", new DateTime(2026, 5, 15, 12, 0, 0, DateTimeKind.Utc));
+
+        var line = invoice.Lines.Single();
+        Assert.Equal(5000m, line.GovtFee);
+        Assert.Equal(50m, line.BankCharge);
+        Assert.Equal("Ali", line.AssignedTo);
+        // VAT must still apply only to the Center Fee (UnitPrice), not the Govt Fee/Bank Charge disbursements.
+        Assert.Equal(50m, line.Vat);
+        Assert.Equal(1000m + 5000m + 50m, line.Net);
+
+        Assert.Equal(org.Id, invoice.OrganizationId);
+        Assert.Equal("100111111100003", invoice.ContactTrn);
+        Assert.Equal("John", invoice.ContactPerson);
+        Assert.Equal("Dubai", invoice.BillingAddressSnapshot);
+    }
 }

@@ -47,9 +47,17 @@
         <MudItem xs="12" sm="6">
             <MudText Typo="Typo.subtitle2">Bill To</MudText>
             <MudText Typo="Typo.body1">@Invoice.Customer.Name</MudText>
-            @if (!string.IsNullOrWhiteSpace(Invoice.Customer.Trn))
+            @if (Invoice.Organization is not null)
             {
-                <MudText Typo="Typo.body2">TRN: @Invoice.Customer.Trn</MudText>
+                <MudText Typo="Typo.body2">Organization: @Invoice.Organization.Name</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Invoice.ContactTrn ?? Invoice.Customer.Trn))
+            {
+                <MudText Typo="Typo.body2">TRN: @(Invoice.ContactTrn ?? Invoice.Customer.Trn)</MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(Invoice.ContactMobile) || !string.IsNullOrWhiteSpace(Invoice.ContactEmail))
+            {
+                <MudText Typo="Typo.body2">@Invoice.ContactMobile @Invoice.ContactEmail</MudText>
             }
             @if (!string.IsNullOrWhiteSpace(Invoice.CustomerPoNo))
             {
@@ -75,34 +83,72 @@
         </MudItem>
     </MudGrid>
 
-    <MudTable Items="Invoice.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0" Class="mt-4">
-        <HeaderContent>
-            <MudTh>#</MudTh>
-            <MudTh>Item &amp; Description</MudTh>
-            <MudTh Style="text-align:right">Qty</MudTh>
-            <MudTh>UOM</MudTh>
-            <MudTh Style="text-align:right">Rate</MudTh>
-            <MudTh Style="text-align:right">Discount</MudTh>
-            <MudTh Style="text-align:right">VAT %</MudTh>
-            <MudTh Style="text-align:right">Amount</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd>@context.LineNo</MudTd>
-            <MudTd>@context.Description</MudTd>
-            <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
-            <MudTd>@context.Uom</MudTd>
-            <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
-            <MudTd Style="text-align:right">@(context.DiscountValue > 0 ? (context.DiscountType == DiscountType.Percent ? $"{context.DiscountValue:N2}%" : $"AED {context.DiscountValue:N2}") : "—")</MudTd>
-            <MudTd Style="text-align:right">@context.VatRate.ToString("P0")</MudTd>
-            <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
-        </RowTemplate>
-    </MudTable>
+    @if (IsProServiceFormat)
+    {
+        <MudTable Items="Invoice.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0" Class="mt-4">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>Description</MudTh>
+                <MudTh Style="text-align:right">Qty</MudTh>
+                <MudTh Style="text-align:right">Govt Fee</MudTh>
+                <MudTh Style="text-align:right">Center Fee</MudTh>
+                <MudTh Style="text-align:right">Bank Charge</MudTh>
+                <MudTh Style="text-align:right">VAT %</MudTh>
+                <MudTh Style="text-align:right">Amount</MudTh>
+                <MudTh>Assigned To</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.LineNo</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.GovtFee.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.BankCharge.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@context.VatRate.ToString("P0")</MudTd>
+                <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                <MudTd>@context.AssignedTo</MudTd>
+            </RowTemplate>
+        </MudTable>
 
-    <MudStack Class="mt-3" AlignItems="AlignItems.End">
-        <MudText>Net: @Invoice.TotalNet.ToString("N2")</MudText>
-        <MudText>VAT: @Invoice.TotalVat.ToString("N2")</MudText>
-        <MudText Typo="Typo.h6">Total: AED @Invoice.TotalGross.ToString("N2")</MudText>
-    </MudStack>
+        <MudStack Class="mt-3" AlignItems="AlignItems.End">
+            <MudText>Govt Fee: @Invoice.Lines.Sum(l => l.Quantity * l.GovtFee).ToString("N2")</MudText>
+            <MudText>Center Fee: @Invoice.Lines.Sum(l => l.TaxableNet).ToString("N2")</MudText>
+            <MudText>Bank Charge: @Invoice.Lines.Sum(l => l.Quantity * l.BankCharge).ToString("N2")</MudText>
+            <MudText>VAT: @Invoice.TotalVat.ToString("N2")</MudText>
+            <MudText Typo="Typo.h6">Grand Total: AED @Invoice.TotalGross.ToString("N2")</MudText>
+        </MudStack>
+    }
+    else
+    {
+        <MudTable Items="Invoice.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0" Class="mt-4">
+            <HeaderContent>
+                <MudTh>#</MudTh>
+                <MudTh>Item &amp; Description</MudTh>
+                <MudTh Style="text-align:right">Qty</MudTh>
+                <MudTh>UOM</MudTh>
+                <MudTh Style="text-align:right">Rate</MudTh>
+                <MudTh Style="text-align:right">Discount</MudTh>
+                <MudTh Style="text-align:right">VAT %</MudTh>
+                <MudTh Style="text-align:right">Amount</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.LineNo</MudTd>
+                <MudTd>@context.Description</MudTd>
+                <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+                <MudTd>@context.Uom</MudTd>
+                <MudTd Style="text-align:right">@context.UnitPrice.ToString("N2")</MudTd>
+                <MudTd Style="text-align:right">@(context.DiscountValue > 0 ? (context.DiscountType == DiscountType.Percent ? $"{context.DiscountValue:N2}%" : $"AED {context.DiscountValue:N2}") : "—")</MudTd>
+                <MudTd Style="text-align:right">@context.VatRate.ToString("P0")</MudTd>
+                <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <MudStack Class="mt-3" AlignItems="AlignItems.End">
+            <MudText>Net: @Invoice.TotalNet.ToString("N2")</MudText>
+            <MudText>VAT: @Invoice.TotalVat.ToString("N2")</MudText>
+            <MudText Typo="Typo.h6">Total: AED @Invoice.TotalGross.ToString("N2")</MudText>
+        </MudStack>
+    }
 
     <MudText Typo="Typo.body2" Class="mt-3"><b>Amount Chargeable (in words):</b> @AmountInWords.ToWords(Invoice.TotalGross)</MudText>
 
@@ -210,6 +256,8 @@
     [Parameter] public CompanySetup? Company { get; set; }
     [Parameter] public decimal Balance { get; set; }
     [Parameter] public ArStatus Status { get; set; }
+
+    private bool IsProServiceFormat => Invoice.Lines.Any(l => l.GovtFee > 0 || l.BankCharge > 0);
 
     private string? EmirateLabel => Company?.Emirate ?? Company?.AddressEmirate;
 
