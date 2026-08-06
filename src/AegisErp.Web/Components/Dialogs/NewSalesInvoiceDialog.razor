@@ -3,6 +3,7 @@
 @inject ChartOfAccountsService Coa
 @inject LedgerService Ledger
 @inject ItemService ItemSvc
+@inject ServiceKitService KitSvc
 @inject CompanyService CompanySvc
 @inject ISnackbar Snackbar
 
@@ -37,15 +38,47 @@
             <MudItem xs="12" sm="2">
                 <MudTextField Value="@_dueLabel" Label="Due date" ReadOnly="true" />
             </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudTextField @bind-Value="_customerPoNo" Label="Customer PO No." Placeholder="Optional" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudTextField @bind-Value="_deliveryNoteRef" Label="Delivery Note Ref." Placeholder="Optional" />
-            </MudItem>
-            <MudItem xs="12" sm="4">
-                <MudTextField @bind-Value="_salesOrderRef" Label="Sales Order Ref." Placeholder="Optional" />
-            </MudItem>
+            @if (_proServiceFormat)
+            {
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="int?" Value="_organizationId" ValueChanged="OnOrganizationChanged" Label="Organization" Dense="true" Clearable="true">
+                        @if (_organizations is not null)
+                        {
+                            @foreach (var o in _organizations)
+                            {
+                                <MudSelectItem T="int?" Value="o.Id">@o.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_billingAddress" Label="Billing Address" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_contactMobile" Label="Mobile" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_contactEmail" Label="Email" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_contactTrn" Label="Customer TRN" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_contactPerson" Label="Contact Person" Placeholder="Optional" />
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_customerPoNo" Label="Customer PO No." Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_deliveryNoteRef" Label="Delivery Note Ref." Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="_salesOrderRef" Label="Sales Order Ref." Placeholder="Optional" />
+                </MudItem>
+            }
             <MudItem xs="12" sm="@SubjectWidth">
                 <MudTextField @bind-Value="_subject" Label="Subject" Placeholder="Let your customer know what this invoice is for" />
             </MudItem>
@@ -87,101 +120,206 @@
             </MudItem>
         </MudGrid>
 
-        <div class="line-table-scroll">
-        <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-4 mb-2">
-            <HeaderContent>
-                <MudTh Style="width:40px">#</MudTh>
-                <MudTh Style="min-width:180px">Item</MudTh>
-                <MudTh Style="min-width:160px">Description</MudTh>
-                <MudTh Style="min-width:200px">Revenue Account</MudTh>
-                <MudTh Style="min-width:90px;text-align:right">Qty</MudTh>
-                <MudTh Style="min-width:90px">UOM</MudTh>
-                <MudTh Style="min-width:130px;text-align:right">Unit Price</MudTh>
-                <MudTh Style="min-width:160px;text-align:right">Discount</MudTh>
-                <MudTh Style="min-width:90px">VAT</MudTh>
-                <MudTh Style="min-width:130px;text-align:right">Line Total</MudTh>
-                <MudTh Style="width:48px">Doc</MudTh>
-                <MudTh Style="width:48px"></MudTh>
-            </HeaderContent>
-            <RowTemplate>
-                <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
-                <MudTd>
-                    <MudSelect T="int" Value="context.ItemId ?? 0" ValueChanged="v => OnItemChanged(context, v)" Dense="true" Margin="Margin.Dense" Clearable="true">
-                        <MudSelectItem Value="0">— none —</MudSelectItem>
-                        @if (_items is not null)
-                        {
-                            @foreach (var it in _items)
-                            {
-                                <MudSelectItem Value="it.Id">@it.Code — @it.Name</MudSelectItem>
-                            }
-                        }
-                    </MudSelect>
-                </MudTd>
-                <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service / item" /></MudTd>
-                <MudTd>
-                    <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
-                        <MudSelectItem Value="0">— select —</MudSelectItem>
-                        @if (_revenueAccounts is not null)
-                        {
-                            @foreach (var a in _revenueAccounts)
-                            {
-                                <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
-                            }
-                        }
-                    </MudSelect>
-                </MudTd>
-                <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
-                <MudTd><MudTextField @bind-Value="context.Uom" Margin="Margin.Dense" Placeholder="unit" /></MudTd>
-                <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
-                <MudTd>
-                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                        <MudNumericField T="decimal" @bind-Value="context.DiscountValue" Min="0"
-                                         Max="@(context.DiscountType == DiscountType.Percent ? 100m : decimal.MaxValue)"
-                                         HideSpinButtons="true" Margin="Margin.Dense" Style="min-width:80px" />
-                        <MudSelect T="DiscountType" @bind-Value="context.DiscountType" Dense="true" Margin="Margin.Dense" Style="min-width:80px">
-                            <MudSelectItem Value="DiscountType.Percent">%</MudSelectItem>
-                            <MudSelectItem Value="DiscountType.Amount">AED</MudSelectItem>
-                        </MudSelect>
-                    </MudStack>
-                </MudTd>
-                <MudTd>
-                    <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
-                        <MudSelectItem Value="0.05m">5%</MudSelectItem>
-                        <MudSelectItem Value="0m">0%</MudSelectItem>
-                    </MudSelect>
-                </MudTd>
-                <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
-                <MudTd>
-                    <MudTooltip Text="@(context.AttachmentFileName ?? "Attach supporting document for this line")">
-                        <MudFileUpload T="IBrowserFile" FilesChanged="@(f => OnLineFileSelected(context, f))" Accept=".pdf,.jpg,.jpeg,.png">
-                            <ActivatorContent>
-                                <MudIconButton Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small"
-                                               Color="@(context.AttachmentFileName is null ? Color.Default : Color.Primary)" />
-                            </ActivatorContent>
-                        </MudFileUpload>
-                    </MudTooltip>
-                    @if (context.AttachmentFileName is not null)
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
+            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
+            @if (_proServiceFormat)
+            {
+                <MudMenu Icon="@Icons.Material.Filled.Widgets" Variant="Variant.Outlined" Label="Insert Kit" EndIcon="@Icons.Material.Filled.ArrowDropDown">
+                    @if (_kits is null || _kits.Count == 0)
                     {
-                        <MudTooltip Text="Remove attachment">
-                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error"
-                                           OnClick="@(() => RemoveLineAttachment(context))" />
-                        </MudTooltip>
+                        <MudMenuItem Disabled="true">No kits defined yet</MudMenuItem>
                     }
-                </MudTd>
-                <MudTd>
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                                   OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
-                </MudTd>
-            </RowTemplate>
-        </MudTable>
+                    else
+                    {
+                        @foreach (var k in _kits)
+                        {
+                            <MudMenuItem OnClick="@(() => InsertKit(k))">@k.Name (@k.Lines.Count)</MudMenuItem>
+                        }
+                    }
+                </MudMenu>
+            }
+        </MudStack>
+
+        <div class="line-table-scroll">
+        @if (_proServiceFormat)
+        {
+            <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-2 mb-2">
+                <HeaderContent>
+                    <MudTh Style="width:40px">#</MudTh>
+                    <MudTh Style="min-width:160px">Service Type</MudTh>
+                    <MudTh Style="min-width:160px">Description</MudTh>
+                    <MudTh Style="min-width:200px">Revenue Account</MudTh>
+                    <MudTh Style="min-width:80px;text-align:right">Qty</MudTh>
+                    <MudTh Style="min-width:110px;text-align:right">Govt Fee</MudTh>
+                    <MudTh Style="min-width:110px;text-align:right">Center Fee</MudTh>
+                    <MudTh Style="min-width:110px;text-align:right">Bank Charge</MudTh>
+                    <MudTh Style="min-width:90px">VAT</MudTh>
+                    <MudTh Style="min-width:100px;text-align:right">VAT Amt</MudTh>
+                    <MudTh Style="min-width:130px;text-align:right">Total</MudTh>
+                    <MudTh Style="min-width:160px">Assigned To</MudTh>
+                    <MudTh Style="width:48px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
+                    <MudTd>
+                        <MudSelect T="int" Value="context.ItemId ?? 0" ValueChanged="v => OnItemChanged(context, v)" Dense="true" Margin="Margin.Dense" Clearable="true">
+                            <MudSelectItem Value="0">— none —</MudSelectItem>
+                            @if (_items is not null)
+                            {
+                                @foreach (var it in _items)
+                                {
+                                    <MudSelectItem Value="it.Id">@it.Code — @it.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service line" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0">— select —</MudSelectItem>
+                            @if (_revenueAccounts is not null)
+                            {
+                                @foreach (var a in _revenueAccounts)
+                                {
+                                    <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.GovtFee" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.BankCharge" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                            <MudSelectItem Value="0m">0%</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd Style="text-align:right">@context.Vat.ToString("N2")</MudTd>
+                    <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudSelect T="string" @bind-Value="context.AssignedTo" Dense="true" Margin="Margin.Dense" Clearable="true">
+                            @foreach (var sp in _salespersons)
+                            {
+                                <MudSelectItem Value="@sp">@sp</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+        else
+        {
+            <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0" Class="mt-2 mb-2">
+                <HeaderContent>
+                    <MudTh Style="width:40px">#</MudTh>
+                    <MudTh Style="min-width:180px">Item</MudTh>
+                    <MudTh Style="min-width:160px">Description</MudTh>
+                    <MudTh Style="min-width:200px">Revenue Account</MudTh>
+                    <MudTh Style="min-width:90px;text-align:right">Qty</MudTh>
+                    <MudTh Style="min-width:90px">UOM</MudTh>
+                    <MudTh Style="min-width:130px;text-align:right">Unit Price</MudTh>
+                    <MudTh Style="min-width:160px;text-align:right">Discount</MudTh>
+                    <MudTh Style="min-width:90px">VAT</MudTh>
+                    <MudTh Style="min-width:130px;text-align:right">Line Total</MudTh>
+                    <MudTh Style="width:48px">Doc</MudTh>
+                    <MudTh Style="width:48px"></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@(_lines.IndexOf(context) + 1)</MudTd>
+                    <MudTd>
+                        <MudSelect T="int" Value="context.ItemId ?? 0" ValueChanged="v => OnItemChanged(context, v)" Dense="true" Margin="Margin.Dense" Clearable="true">
+                            <MudSelectItem Value="0">— none —</MudSelectItem>
+                            @if (_items is not null)
+                            {
+                                @foreach (var it in _items)
+                                {
+                                    <MudSelectItem Value="it.Id">@it.Code — @it.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service / item" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="int" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0">— select —</MudSelectItem>
+                            @if (_revenueAccounts is not null)
+                            {
+                                @foreach (var a in _revenueAccounts)
+                                {
+                                    <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                                }
+                            }
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.Quantity" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd><MudTextField @bind-Value="context.Uom" Margin="Margin.Dense" Placeholder="unit" /></MudTd>
+                    <MudTd><MudNumericField T="decimal" @bind-Value="context.UnitPrice" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                    <MudTd>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudNumericField T="decimal" @bind-Value="context.DiscountValue" Min="0"
+                                             Max="@(context.DiscountType == DiscountType.Percent ? 100m : decimal.MaxValue)"
+                                             HideSpinButtons="true" Margin="Margin.Dense" Style="min-width:80px" />
+                            <MudSelect T="DiscountType" @bind-Value="context.DiscountType" Dense="true" Margin="Margin.Dense" Style="min-width:80px">
+                                <MudSelectItem Value="DiscountType.Percent">%</MudSelectItem>
+                                <MudSelectItem Value="DiscountType.Amount">AED</MudSelectItem>
+                            </MudSelect>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd>
+                        <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                            <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                            <MudSelectItem Value="0m">0%</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd Style="text-align:right;font-weight:600">@context.Gross.ToString("N2")</MudTd>
+                    <MudTd>
+                        <MudTooltip Text="@(context.AttachmentFileName ?? "Attach supporting document for this line")">
+                            <MudFileUpload T="IBrowserFile" FilesChanged="@(f => OnLineFileSelected(context, f))" Accept=".pdf,.jpg,.jpeg,.png">
+                                <ActivatorContent>
+                                    <MudIconButton Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small"
+                                                   Color="@(context.AttachmentFileName is null ? Color.Default : Color.Primary)" />
+                                </ActivatorContent>
+                            </MudFileUpload>
+                        </MudTooltip>
+                        @if (context.AttachmentFileName is not null)
+                        {
+                            <MudTooltip Text="Remove attachment">
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error"
+                                               OnClick="@(() => RemoveLineAttachment(context))" />
+                            </MudTooltip>
+                        }
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
         </div>
 
         <MudStack Row="true" AlignItems="AlignItems.Center">
-            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
             <MudSpacer />
-            <MudText Class="mr-4">Net: <b>@TotalNet.ToString("N2")</b></MudText>
-            <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
-            <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+            @if (_proServiceFormat)
+            {
+                <MudText Class="mr-4">Govt Fee: <b>@TotalGovtFee.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Center Fee: <b>@TotalCenterFee.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Bank Charge: <b>@TotalBankCharge.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Grand Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+            }
+            else
+            {
+                <MudText Class="mr-4">Net: <b>@TotalNet.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
+            }
         </MudStack>
 
         @* Notes / Terms & Conditions sit below the line items — same place they print, matching
@@ -221,6 +359,16 @@
     private List<Account>? _revenueAccounts;
     private List<FiscalPeriod>? _periods;
     private List<Item>? _items;
+    private List<ServiceKit>? _kits;
+    private List<CustomerOrganization>? _organizations;
+
+    private bool _proServiceFormat;
+    private int? _organizationId;
+    private string? _contactMobile;
+    private string? _contactEmail;
+    private string? _contactTrn;
+    private string? _contactPerson;
+    private string? _billingAddress;
 
     private int _customerId;
     private DateTime? _date = DateTime.Today;
@@ -252,6 +400,9 @@
     private decimal TotalNet => _lines.Sum(l => l.Net);
     private decimal TotalVat => _lines.Sum(l => l.Vat);
     private decimal TotalGross => _lines.Sum(l => l.Gross);
+    private decimal TotalGovtFee => _lines.Sum(l => l.Quantity * l.GovtFee);
+    private decimal TotalCenterFee => _lines.Sum(l => l.TaxableNet);
+    private decimal TotalBankCharge => _lines.Sum(l => l.Quantity * l.BankCharge);
     private bool CanPost => _customerId > 0 && _periodId > 0 && TotalGross > 0
                             && _lines.All(l => l.RevenueAccountId > 0 && !string.IsNullOrWhiteSpace(l.Description));
     // Looser than CanPost: a draft can be saved before every account/price detail is finalized.
@@ -276,11 +427,19 @@
         _salespersonEnabled = company?.SalespersonEnabled ?? false;
         _salespersons = company?.Salespersons.Select(s => s.Name).OrderBy(n => n).ToList() ?? new();
         _revenueRecognitionEnabled = company?.RevenueRecognitionEnabled ?? false;
+        _proServiceFormat = company?.ProServiceModeEnabled ?? false;
+        if (_proServiceFormat) _kits = await KitSvc.GetAllAsync(activeOnly: true);
 
         var seed = Existing ?? CloneFrom;
         if (seed is not null)
         {
             _customerId = seed.CustomerId;
+            _organizationId = seed.OrganizationId;
+            _contactMobile = seed.ContactMobile;
+            _contactEmail = seed.ContactEmail;
+            _contactTrn = seed.ContactTrn;
+            _contactPerson = seed.ContactPerson;
+            _billingAddress = seed.BillingAddressSnapshot;
             _date = Existing is not null ? seed.Date.ToDateTime(TimeOnly.MinValue) : DateTime.Today;
             _narration = seed.Narration;
             _customerPoNo = seed.CustomerPoNo;
@@ -297,6 +456,11 @@
                 _invoiceAttachmentFileName = Existing.AttachmentFileName;
                 _invoiceAttachmentContentType = Existing.AttachmentContentType;
             }
+            if (_proServiceFormat && _customerId > 0)
+            {
+                var customer = await CustomerSvc.GetByIdAsync(_customerId);
+                _organizations = customer?.Organizations.Where(o => o.IsActive).ToList();
+            }
             _lines.Clear();
             foreach (var l in seed.Lines.OrderBy(l => l.LineNo))
                 _lines.Add(new LineVm
@@ -312,6 +476,9 @@
                     DiscountValue = l.DiscountValue,
                     DiscountType = l.DiscountType,
                     Uom = l.Uom,
+                    GovtFee = l.GovtFee,
+                    BankCharge = l.BankCharge,
+                    AssignedTo = l.AssignedTo,
                     AttachmentFileName = l.AttachmentFileName,
                     AttachmentContentType = l.AttachmentContentType,
                     AttachmentBytes = l.AttachmentData,
@@ -437,7 +604,9 @@
         line.AttachmentContentType = null;
     }
 
-    private void OnCustomerChanged(int id)
+    /// <summary>Auto-fills the contact snapshot fields from the newly selected customer (PRO Service
+    /// Mode only) — mirrors Estimate's own <c>OnCustomerChanged</c>. Fields stay editable afterwards.</summary>
+    private async Task OnCustomerChanged(int id)
     {
         _customerId = id;
         var c = _customers?.FirstOrDefault(x => x.Id == id);
@@ -445,6 +614,46 @@
         if (_salespersonEnabled && string.IsNullOrWhiteSpace(_salesperson)) _salesperson = c?.Salesperson;
         ApplyZeroRateDefaultToBlankLines();
         UpdateDueLabel();
+
+        _organizationId = null;
+        _organizations = null;
+        if (!_proServiceFormat || id == 0) return;
+
+        var customer = await CustomerSvc.GetByIdAsync(id);
+        if (customer is null) return;
+        _organizations = customer.Organizations.Where(o => o.IsActive).ToList();
+        _contactMobile = customer.Mobile;
+        _contactEmail = customer.Email;
+        _contactTrn = customer.Trn;
+        _contactPerson = customer.ContactPersons.FirstOrDefault()?.FirstName;
+        _billingAddress = customer.BillingAddressLine1;
+    }
+
+    /// <summary>Picking an Organization overwrites the Contact TRN with the organization's own —
+    /// a PRO services company processes government paperwork per specific trade license.</summary>
+    private void OnOrganizationChanged(int? id)
+    {
+        _organizationId = id;
+        var org = _organizations?.FirstOrDefault(o => o.Id == id);
+        if (org is not null) _contactTrn = org.Trn;
+    }
+
+    /// <summary>Appends a kit's predefined lines to the invoice — pure client-side line population,
+    /// no relationship persisted between the kit and this invoice.</summary>
+    private void InsertKit(ServiceKit kit)
+    {
+        foreach (var l in kit.Lines.OrderBy(l => l.SortOrder))
+            _lines.Add(new LineVm
+            {
+                Description = l.Description,
+                RevenueAccountId = l.RevenueAccountId ?? 0,
+                GovtFee = l.GovtFee,
+                UnitPrice = l.CenterFee,
+                BankCharge = l.BankCharge,
+                VatRate = l.VatRate,
+            });
+        if (_lines.Count > 1 && _lines[0].Description == "" && _lines[0].GovtFee == 0 && _lines[0].UnitPrice == 0 && _lines[0].BankCharge == 0)
+            _lines.RemoveAt(0); // drop the still-blank starter row once real lines exist
     }
 
     private async Task OnDateChanged(DateTime? d)
@@ -484,7 +693,7 @@
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new InvoiceLineInput(
                 l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate, l.ItemId,
-                l.DiscountValue, l.Uom, _recognition, l.DiscountType));
+                l.DiscountValue, l.Uom, _recognition, l.DiscountType, l.GovtFee, l.BankCharge, l.AssignedTo));
 
             SalesInvoice inv;
             if (IsEdit)
@@ -492,7 +701,11 @@
                 await InvoiceSvc.UpdateDraftAsync(Existing!.Id, _customerId,
                     DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _narration, inputs,
                     _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
-                    _subject, _termsAndConditions, _salesperson);
+                    _subject, _termsAndConditions, _salesperson,
+                    _proServiceFormat ? _organizationId : null,
+                    _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
+                    _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
+                    _proServiceFormat ? _billingAddress : null);
                 inv = await InvoiceSvc.PostDraftAsync(Existing!.Id, userName, DateTime.UtcNow);
             }
             else
@@ -501,7 +714,11 @@
                     _customerId, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
                     _narration, userName, inputs, DateTime.UtcNow,
                     _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
-                    _subject, _termsAndConditions, _salesperson);
+                    _subject, _termsAndConditions, _salesperson,
+                    _proServiceFormat ? _organizationId : null,
+                    _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
+                    _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
+                    _proServiceFormat ? _billingAddress : null);
             }
             await SaveLineAttachmentsAsync(inv);
             await SaveInvoiceAttachmentAsync(inv);
@@ -524,7 +741,7 @@
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _lines.Select(l => new InvoiceLineInput(
                 l.Description, l.RevenueAccountId, l.CostCenterId, l.Quantity, l.UnitPrice, l.VatRate, l.ItemId,
-                l.DiscountValue, l.Uom, _recognition, l.DiscountType));
+                l.DiscountValue, l.Uom, _recognition, l.DiscountType, l.GovtFee, l.BankCharge, l.AssignedTo));
 
             SalesInvoice inv;
             if (IsEdit)
@@ -532,7 +749,11 @@
                 inv = await InvoiceSvc.UpdateDraftAsync(Existing!.Id, _customerId,
                     DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _narration, inputs,
                     _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
-                    _subject, _termsAndConditions, _salesperson);
+                    _subject, _termsAndConditions, _salesperson,
+                    _proServiceFormat ? _organizationId : null,
+                    _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
+                    _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
+                    _proServiceFormat ? _billingAddress : null);
                 Snackbar.Add($"Updated {inv.InvoiceNo}.", Severity.Success);
             }
             else
@@ -541,7 +762,11 @@
                     _customerId, DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId,
                     _narration, userName, inputs, DateTime.UtcNow,
                     _customerPoNo, _deliveryNoteRef, _salesOrderRef, _notes, _paymentTermsDays,
-                    _subject, _termsAndConditions, _salesperson);
+                    _subject, _termsAndConditions, _salesperson,
+                    _proServiceFormat ? _organizationId : null,
+                    _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
+                    _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
+                    _proServiceFormat ? _billingAddress : null);
                 Snackbar.Add($"Saved {inv.InvoiceNo} as a draft.", Severity.Success);
             }
             await SaveLineAttachmentsAsync(inv);
@@ -588,15 +813,19 @@
         public decimal DiscountValue { get; set; }
         public DiscountType DiscountType { get; set; } = DiscountType.Percent;
         public string? Uom { get; set; }
+        public decimal GovtFee { get; set; }
+        public decimal BankCharge { get; set; }
+        public string? AssignedTo { get; set; }
 
         public string? AttachmentFileName { get; set; }
         public string? AttachmentContentType { get; set; }
         public byte[]? AttachmentBytes { get; set; }
 
-        public decimal Net => DiscountType == DiscountType.Percent
+        public decimal TaxableNet => DiscountType == DiscountType.Percent
             ? Math.Round(Quantity * UnitPrice * (1 - DiscountValue / 100m), 2, MidpointRounding.AwayFromZero)
             : Math.Round(Math.Max(0, Quantity * UnitPrice - DiscountValue), 2, MidpointRounding.AwayFromZero);
-        public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
+        public decimal Net => TaxableNet + Math.Round(Quantity * (GovtFee + BankCharge), 2, MidpointRounding.AwayFromZero);
+        public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
         public decimal Gross => Net + Vat;
     }
 }

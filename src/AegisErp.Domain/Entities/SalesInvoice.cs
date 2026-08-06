@@ -17,6 +17,22 @@ public class SalesInvoice : ICompanyScoped
     public int CustomerId { get; set; }
     public Customer Customer { get; set; } = null!;
 
+    /// <summary>The customer's trade license/legal entity this invoice is for — only relevant when
+    /// <see cref="CompanySetup.ProServiceModeEnabled"/> is on. Picking one fills <see cref="ContactTrn"/>
+    /// from the organization's own TRN instead of the customer's.</summary>
+    public int? OrganizationId { get; set; }
+    public CustomerOrganization? Organization { get; set; }
+
+    /// <summary>Contact snapshot fields (PRO Service Mode only) — auto-filled from the selected
+    /// Customer/Organization on the form but stored here so a later edit to the Customer record
+    /// doesn't retroactively change a past invoice. Also carried straight through from an Estimate
+    /// on <see cref="AegisErp.Infrastructure.Services.EstimateService.ConvertToInvoiceAsync"/>.</summary>
+    public string? ContactMobile { get; set; }
+    public string? ContactEmail { get; set; }
+    public string? ContactTrn { get; set; }
+    public string? ContactPerson { get; set; }
+    public string? BillingAddressSnapshot { get; set; }
+
     public DateOnly Date { get; set; }
     public DateOnly DueDate { get; set; }
 
@@ -246,10 +262,23 @@ public class SalesInvoiceLine
     public int? SupplierId { get; set; }
     public Vendor? Supplier { get; set; }
 
-    public decimal Net => DiscountType == DiscountType.Percent
+    /// <summary>Non-taxable disbursements (PRO Service Mode only) — a government fee and a bank
+    /// charge passed straight through to the customer at cost, with no VAT applied. Default 0, so
+    /// every invoice saved before these fields existed has an unchanged <see cref="Net"/>.</summary>
+    public decimal GovtFee { get; set; }
+    public decimal BankCharge { get; set; }
+
+    /// <summary>Staff member this line is assigned to (PRO Service Mode only) — a name from
+    /// <see cref="CompanySetup.Salespersons"/>, not a separate staff/employee entity.</summary>
+    public string? AssignedTo { get; set; }
+
+    /// <summary>The taxable base — <see cref="UnitPrice"/> doubles as "Center Fee" in PRO Service
+    /// Mode. VAT applies only to this, never to <see cref="GovtFee"/>/<see cref="BankCharge"/>.</summary>
+    public decimal TaxableNet => DiscountType == DiscountType.Percent
         ? Math.Round(Quantity * UnitPrice * (1 - DiscountValue / 100m), 2, MidpointRounding.AwayFromZero)
         : Math.Round(Math.Max(0, Quantity * UnitPrice - DiscountValue), 2, MidpointRounding.AwayFromZero);
-    public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
+    public decimal Net => TaxableNet + Math.Round(Quantity * (GovtFee + BankCharge), 2, MidpointRounding.AwayFromZero);
+    public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;
 }
 

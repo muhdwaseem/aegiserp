@@ -9,7 +9,8 @@ public record InvoiceLineInput(string Description, int RevenueAccountId, int? Co
     decimal Quantity, decimal UnitPrice, decimal VatRate, int? ItemId = null,
     decimal DiscountValue = 0, string? Uom = null,
     RevenueRecognition Recognition = RevenueRecognition.Direct,
-    DiscountType DiscountType = DiscountType.Percent);
+    DiscountType DiscountType = DiscountType.Percent,
+    decimal GovtFee = 0, decimal BankCharge = 0, string? AssignedTo = null);
 
 public class SalesInvoiceService
 {
@@ -187,7 +188,9 @@ public class SalesInvoiceService
         string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
         string? notes = null, int? paymentTermsDays = null,
-        string? subject = null, string? termsAndConditions = null, string? salesperson = null)
+        string? subject = null, string? termsAndConditions = null, string? salesperson = null,
+        int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -198,6 +201,12 @@ public class SalesInvoiceService
         {
             InvoiceNo = await NextInvoiceNoAsync(db, date.Year),
             CustomerId = customerId,
+            OrganizationId = organizationId,
+            ContactMobile = contactMobile,
+            ContactEmail = contactEmail,
+            ContactTrn = contactTrn,
+            ContactPerson = contactPerson,
+            BillingAddressSnapshot = billingAddress,
             Date = date,
             DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
@@ -232,6 +241,9 @@ public class SalesInvoiceService
                 DiscountType = l.DiscountType,
                 Uom = l.Uom,
                 Recognition = l.Recognition,
+                GovtFee = l.GovtFee,
+                BankCharge = l.BankCharge,
+                AssignedTo = l.AssignedTo,
             });
         }
         if (invoice.Lines.Count == 0)
@@ -252,7 +264,9 @@ public class SalesInvoiceService
         IEnumerable<InvoiceLineInput> lines,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
         string? notes = null, int? paymentTermsDays = null,
-        string? subject = null, string? termsAndConditions = null, string? salesperson = null)
+        string? subject = null, string? termsAndConditions = null, string? salesperson = null,
+        int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -267,6 +281,12 @@ public class SalesInvoiceService
             ?? throw new PostingException("Customer not found.");
 
         invoice.CustomerId = customerId;
+        invoice.OrganizationId = organizationId;
+        invoice.ContactMobile = contactMobile;
+        invoice.ContactEmail = contactEmail;
+        invoice.ContactTrn = contactTrn;
+        invoice.ContactPerson = contactPerson;
+        invoice.BillingAddressSnapshot = billingAddress;
         invoice.Date = date;
         invoice.DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays);
         invoice.FiscalPeriodId = fiscalPeriodId;
@@ -298,6 +318,9 @@ public class SalesInvoiceService
                 DiscountType = l.DiscountType,
                 Uom = l.Uom,
                 Recognition = l.Recognition,
+                GovtFee = l.GovtFee,
+                BankCharge = l.BankCharge,
+                AssignedTo = l.AssignedTo,
             });
         }
         if (invoice.Lines.Count == 0)
@@ -621,7 +644,9 @@ public class SalesInvoiceService
         string createdBy, IEnumerable<InvoiceLineInput> lines, DateTime nowUtc,
         string? customerPoNo = null, string? deliveryNoteRef = null, string? salesOrderRef = null,
         string? notes = null, int? paymentTermsDays = null,
-        string? subject = null, string? termsAndConditions = null, string? salesperson = null)
+        string? subject = null, string? termsAndConditions = null, string? salesperson = null,
+        int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -635,6 +660,12 @@ public class SalesInvoiceService
         {
             InvoiceNo = invoiceNo,
             CustomerId = customerId,
+            OrganizationId = organizationId,
+            ContactMobile = contactMobile,
+            ContactEmail = contactEmail,
+            ContactTrn = contactTrn,
+            ContactPerson = contactPerson,
+            BillingAddressSnapshot = billingAddress,
             Date = date,
             DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
@@ -667,6 +698,9 @@ public class SalesInvoiceService
                 DiscountType = l.DiscountType,
                 Uom = l.Uom,
                 Recognition = l.Recognition,
+                GovtFee = l.GovtFee,
+                BankCharge = l.BankCharge,
+                AssignedTo = l.AssignedTo,
             });
 
         invoice.Post(createdBy, nowUtc); // domain validation (positive totals, valid lines, due date)

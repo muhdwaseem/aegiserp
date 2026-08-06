@@ -306,11 +306,17 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(i => i.AttachmentContentType).HasMaxLength(100);
             e.Property(i => i.LockedBy).HasMaxLength(80);
             e.Property(i => i.ShareToken).HasMaxLength(40);
+            e.Property(i => i.ContactMobile).HasMaxLength(30);
+            e.Property(i => i.ContactEmail).HasMaxLength(160);
+            e.Property(i => i.ContactTrn).HasMaxLength(20);
+            e.Property(i => i.ContactPerson).HasMaxLength(160);
+            e.Property(i => i.BillingAddressSnapshot).HasMaxLength(400);
             e.HasIndex(i => i.ShareToken).IsUnique(); // multiple NULLs are fine — only generated tokens must be unique
             e.Ignore(i => i.TotalNet);
             e.Ignore(i => i.TotalVat);
             e.Ignore(i => i.TotalGross);
             e.HasOne(i => i.Customer).WithMany().HasForeignKey(i => i.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(i => i.Organization).WithMany().HasForeignKey(i => i.OrganizationId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(i => i.FiscalPeriod).WithMany().HasForeignKey(i => i.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(i => i.JournalVoucher).WithMany().HasForeignKey(i => i.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(i => i.Lines).WithOne(l => l.SalesInvoice).HasForeignKey(l => l.SalesInvoiceId).OnDelete(DeleteBehavior.Cascade);
@@ -354,6 +360,10 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.AttachmentContentType).HasMaxLength(100);
             e.Property(l => l.Recognition).HasConversion<string>().HasMaxLength(20);
             e.Property(l => l.CompletedBy).HasMaxLength(80);
+            e.Property(l => l.GovtFee).HasPrecision(18, 2);
+            e.Property(l => l.BankCharge).HasPrecision(18, 2);
+            e.Property(l => l.AssignedTo).HasMaxLength(160);
+            e.Ignore(l => l.TaxableNet);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);
