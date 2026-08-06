@@ -1,0 +1,95 @@
+@page "/service-kits"
+@attribute [Authorize]
+@using AegisErp.Web.Components.Dialogs
+@inject ServiceKitService Kits
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject CompanySession Session
+@inject NavigationManager Navigation
+
+<PageTitle>Service Kits · Aegis ERP</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-1">Service Kits</MudText>
+<MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+    Reusable bundles of predefined lines (e.g. "New Company Formation") — pressing <b>Insert Kit</b> on
+    an Estimate or Sales Invoice appends a kit's lines in one action instead of typing them out by hand
+    every time.
+</MudText>
+
+<MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Filled" Color="Color.Primary" Class="mb-4" OnClick="AddKit">
+    New Kit
+</MudButton>
+
+<MudTable Items="_rows" Dense="true" Hover="true" Bordered="true" Striped="true" Loading="_rows is null">
+    <HeaderContent>
+        <MudTh>Name</MudTh>
+        <MudTh>Lines</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh Style="width:160px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd><b>@context.Name</b></MudTd>
+        <MudTd>@context.Lines.Count</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsActive ? Color.Success : Color.Default)" Variant="Variant.Text">
+                @(context.IsActive ? "Active" : "Inactive")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditKit(context))" />
+            <MudIconButton Icon="@(context.IsActive ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                           Size="Size.Small" OnClick="@(() => Toggle(context))" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => Delete(context))" />
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No service kits yet — add one above.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    private List<ServiceKit>? _rows;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAdminister) { Navigation.NavigateTo(""); return; }
+        await Load();
+    }
+
+    private async Task Load() => _rows = await Kits.GetAllAsync();
+
+    private async Task AddKit()
+    {
+        var result = await DialogService.ShowAsync<EditServiceKitDialog>("New Service Kit");
+        var r = await result.Result;
+        if (r is { Canceled: false }) await Load();
+    }
+
+    private async Task EditKit(ServiceKit kit)
+    {
+        var parameters = new DialogParameters<EditServiceKitDialog> { { x => x.Existing, kit } };
+        var result = await DialogService.ShowAsync<EditServiceKitDialog>($"Edit {kit.Name}", parameters);
+        var r = await result.Result;
+        if (r is { Canceled: false }) await Load();
+    }
+
+    private async Task Toggle(ServiceKit k)
+    {
+        await Kits.SetActiveAsync(k.Id, !k.IsActive);
+        await Load();
+    }
+
+    private async Task Delete(ServiceKit k)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete service kit", $"Delete \"{k.Name}\"?", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await Kits.DeleteAsync(k.Id);
+            Snackbar.Add($"\"{k.Name}\" deleted.", Severity.Success);
+            await Load();
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

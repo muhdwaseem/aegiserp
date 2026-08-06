@@ -1,4 +1,6 @@
+@implements IDisposable
 @inject CompanySession Session
+@inject CompanyService CompanySvc
 
 <MudNavMenu Class="pa-2">
     <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
@@ -54,6 +56,10 @@
             <MudNavLink Href="currencies" Icon="@Icons.Material.Filled.CurrencyExchange">Currencies</MudNavLink>
             <MudNavLink Href="tax-configuration" Icon="@Icons.Material.Filled.AccountBalance">Tax Configuration</MudNavLink>
             <MudNavLink Href="custom-fields-tags" Icon="@Icons.Material.Filled.Label">Custom Fields &amp; Tags</MudNavLink>
+            @if (_proServiceModeEnabled)
+            {
+                <MudNavLink Href="service-kits" Icon="@Icons.Material.Filled.Widgets">Service Kits</MudNavLink>
+            }
             @if (Session.IsFirmAdmin)
             {
                 <MudNavLink Href="companies" Icon="@Icons.Material.Filled.Domain">Companies &amp; Access</MudNavLink>
@@ -91,3 +97,31 @@
         background-color: rgba(255, 255, 255, 0.06);
     }
 </style>
+
+@code {
+    private bool _proServiceModeEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnCompanyChanged;
+        await LoadCompanyFlagsAsync();
+    }
+
+    private async void OnCompanyChanged()
+    {
+        await LoadCompanyFlagsAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadCompanyFlagsAsync()
+    {
+        try
+        {
+            var company = await CompanySvc.GetAsync();
+            _proServiceModeEnabled = company.ProServiceModeEnabled;
+        }
+        catch (PostingException) { _proServiceModeEnabled = false; } // no company selected yet
+    }
+
+    public void Dispose() => Session.Changed -= OnCompanyChanged;
+}

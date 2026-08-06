@@ -34,6 +34,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<UserCompanyAccess> UserCompanyAccess => Set<UserCompanyAccess>();
     public DbSet<Account> Accounts => Set<Account>();
     public DbSet<CostCenter> CostCenters => Set<CostCenter>();
+    public DbSet<ServiceKit> ServiceKits => Set<ServiceKit>();
+    public DbSet<ServiceKitLine> ServiceKitLines => Set<ServiceKitLine>();
     public DbSet<FiscalPeriod> FiscalPeriods => Set<FiscalPeriod>();
     public DbSet<JournalVoucher> JournalVouchers => Set<JournalVoucher>();
     public DbSet<JournalLine> JournalLines => Set<JournalLine>();
@@ -107,6 +109,22 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasIndex(c => new { c.CompanyId, c.Code }).IsUnique();
             e.Property(c => c.Code).HasMaxLength(20).IsRequired();
             e.Property(c => c.Name).HasMaxLength(120).IsRequired();
+        });
+
+        b.Entity<ServiceKit>(e =>
+        {
+            e.Property(k => k.Name).HasMaxLength(160).IsRequired();
+            e.HasMany(k => k.Lines).WithOne(l => l.ServiceKit).HasForeignKey(l => l.ServiceKitId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ServiceKitLine>(e =>
+        {
+            e.Property(l => l.Description).HasMaxLength(300).IsRequired();
+            e.Property(l => l.GovtFee).HasPrecision(18, 2);
+            e.Property(l => l.CenterFee).HasPrecision(18, 2);
+            e.Property(l => l.BankCharge).HasPrecision(18, 2);
+            e.Property(l => l.VatRate).HasPrecision(5, 4);
+            e.HasOne(l => l.RevenueAccount).WithMany().HasForeignKey(l => l.RevenueAccountId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<FiscalPeriod>(e =>
@@ -791,6 +809,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         // company still cannot see — or post into — another company's books.
         ConfigureCompanyScope<Account>(b);
         ConfigureCompanyScope<CostCenter>(b);
+        ConfigureCompanyScope<ServiceKit>(b);
         ConfigureCompanyScope<FiscalPeriod>(b);
         ConfigureCompanyScope<JournalVoucher>(b);
         ConfigureCompanyScope<JournalLine>(b);

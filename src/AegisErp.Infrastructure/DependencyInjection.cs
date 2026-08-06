@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<CurrencyService>();
         services.AddScoped<TaxCodeService>();
         services.AddScoped<ItemService>();
+        services.AddScoped<ServiceKitService>();
         services.AddScoped<CustomFieldService>();
         services.AddScoped<TagService>();
         services.AddScoped<RecurringInvoiceService>();

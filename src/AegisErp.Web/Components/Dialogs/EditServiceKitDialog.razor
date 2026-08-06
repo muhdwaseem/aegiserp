@@ -1,0 +1,121 @@
+@inject ServiceKitService Kits
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Existing is null ? "New Service Kit" : $"Edit {Existing.Name}")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Kit Name" Placeholder="e.g. New Company Formation" Class="mb-4" />
+
+        <MudTable Items="_lines" Dense="true" Bordered="true" Elevation="0">
+            <HeaderContent>
+                <MudTh Style="min-width:200px">Description</MudTh>
+                <MudTh Style="min-width:200px">Revenue Account</MudTh>
+                <MudTh Style="min-width:110px;text-align:right">Govt Fee</MudTh>
+                <MudTh Style="min-width:110px;text-align:right">Center Fee</MudTh>
+                <MudTh Style="min-width:110px;text-align:right">Bank Charge</MudTh>
+                <MudTh Style="min-width:90px">VAT</MudTh>
+                <MudTh Style="width:48px"></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd><MudTextField @bind-Value="context.Description" Margin="Margin.Dense" Placeholder="Service line" /></MudTd>
+                <MudTd>
+                    <MudSelect T="int?" @bind-Value="context.RevenueAccountId" Dense="true" Margin="Margin.Dense" Clearable="true">
+                        @if (_revenueAccounts is not null)
+                        {
+                            @foreach (var a in _revenueAccounts)
+                            {
+                                <MudSelectItem T="int?" Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.GovtFee" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.CenterFee" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                <MudTd><MudNumericField T="decimal" @bind-Value="context.BankCharge" Min="0" HideSpinButtons="true" Margin="Margin.Dense" /></MudTd>
+                <MudTd>
+                    <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                        <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                        <MudSelectItem Value="0m">0%</MudSelectItem>
+                    </MudSelect>
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => _lines.Remove(context))" Disabled="_lines.Count <= 1" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" Class="mt-2" OnClick="AddLine">Add line</MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_saving" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public ServiceKit? Existing { get; set; }
+
+    private List<Account>? _revenueAccounts;
+    private string _name = "";
+    private bool _saving;
+    private readonly List<LineVm> _lines = new() { new() };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _revenueAccounts = accounts.Where(a => a.Type == AccountType.Income).ToList();
+
+        if (Existing is not null)
+        {
+            _name = Existing.Name;
+            _lines.Clear();
+            foreach (var l in Existing.Lines.OrderBy(l => l.SortOrder))
+                _lines.Add(new LineVm
+                {
+                    Description = l.Description,
+                    RevenueAccountId = l.RevenueAccountId,
+                    GovtFee = l.GovtFee,
+                    CenterFee = l.CenterFee,
+                    BankCharge = l.BankCharge,
+                    VatRate = l.VatRate,
+                });
+        }
+    }
+
+    private void AddLine() => _lines.Add(new());
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            var inputs = _lines.Select(l => new ServiceKitLineInput(
+                l.Description, l.RevenueAccountId, l.GovtFee, l.CenterFee, l.BankCharge, l.VatRate));
+
+            if (Existing is null)
+                await Kits.CreateAsync(_name, inputs);
+            else
+                await Kits.UpdateAsync(Existing.Id, _name, inputs);
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private class LineVm
+    {
+        public string Description { get; set; } = "";
+        public int? RevenueAccountId { get; set; }
+        public decimal GovtFee { get; set; }
+        public decimal CenterFee { get; set; }
+        public decimal BankCharge { get; set; }
+        public decimal VatRate { get; set; } = 0.05m;
+    }
+}
