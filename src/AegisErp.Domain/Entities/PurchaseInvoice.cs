@@ -24,7 +24,7 @@ public class PurchaseInvoice : ICompanyScoped
     public Vendor Vendor { get; set; } = null!;
 
     /// <summary>One Cost Center for the whole bill — only used by the "PRO Service" invoice
-    /// format (<see cref="CompanySetup.ProServiceInvoiceEnabled"/>). The standard format leaves
+    /// format (<see cref="CompanySetup.ProServiceModeEnabled"/>). The standard format leaves
     /// this null and keeps each line's own <see cref="PurchaseInvoiceLine.CostCenterId"/> instead.</summary>
     public int? CostCenterId { get; set; }
     public CostCenter? CostCenter { get; set; }
@@ -122,7 +122,7 @@ public class PurchaseInvoiceLine
 
     /// <summary>A flat amount on this line that carries no VAT at all (e.g. a government fee
     /// disbursement) — only used by the "PRO Service" invoice format
-    /// (<see cref="CompanySetup.ProServiceInvoiceEnabled"/>); zero for every line entered the
+    /// (<see cref="CompanySetup.ProServiceModeEnabled"/>); zero for every line entered the
     /// standard Quantity × Unit Price way.</summary>
     public decimal NonTaxableAmount { get; set; }
 

@@ -286,7 +286,7 @@
         CompanySetup? company = null;
         try { company = await CompanySvc.GetAsync(); }
         catch (PostingException) { /* no company selected yet — keep the built-in defaults */ }
-        _proServiceFormat = company?.ProServiceInvoiceEnabled ?? false;
+        _proServiceFormat = company?.ProServiceModeEnabled ?? false;
         if (_proServiceFormat && CloneFrom is null) _lines[0].VatRate = 0m;
 
         if (CloneFrom is not null)

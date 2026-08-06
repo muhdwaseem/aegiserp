@@ -72,6 +72,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<TagGroup> TagGroups => Set<TagGroup>();
     public DbSet<Tag> Tags => Set<Tag>();
     public DbSet<CustomerTag> CustomerTags => Set<CustomerTag>();
+    public DbSet<CustomerOrganization> CustomerOrganizations => Set<CustomerOrganization>();
     public DbSet<VendorContactPerson> VendorContactPersons => Set<VendorContactPerson>();
     public DbSet<VendorDocument> VendorDocuments => Set<VendorDocument>();
     public DbSet<VendorCustomFieldValue> VendorCustomFieldValues => Set<VendorCustomFieldValue>();
@@ -198,6 +199,13 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasMany(c => c.CustomFieldValues).WithOne(v => v.Customer).HasForeignKey(v => v.CustomerId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(c => c.Tags).WithOne(t => t.Customer).HasForeignKey(t => t.CustomerId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(c => c.SalespersonHistory).WithOne(h => h.Customer).HasForeignKey(h => h.CustomerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.Organizations).WithOne(o => o.Customer).HasForeignKey(o => o.CustomerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CustomerOrganization>(e =>
+        {
+            e.Property(o => o.Name).HasMaxLength(160).IsRequired();
+            e.Property(o => o.Trn).HasMaxLength(20);
         });
 
         b.Entity<CustomerContactPerson>(e =>

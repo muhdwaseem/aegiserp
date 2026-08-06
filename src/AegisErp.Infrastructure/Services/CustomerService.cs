@@ -15,6 +15,10 @@ public record ContactPersonInput(
     string? Salutation, string FirstName, string? LastName, string? Email,
     string? WorkPhone, string? Mobile, string? Designation, string? Department, bool IsPrimary);
 
+/// <summary>One of the customer's separate trade licenses / legal entities (see
+/// <see cref="AegisErp.Domain.Entities.CustomerOrganization"/>).</summary>
+public record OrganizationInput(string Name, string? Trn);
+
 /// <summary>One admin-defined custom field's value for this customer. A blank/whitespace
 /// <paramref name="Value"/> is treated as "not answered", not as the literal empty string.</summary>
 public record CustomFieldValueInput(int CustomFieldDefinitionId, string? Value);
@@ -67,6 +71,7 @@ public class CustomerService
             .Include(c => c.ContactPersons)
             .Include(c => c.CustomFieldValues).ThenInclude(v => v.CustomFieldDefinition)
             .Include(c => c.Tags).ThenInclude(t => t.Tag).ThenInclude(t => t.TagGroup)
+            .Include(c => c.Organizations)
             .FirstOrDefaultAsync(c => c.Id == id);
     }
 
@@ -76,7 +81,8 @@ public class CustomerService
         IEnumerable<CustomFieldValueInput>? customFieldValues = null,
         IEnumerable<int>? tagIds = null,
         string changedBy = "System Admin",
-        DateTime? nowUtc = null)
+        DateTime? nowUtc = null,
+        IEnumerable<OrganizationInput>? organizations = null)
     {
         ValidateHeader(input);
 
@@ -96,28 +102,32 @@ public class CustomerService
             customer.ContactPersons.Add(p);
         await ValidateAndBuildCustomFieldValuesAsync(db, customFieldValues ?? Enumerable.Empty<CustomFieldValueInput>(), customer.CustomFieldValues);
         await ValidateAndBuildTagsAsync(db, tagIds ?? Enumerable.Empty<int>(), customer.Tags);
+        foreach (var o in BuildOrganizations(organizations ?? Enumerable.Empty<OrganizationInput>()))
+            customer.Organizations.Add(o);
 
         db.Customers.Add(customer);
         await db.SaveChangesAsync();
         return customer;
     }
 
-    /// <summary>Updates an existing customer's fields, contact persons, custom field values and tag
-    /// selections — each child collection is fully replaced with what's submitted (the form always
-    /// sends its complete current state, not a diff).</summary>
+    /// <summary>Updates an existing customer's fields, contact persons, custom field values, tag
+    /// selections and organizations — each child collection is fully replaced with what's submitted
+    /// (the form always sends its complete current state, not a diff).</summary>
     public async Task UpdateAsync(
         int id, NewCustomerInput input,
         IEnumerable<ContactPersonInput>? contactPersons = null,
         IEnumerable<CustomFieldValueInput>? customFieldValues = null,
         IEnumerable<int>? tagIds = null,
         string changedBy = "System Admin",
-        DateTime? nowUtc = null)
+        DateTime? nowUtc = null,
+        IEnumerable<OrganizationInput>? organizations = null)
     {
         ValidateHeader(input);
 
         await using var db = await _dbf.CreateDbContextAsync();
         var customer = await db.Customers
             .Include(c => c.ContactPersons).Include(c => c.CustomFieldValues).Include(c => c.Tags)
+            .Include(c => c.Organizations)
             .FirstOrDefaultAsync(c => c.Id == id)
             ?? throw new PostingException("Customer not found.");
 
@@ -133,6 +143,10 @@ public class CustomerService
 
         customer.Tags.Clear();
         await ValidateAndBuildTagsAsync(db, tagIds ?? Enumerable.Empty<int>(), customer.Tags);
+
+        customer.Organizations.Clear();
+        foreach (var o in BuildOrganizations(organizations ?? Enumerable.Empty<OrganizationInput>()))
+            customer.Organizations.Add(o);
 
         await db.SaveChangesAsync();
     }
@@ -259,6 +273,17 @@ public class CustomerService
                 Department = Trim(i.Department),
                 IsPrimary = i.IsPrimary,
             });
+        }
+        return list;
+    }
+
+    private static List<CustomerOrganization> BuildOrganizations(IEnumerable<OrganizationInput> inputs)
+    {
+        var list = new List<CustomerOrganization>();
+        foreach (var i in inputs)
+        {
+            if (string.IsNullOrWhiteSpace(i.Name)) continue; // a stray blank row from the UI — ignore, not an error
+            list.Add(new CustomerOrganization { Name = i.Name.Trim(), Trn = Trim(i.Trn) });
         }
         return list;
     }

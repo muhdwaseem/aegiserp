@@ -214,6 +214,32 @@
                     <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="@(() => _contactPersons.Add(new()))">Add Contact Person</MudButton>
                 </MudTabPanel>
 
+                @* ── Organizations ── *@
+                <MudTabPanel Text="Organizations">
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">
+                        This customer's separate trade licenses / legal entities, if any — each can carry its own TRN,
+                        offered when creating an Estimate or Sales Invoice for this customer.
+                    </MudText>
+                    <div style="overflow-x:auto">
+                        <MudTable Items="_organizations" Dense="true" Bordered="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Name</MudTh>
+                                <MudTh>TRN</MudTh>
+                                <MudTh Style="width:48px"></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudTextField @bind-Value="context.Name" Margin="Margin.Dense" Required="true" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Trn" Margin="Margin.Dense" Placeholder="Optional" /></MudTd>
+                                <MudTd>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => _organizations.Remove(context))" />
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No organizations yet.</MudText></NoRecordsContent>
+                        </MudTable>
+                    </div>
+                    <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="@(() => _organizations.Add(new()))">Add Organization</MudButton>
+                </MudTabPanel>
+
                 @* ── Custom Fields ── *@
                 <MudTabPanel Text="Custom Fields">
                     @if (_customFieldDefs is { Count: 0 })
@@ -311,6 +337,7 @@
     private readonly AddressVm _shipping = new();
 
     private readonly List<ContactPersonVm> _contactPersons = new();
+    private readonly List<OrganizationVm> _organizations = new();
 
     private List<CustomFieldDefinition>? _customFieldDefs;
     private readonly Dictionary<int, string?> _customFieldValues = new();
@@ -371,6 +398,9 @@
                     WorkPhone = p.WorkPhone, Mobile = p.Mobile, Designation = p.Designation, Department = p.Department,
                     IsPrimary = p.IsPrimary,
                 });
+
+            foreach (var o in c.Organizations)
+                _organizations.Add(new OrganizationVm { Name = o.Name, Trn = o.Trn });
 
             foreach (var v in c.CustomFieldValues)
                 _customFieldValues[v.CustomFieldDefinitionId] = v.Value;
@@ -586,16 +616,17 @@
                 p.Salutation, p.FirstName, p.LastName, p.Email, p.WorkPhone, p.Mobile, p.Designation, p.Department, p.IsPrimary));
             var customFieldValues = _customFieldValues.Select(kv => new CustomFieldValueInput(kv.Key, kv.Value));
             var tagIds = _selectedTagByGroup.Values.Where(v => v is not null).Select(v => v!.Value);
+            var organizations = _organizations.Select(o => new OrganizationInput(o.Name, o.Trn));
 
             if (IsEdit)
             {
-                await CustomerSvc.UpdateAsync(Existing!.Id, input, contactPersons, customFieldValues, tagIds, _userName);
+                await CustomerSvc.UpdateAsync(Existing!.Id, input, contactPersons, customFieldValues, tagIds, _userName, organizations: organizations);
                 Snackbar.Add($"Customer {Existing.Code} updated.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(Existing.Id));
             }
             else
             {
-                var c = await CustomerSvc.CreateAsync(input, contactPersons, customFieldValues, tagIds, _userName);
+                var c = await CustomerSvc.CreateAsync(input, contactPersons, customFieldValues, tagIds, _userName, organizations: organizations);
                 Snackbar.Add($"Customer {c.Code} created.", Severity.Success);
                 MudDialog.Close(DialogResult.Ok(c.Id));
             }
@@ -636,5 +667,11 @@
         public string? Designation { get; set; }
         public string? Department { get; set; }
         public bool IsPrimary { get; set; }
+    }
+
+    private class OrganizationVm
+    {
+        public string Name { get; set; } = "";
+        public string? Trn { get; set; }
     }
 }

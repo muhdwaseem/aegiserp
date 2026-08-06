@@ -108,6 +108,22 @@ public class Customer : ICompanyScoped
     public List<CustomerCustomFieldValue> CustomFieldValues { get; set; } = new();
     public List<CustomerTag> Tags { get; set; } = new();
     public List<SalespersonAssignmentHistory> SalespersonHistory { get; set; } = new();
+    public List<CustomerOrganization> Organizations { get; set; } = new();
+}
+
+/// <summary>One of this customer's separate trade licenses / legal entities — a PRO services
+/// company processes government paperwork per specific license, and each one can carry its own
+/// TRN distinct from the customer's own. Picking one on a document (Estimate/Sales Invoice) fills
+/// the document's TRN from here instead of the customer's.</summary>
+public class CustomerOrganization
+{
+    public int Id { get; set; }
+    public int CustomerId { get; set; }
+    public Customer Customer { get; set; } = null!;
+
+    public string Name { get; set; } = string.Empty;
+    public string? Trn { get; set; }
+    public bool IsActive { get; set; } = true;
 }
 
 /// <summary>One person to contact at this customer — a customer can have several (billing contact,

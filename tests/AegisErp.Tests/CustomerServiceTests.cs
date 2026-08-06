@@ -90,6 +90,37 @@ public class CustomerServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Organizations_are_persisted_and_replaced_on_update()
+    {
+        var c = await _customers.CreateAsync(MinimalInput(),
+            organizations: new[] { new OrganizationInput("Acme Trading LLC", "100111111100003") });
+
+        var found = await _customers.GetByIdAsync(c.Id);
+        var org = Assert.Single(found!.Organizations);
+        Assert.Equal("Acme Trading LLC", org.Name);
+        Assert.Equal("100111111100003", org.Trn);
+
+        await _customers.UpdateAsync(c.Id, MinimalInput(),
+            organizations: new[] { new OrganizationInput("Acme Consulting FZE", null) });
+
+        var updated = await _customers.GetByIdAsync(c.Id);
+        var updatedOrg = Assert.Single(updated!.Organizations);
+        Assert.Equal("Acme Consulting FZE", updatedOrg.Name);
+        Assert.Null(updatedOrg.Trn);
+    }
+
+    [Fact]
+    public async Task A_blank_organization_row_is_ignored_not_rejected()
+    {
+        var c = await _customers.CreateAsync(MinimalInput(),
+            organizations: new[] { new OrganizationInput("", null), new OrganizationInput("Real Org", null) });
+
+        var found = await _customers.GetByIdAsync(c.Id);
+        Assert.Single(found!.Organizations);
+        Assert.Equal("Real Org", found.Organizations.Single().Name);
+    }
+
+    [Fact]
     public async Task Contact_person_without_a_first_name_is_rejected()
     {
         var input = new[] { new ContactPersonInput(null, "", null, null, null, null, null, null, false) };
