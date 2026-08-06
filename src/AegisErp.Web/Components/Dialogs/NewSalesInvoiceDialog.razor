@@ -9,7 +9,13 @@
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">@(IsEdit ? $"Edit {Existing!.InvoiceNo}" : "New Sales Invoice")</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudText Typo="Typo.h6">@TitleText</MudText>
+            @if (!IsEdit && _revenueRecognitionEnabled && _recognition == RevenueRecognition.Deferred)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">DEFERRED</MudChip>
+            }
+        </MudStack>
         <MudText Typo="Typo.caption" Class="mud-text-secondary">Accounts Receivable</MudText>
     </TitleContent>
     <DialogContent>
@@ -52,12 +58,19 @@
                     </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
-                    <MudTextField @bind-Value="_billingAddress" Label="Billing Address" Placeholder="Optional" />
+                    <MudTextField @bind-Value="_jobRequest" Label="Job Request" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="string" @bind-Value="_addressChoice" Label="Billing Address" Dense="true">
+                        <MudSelectItem Value="@("default")">— Use customer default —</MudSelectItem>
+                        <MudSelectItem Value="@("billing")">Billing Address</MudSelectItem>
+                        <MudSelectItem Value="@("shipping")">Shipping Address</MudSelectItem>
+                    </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
                     <MudTextField @bind-Value="_contactMobile" Label="Mobile" Placeholder="Optional" />
                 </MudItem>
-                <MudItem xs="12" sm="3">
+                <MudItem xs="12" sm="4">
                     <MudTextField @bind-Value="_contactEmail" Label="Email" Placeholder="Optional" />
                 </MudItem>
                 <MudItem xs="12" sm="4">
@@ -120,11 +133,14 @@
             </MudItem>
         </MudGrid>
 
-        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
-            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
-            @if (_proServiceFormat)
-            {
-                <MudMenu Icon="@Icons.Material.Filled.Widgets" Variant="Variant.Outlined" Label="Insert Kit" EndIcon="@Icons.Material.Filled.ArrowDropDown">
+        @if (_proServiceFormat)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
+                <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle1">Line Items</MudText>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@_lines.Count</MudChip>
+                <MudSpacer />
+                <MudMenu Icon="@Icons.Material.Filled.Widgets" Variant="Variant.Outlined" Label="Kit" EndIcon="@Icons.Material.Filled.ArrowDropDown">
                     @if (_kits is null || _kits.Count == 0)
                     {
                         <MudMenuItem Disabled="true">No kits defined yet</MudMenuItem>
@@ -137,8 +153,14 @@
                         }
                     }
                 </MudMenu>
-            }
-        </MudStack>
+            </MudStack>
+        }
+        else
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
+                <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
+            </MudStack>
+        }
 
         <div class="line-table-scroll">
         @if (_proServiceFormat)
@@ -207,6 +229,7 @@
                         </MudSelect>
                     </MudTd>
                     <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="AddLine" />
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                        OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
                     </MudTd>
@@ -308,9 +331,7 @@
             <MudSpacer />
             @if (_proServiceFormat)
             {
-                <MudText Class="mr-4">Govt Fee: <b>@TotalGovtFee.ToString("N2")</b></MudText>
-                <MudText Class="mr-4">Center Fee: <b>@TotalCenterFee.ToString("N2")</b></MudText>
-                <MudText Class="mr-4">Bank Charge: <b>@TotalBankCharge.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Subtotal: <b>@TotalNet.ToString("N2")</b></MudText>
                 <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
                 <MudText Class="mr-4">Grand Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
             }
@@ -368,7 +389,15 @@
     private string? _contactEmail;
     private string? _contactTrn;
     private string? _contactPerson;
-    private string? _billingAddress;
+    private string? _jobRequest;
+
+    /// <summary>Backs the Billing Address dropdown — "default"/"billing" both resolve to the
+    /// customer's Billing Address, "shipping" to their Shipping Address. The resolved text (not
+    /// this choice) is what's actually stored as <see cref="SalesInvoice.BillingAddressSnapshot"/>.</summary>
+    private string _addressChoice = "default";
+    private string? _customerBillingAddress;
+    private string? _customerShippingAddress;
+    private string? ResolvedBillingAddress => _addressChoice == "shipping" ? _customerShippingAddress : _customerBillingAddress;
 
     private int _customerId;
     private DateTime? _date = DateTime.Today;
@@ -400,9 +429,6 @@
     private decimal TotalNet => _lines.Sum(l => l.Net);
     private decimal TotalVat => _lines.Sum(l => l.Vat);
     private decimal TotalGross => _lines.Sum(l => l.Gross);
-    private decimal TotalGovtFee => _lines.Sum(l => l.Quantity * l.GovtFee);
-    private decimal TotalCenterFee => _lines.Sum(l => l.TaxableNet);
-    private decimal TotalBankCharge => _lines.Sum(l => l.Quantity * l.BankCharge);
     private bool CanPost => _customerId > 0 && _periodId > 0 && TotalGross > 0
                             && _lines.All(l => l.RevenueAccountId > 0 && !string.IsNullOrWhiteSpace(l.Description));
     // Looser than CanPost: a draft can be saved before every account/price detail is finalized.
@@ -412,6 +438,9 @@
     /// <summary>Subject fills whatever room Salesperson/Revenue Recognition don't need — both off
     /// (the common case) gives it the full row, same as before either setting existed.</summary>
     private int SubjectWidth => 12 - (_salespersonEnabled ? 4 : 0) - (_revenueRecognitionEnabled ? 4 : 0);
+
+    private string TitleText => IsEdit ? $"Edit {Existing!.InvoiceNo}"
+        : _revenueRecognitionEnabled && _recognition == RevenueRecognition.Deferred ? "New Deferred Invoice" : "New Sales Invoice";
 
     protected override async Task OnInitializedAsync()
     {
@@ -439,7 +468,10 @@
             _contactEmail = seed.ContactEmail;
             _contactTrn = seed.ContactTrn;
             _contactPerson = seed.ContactPerson;
-            _billingAddress = seed.BillingAddressSnapshot;
+            _jobRequest = seed.JobRequest;
+            // A stored snapshot is frozen free text, but the dropdown can only pick "default" or
+            // "shipping" — reset to default and let it resolve against the current customer record.
+            _addressChoice = "default";
             _date = Existing is not null ? seed.Date.ToDateTime(TimeOnly.MinValue) : DateTime.Today;
             _narration = seed.Narration;
             _customerPoNo = seed.CustomerPoNo;
@@ -460,6 +492,8 @@
             {
                 var customer = await CustomerSvc.GetByIdAsync(_customerId);
                 _organizations = customer?.Organizations.Where(o => o.IsActive).ToList();
+                _customerBillingAddress = customer?.BillingAddressLine1;
+                _customerShippingAddress = customer?.ShippingAddressLine1;
             }
             _lines.Clear();
             foreach (var l in seed.Lines.OrderBy(l => l.LineNo))
@@ -617,6 +651,7 @@
 
         _organizationId = null;
         _organizations = null;
+        _addressChoice = "default";
         if (!_proServiceFormat || id == 0) return;
 
         var customer = await CustomerSvc.GetByIdAsync(id);
@@ -626,7 +661,8 @@
         _contactEmail = customer.Email;
         _contactTrn = customer.Trn;
         _contactPerson = customer.ContactPersons.FirstOrDefault()?.FirstName;
-        _billingAddress = customer.BillingAddressLine1;
+        _customerBillingAddress = customer.BillingAddressLine1;
+        _customerShippingAddress = customer.ShippingAddressLine1;
     }
 
     /// <summary>Picking an Organization overwrites the Contact TRN with the organization's own —
@@ -705,7 +741,8 @@
                     _proServiceFormat ? _organizationId : null,
                     _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
                     _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
-                    _proServiceFormat ? _billingAddress : null);
+                    _proServiceFormat ? ResolvedBillingAddress : null,
+                    _proServiceFormat ? _jobRequest : null);
                 inv = await InvoiceSvc.PostDraftAsync(Existing!.Id, userName, DateTime.UtcNow);
             }
             else
@@ -718,7 +755,8 @@
                     _proServiceFormat ? _organizationId : null,
                     _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
                     _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
-                    _proServiceFormat ? _billingAddress : null);
+                    _proServiceFormat ? ResolvedBillingAddress : null,
+                    _proServiceFormat ? _jobRequest : null);
             }
             await SaveLineAttachmentsAsync(inv);
             await SaveInvoiceAttachmentAsync(inv);
@@ -753,7 +791,8 @@
                     _proServiceFormat ? _organizationId : null,
                     _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
                     _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
-                    _proServiceFormat ? _billingAddress : null);
+                    _proServiceFormat ? ResolvedBillingAddress : null,
+                    _proServiceFormat ? _jobRequest : null);
                 Snackbar.Add($"Updated {inv.InvoiceNo}.", Severity.Success);
             }
             else
@@ -766,7 +805,8 @@
                     _proServiceFormat ? _organizationId : null,
                     _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
                     _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
-                    _proServiceFormat ? _billingAddress : null);
+                    _proServiceFormat ? ResolvedBillingAddress : null,
+                    _proServiceFormat ? _jobRequest : null);
                 Snackbar.Add($"Saved {inv.InvoiceNo} as a draft.", Severity.Success);
             }
             await SaveLineAttachmentsAsync(inv);

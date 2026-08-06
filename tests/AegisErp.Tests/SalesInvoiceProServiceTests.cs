@@ -56,13 +56,15 @@ public class SalesInvoiceProServiceTests : IDisposable
         var draft = await _invoices.CreateDraftAsync(_db.Customer.Id, new(2026, 5, 10), _db.May.Id, null, "tester",
             new[] { new InvoiceLineInput("Trade License", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now,
             organizationId: org.Id, contactMobile: "+971500000000", contactEmail: "x@example.com",
-            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai");
+            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai",
+            jobRequest: "Visa Renewal — Ahmed");
 
         Assert.Equal(org.Id, draft.OrganizationId);
         Assert.Equal("+971500000000", draft.ContactMobile);
         Assert.Equal("100111111100003", draft.ContactTrn);
         Assert.Equal("John", draft.ContactPerson);
         Assert.Equal("Dubai", draft.BillingAddressSnapshot);
+        Assert.Equal("Visa Renewal — Ahmed", draft.JobRequest);
 
         var posted = await _invoices.PostDraftAsync(draft.Id, "tester", Now);
         Assert.Equal(org.Id, posted.OrganizationId);

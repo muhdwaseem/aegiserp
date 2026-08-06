@@ -44,8 +44,15 @@
                         }
                     </MudSelect>
                 </MudItem>
-                <MudItem xs="12" sm="4">
-                    <MudTextField @bind-Value="_billingAddress" Label="Billing Address" Placeholder="Optional" />
+                <MudItem xs="12" sm="3">
+                    <MudTextField @bind-Value="_jobRequest" Label="Job Request" Placeholder="Optional" />
+                </MudItem>
+                <MudItem xs="12" sm="3">
+                    <MudSelect T="string" @bind-Value="_addressChoice" Label="Billing Address" Dense="true">
+                        <MudSelectItem Value="@("default")">— Use customer default —</MudSelectItem>
+                        <MudSelectItem Value="@("billing")">Billing Address</MudSelectItem>
+                        <MudSelectItem Value="@("shipping")">Shipping Address</MudSelectItem>
+                    </MudSelect>
                 </MudItem>
                 <MudItem xs="12" sm="3">
                     <MudTextField @bind-Value="_contactMobile" Label="Mobile" Placeholder="Optional" />
@@ -53,10 +60,10 @@
                 <MudItem xs="12" sm="3">
                     <MudTextField @bind-Value="_contactEmail" Label="Email" Placeholder="Optional" />
                 </MudItem>
-                <MudItem xs="12" sm="3">
+                <MudItem xs="12" sm="4">
                     <MudTextField @bind-Value="_contactTrn" Label="Customer TRN" Placeholder="Optional" />
                 </MudItem>
-                <MudItem xs="12" sm="3">
+                <MudItem xs="12" sm="4">
                     <MudTextField @bind-Value="_contactPerson" Label="Contact Person" Placeholder="Optional" />
                 </MudItem>
             }
@@ -65,11 +72,14 @@
             </MudItem>
         </MudGrid>
 
-        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-3">
-            <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
-            @if (_proServiceFormat)
-            {
-                <MudMenu Icon="@Icons.Material.Filled.Widgets" Variant="Variant.Outlined" Label="Insert Kit" EndIcon="@Icons.Material.Filled.ArrowDropDown">
+        @if (_proServiceFormat)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-3">
+                <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle1">Line Items</MudText>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@_lines.Count</MudChip>
+                <MudSpacer />
+                <MudMenu Icon="@Icons.Material.Filled.Widgets" Variant="Variant.Outlined" Label="Kit" EndIcon="@Icons.Material.Filled.ArrowDropDown">
                     @if (_kits is null || _kits.Count == 0)
                     {
                         <MudMenuItem Disabled="true">No kits defined yet</MudMenuItem>
@@ -82,8 +92,14 @@
                         }
                     }
                 </MudMenu>
-            }
-        </MudStack>
+            </MudStack>
+        }
+        else
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-3">
+                <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
+            </MudStack>
+        }
 
         <div class="line-table-scroll">
         @if (_proServiceFormat)
@@ -152,6 +168,7 @@
                         </MudSelect>
                     </MudTd>
                     <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary" OnClick="AddLine" />
                         <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                        OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
                     </MudTd>
@@ -220,9 +237,7 @@
             <MudSpacer />
             @if (_proServiceFormat)
             {
-                <MudText Class="mr-4">Govt Fee: <b>@TotalGovtFee.ToString("N2")</b></MudText>
-                <MudText Class="mr-4">Center Fee: <b>@TotalCenterFee.ToString("N2")</b></MudText>
-                <MudText Class="mr-4">Bank Charge: <b>@TotalBankCharge.ToString("N2")</b></MudText>
+                <MudText Class="mr-4">Subtotal: <b>@TotalNet.ToString("N2")</b></MudText>
                 <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
                 <MudText Class="mr-4">Grand Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
             }
@@ -260,7 +275,16 @@
     private string? _contactEmail;
     private string? _contactTrn;
     private string? _contactPerson;
-    private string? _billingAddress;
+    private string? _jobRequest;
+
+    /// <summary>Backs the Billing Address dropdown — "default"/"billing" both resolve to the
+    /// customer's Billing Address, "shipping" to their Shipping Address. The resolved text (not
+    /// this choice) is what's actually stored as <see cref="Estimate.BillingAddressSnapshot"/>.</summary>
+    private string _addressChoice = "default";
+    private string? _customerBillingAddress;
+    private string? _customerShippingAddress;
+    private string? ResolvedBillingAddress => _addressChoice == "shipping" ? _customerShippingAddress : _customerBillingAddress;
+
     private DateTime? _date = DateTime.Today;
     private DateTime? _validUntil = DateTime.Today.AddDays(30);
     private string? _narration;
@@ -268,11 +292,9 @@
 
     private readonly List<LineVm> _lines = new() { new() };
 
+    private decimal TotalNet => _lines.Sum(l => l.Net);
     private decimal TotalGross => _lines.Sum(l => l.Gross);
     private decimal TotalVat => _lines.Sum(l => l.Vat);
-    private decimal TotalGovtFee => _lines.Sum(l => l.Quantity * l.GovtFee);
-    private decimal TotalCenterFee => _lines.Sum(l => l.TaxableNet);
-    private decimal TotalBankCharge => _lines.Sum(l => l.Quantity * l.BankCharge);
     private bool CanSave => _customerId > 0 && TotalGross > 0
                             && _lines.All(l => !string.IsNullOrWhiteSpace(l.Description) && l.RevenueAccountId > 0);
 
@@ -313,6 +335,7 @@
         _customerId = id;
         _organizationId = null;
         _organizations = null;
+        _addressChoice = "default";
         if (!_proServiceFormat || id == 0) return;
 
         var customer = await CustomerSvc.GetByIdAsync(id);
@@ -323,7 +346,8 @@
         _contactEmail = customer.Email;
         _contactTrn = customer.Trn;
         _contactPerson = customer.ContactPersons.FirstOrDefault()?.FirstName;
-        _billingAddress = customer.BillingAddressLine1;
+        _customerBillingAddress = customer.BillingAddressLine1;
+        _customerShippingAddress = customer.ShippingAddressLine1;
     }
 
     /// <summary>Picking an Organization overwrites the Contact TRN with the organization's own —
@@ -386,7 +410,8 @@
                 _proServiceFormat ? _organizationId : null,
                 _proServiceFormat ? _contactMobile : null, _proServiceFormat ? _contactEmail : null,
                 _proServiceFormat ? _contactTrn : null, _proServiceFormat ? _contactPerson : null,
-                _proServiceFormat ? _billingAddress : null);
+                _proServiceFormat ? ResolvedBillingAddress : null,
+                _proServiceFormat ? _jobRequest : null);
 
             Snackbar.Add($"Saved quotation {est.EstimateNo}.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(est.Id));

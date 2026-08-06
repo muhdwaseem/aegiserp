@@ -311,6 +311,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(i => i.ContactTrn).HasMaxLength(20);
             e.Property(i => i.ContactPerson).HasMaxLength(160);
             e.Property(i => i.BillingAddressSnapshot).HasMaxLength(400);
+            e.Property(i => i.JobRequest).HasMaxLength(160);
             e.HasIndex(i => i.ShareToken).IsUnique(); // multiple NULLs are fine — only generated tokens must be unique
             e.Ignore(i => i.TotalNet);
             e.Ignore(i => i.TotalVat);
@@ -452,6 +453,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(n => n.ContactTrn).HasMaxLength(20);
             e.Property(n => n.ContactPerson).HasMaxLength(160);
             e.Property(n => n.BillingAddressSnapshot).HasMaxLength(400);
+            e.Property(n => n.JobRequest).HasMaxLength(160);
             e.Ignore(n => n.TotalNet);
             e.Ignore(n => n.TotalVat);
             e.Ignore(n => n.TotalGross);

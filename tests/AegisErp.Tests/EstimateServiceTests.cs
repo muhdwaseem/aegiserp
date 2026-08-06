@@ -60,7 +60,8 @@ public class EstimateServiceTests : IDisposable
         var est = await _estimates.CreateAsync(_db.Customer.Id, new(2026, 5, 1), new(2026, 5, 31), null,
             "tester", new[] { new EstimateLineInput("Trade License", _db.Revenue.Id, null, 1, 1000, 0.05m) }, Now,
             organizationId: org.Id, contactMobile: "+971500000000", contactEmail: "x@example.com",
-            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai");
+            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai",
+            jobRequest: "Visa Renewal — Ahmed");
 
         var found = await _estimates.GetByIdAsync(est.Id);
         Assert.Equal(org.Id, found!.OrganizationId);
@@ -68,6 +69,7 @@ public class EstimateServiceTests : IDisposable
         Assert.Equal("100111111100003", found.ContactTrn);
         Assert.Equal("John", found.ContactPerson);
         Assert.Equal("Dubai", found.BillingAddressSnapshot);
+        Assert.Equal("Visa Renewal — Ahmed", found.JobRequest);
     }
 
     [Fact]
@@ -84,7 +86,8 @@ public class EstimateServiceTests : IDisposable
             "tester",
             new[] { new EstimateLineInput("Trade License", _db.Revenue.Id, null, 1, 1000, 0.05m, GovtFee: 5000, BankCharge: 50, AssignedTo: "Ali") },
             Now, organizationId: org.Id, contactMobile: "+971500000000", contactEmail: "x@example.com",
-            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai");
+            contactTrn: "100111111100003", contactPerson: "John", billingAddress: "Dubai",
+            jobRequest: "Visa Renewal — Ahmed");
 
         var invoice = await _estimates.ConvertToInvoiceAsync(est.Id, _db.May.Id, "tester", new DateTime(2026, 5, 15, 12, 0, 0, DateTimeKind.Utc));
 
@@ -100,5 +103,6 @@ public class EstimateServiceTests : IDisposable
         Assert.Equal("100111111100003", invoice.ContactTrn);
         Assert.Equal("John", invoice.ContactPerson);
         Assert.Equal("Dubai", invoice.BillingAddressSnapshot);
+        Assert.Equal("Visa Renewal — Ahmed", invoice.JobRequest);
     }
 }

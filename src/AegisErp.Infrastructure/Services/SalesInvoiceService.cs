@@ -191,7 +191,8 @@ public class SalesInvoiceService
         string? notes = null, int? paymentTermsDays = null,
         string? subject = null, string? termsAndConditions = null, string? salesperson = null,
         int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
-        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null,
+        string? jobRequest = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -208,6 +209,7 @@ public class SalesInvoiceService
             ContactTrn = contactTrn,
             ContactPerson = contactPerson,
             BillingAddressSnapshot = billingAddress,
+            JobRequest = jobRequest,
             Date = date,
             DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
@@ -267,7 +269,8 @@ public class SalesInvoiceService
         string? notes = null, int? paymentTermsDays = null,
         string? subject = null, string? termsAndConditions = null, string? salesperson = null,
         int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
-        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null,
+        string? jobRequest = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
 
@@ -288,6 +291,7 @@ public class SalesInvoiceService
         invoice.ContactTrn = contactTrn;
         invoice.ContactPerson = contactPerson;
         invoice.BillingAddressSnapshot = billingAddress;
+        invoice.JobRequest = jobRequest;
         invoice.Date = date;
         invoice.DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays);
         invoice.FiscalPeriodId = fiscalPeriodId;
@@ -648,7 +652,8 @@ public class SalesInvoiceService
         string? notes = null, int? paymentTermsDays = null,
         string? subject = null, string? termsAndConditions = null, string? salesperson = null,
         int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
-        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null,
+        string? jobRequest = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -668,6 +673,7 @@ public class SalesInvoiceService
             ContactTrn = contactTrn,
             ContactPerson = contactPerson,
             BillingAddressSnapshot = billingAddress,
+            JobRequest = jobRequest,
             Date = date,
             DueDate = date.AddDays(paymentTermsDays ?? customer.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,

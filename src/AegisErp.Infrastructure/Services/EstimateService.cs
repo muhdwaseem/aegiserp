@@ -42,7 +42,8 @@ public class EstimateService
         int customerId, DateOnly date, DateOnly validUntil, string? narration,
         string createdBy, IEnumerable<EstimateLineInput> lines, DateTime nowUtc,
         int? organizationId = null, string? contactMobile = null, string? contactEmail = null,
-        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null)
+        string? contactTrn = null, string? contactPerson = null, string? billingAddress = null,
+        string? jobRequest = null)
     {
         if (customerId == 0) throw new PostingException("Estimate has no customer.");
         var lineList = lines.ToList();
@@ -65,6 +66,7 @@ public class EstimateService
             ContactTrn = contactTrn,
             ContactPerson = contactPerson,
             BillingAddressSnapshot = billingAddress,
+            JobRequest = jobRequest,
             Date = date,
             ValidUntil = validUntil,
             Status = DocumentStatus.Draft,
@@ -135,7 +137,8 @@ public class EstimateService
             $"Converted from {estimate.EstimateNo}", createdBy, inputs, nowUtc,
             organizationId: estimate.OrganizationId, contactMobile: estimate.ContactMobile,
             contactEmail: estimate.ContactEmail, contactTrn: estimate.ContactTrn,
-            contactPerson: estimate.ContactPerson, billingAddress: estimate.BillingAddressSnapshot);
+            contactPerson: estimate.ContactPerson, billingAddress: estimate.BillingAddressSnapshot,
+            jobRequest: estimate.JobRequest);
 
         estimate.Status = DocumentStatus.Converted;
         estimate.ConvertedInvoiceId = invoice.Id;

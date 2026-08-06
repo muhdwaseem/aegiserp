@@ -32,6 +32,10 @@ public class Estimate : ICompanyScoped
     public string? ContactPerson { get; set; }
     public string? BillingAddressSnapshot { get; set; }
 
+    /// <summary>Free-text reference to whatever internal request/case this estimate is for (PRO
+    /// Service Mode only) — e.g. "Visa Renewal — Ahmed" — not a tracked entity, just a label.</summary>
+    public string? JobRequest { get; set; }
+
     public DateOnly Date { get; set; }
 
     /// <summary>Date the quotation is valid until.</summary>
