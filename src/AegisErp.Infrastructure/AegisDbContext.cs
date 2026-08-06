@@ -556,6 +556,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Ignore(i => i.TotalVat);
             e.Ignore(i => i.TotalGross);
             e.HasOne(i => i.Vendor).WithMany().HasForeignKey(i => i.VendorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(i => i.CostCenter).WithMany().HasForeignKey(i => i.CostCenterId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(i => i.FiscalPeriod).WithMany().HasForeignKey(i => i.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(i => i.JournalVoucher).WithMany().HasForeignKey(i => i.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(i => i.Lines).WithOne(l => l.PurchaseInvoice).HasForeignKey(l => l.PurchaseInvoiceId).OnDelete(DeleteBehavior.Cascade);
@@ -567,6 +568,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.Quantity).HasPrecision(18, 3);
             e.Property(l => l.UnitPrice).HasPrecision(18, 2);
             e.Property(l => l.VatRate).HasPrecision(5, 4);
+            e.Property(l => l.NonTaxableAmount).HasPrecision(18, 2);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);

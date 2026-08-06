@@ -111,6 +111,14 @@ public class CompanySetup
     /// would turn this on at setup instead of picking Recognition per line on every invoice.</summary>
     public bool RevenueRecognitionEnabled { get; set; }
 
+    /// <summary>When on, New Purchase Invoice switches to the "PRO Service" layout: one Cost
+    /// Center for the whole bill instead of per line, and each line is a flat Non-Taxable/Taxable
+    /// amount instead of Quantity × Unit Price — off by default, in which case Purchase Invoice is
+    /// unchanged from its standard goods-style entry. A PRO services company (visa/labour/government
+    /// paperwork processing) would turn this on, since its bills are almost always flat government
+    /// fees plus a flat service charge with no quantity involved.</summary>
+    public bool ProServiceInvoiceEnabled { get; set; }
+
     /// <summary>The company's maintained list of salesperson names — admin-curated here, offered
     /// as a dropdown on the New Customer form instead of free text, so names stay consistent.</summary>
     public List<Salesperson> Salespersons { get; set; } = new();

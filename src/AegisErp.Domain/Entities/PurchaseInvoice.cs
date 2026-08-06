@@ -23,6 +23,12 @@ public class PurchaseInvoice : ICompanyScoped
     public int VendorId { get; set; }
     public Vendor Vendor { get; set; } = null!;
 
+    /// <summary>One Cost Center for the whole bill — only used by the "PRO Service" invoice
+    /// format (<see cref="CompanySetup.ProServiceInvoiceEnabled"/>). The standard format leaves
+    /// this null and keeps each line's own <see cref="PurchaseInvoiceLine.CostCenterId"/> instead.</summary>
+    public int? CostCenterId { get; set; }
+    public CostCenter? CostCenter { get; set; }
+
     public DateOnly Date { get; set; }
     public DateOnly DueDate { get; set; }
 
@@ -76,6 +82,8 @@ public class PurchaseInvoice : ICompanyScoped
                 throw new PostingException($"Line {line.LineNo} quantity must be positive.");
             if (line.UnitPrice < 0)
                 throw new PostingException($"Line {line.LineNo} unit price cannot be negative.");
+            if (line.NonTaxableAmount < 0)
+                throw new PostingException($"Line {line.LineNo} non-taxable amount cannot be negative.");
             if (line.VatRate is < 0 or > 1)
                 throw new PostingException($"Line {line.LineNo} VAT rate is invalid.");
         }
@@ -112,7 +120,18 @@ public class PurchaseInvoiceLine
     /// <summary>Fractional VAT rate, e.g. 0.05 for UAE 5%.</summary>
     public decimal VatRate { get; set; } = 0.05m;
 
-    public decimal Net => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
-    public decimal Vat => Math.Round(Net * VatRate, 2, MidpointRounding.AwayFromZero);
+    /// <summary>A flat amount on this line that carries no VAT at all (e.g. a government fee
+    /// disbursement) — only used by the "PRO Service" invoice format
+    /// (<see cref="CompanySetup.ProServiceInvoiceEnabled"/>); zero for every line entered the
+    /// standard Quantity × Unit Price way.</summary>
+    public decimal NonTaxableAmount { get; set; }
+
+    /// <summary>Quantity × Unit Price, rounded — the taxable base VAT is charged on. Never
+    /// includes <see cref="NonTaxableAmount"/>.</summary>
+    private decimal TaxableNet => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
+
+    /// <summary>Taxable base plus whatever's non-taxable on this line.</summary>
+    public decimal Net => TaxableNet + NonTaxableAmount;
+    public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;
 }

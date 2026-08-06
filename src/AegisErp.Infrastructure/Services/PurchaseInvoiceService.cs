@@ -4,9 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AegisErp.Infrastructure.Services;
 
-/// <summary>Input line for creating a purchase invoice from the UI.</summary>
+/// <summary>Input line for creating a purchase invoice from the UI. <paramref name="NonTaxableAmount"/>
+/// is only ever nonzero for the "PRO Service" invoice format — standard entry leaves it at 0.</summary>
 public record PurchaseLineInput(string Description, int ExpenseAccountId, int? CostCenterId,
-    decimal Quantity, decimal UnitPrice, decimal VatRate);
+    decimal Quantity, decimal UnitPrice, decimal VatRate, decimal NonTaxableAmount = 0);
 
 public class PurchaseInvoiceService
 {
@@ -103,7 +104,7 @@ public class PurchaseInvoiceService
     public async Task<PurchaseInvoice> CreateAndPostAsync(
         int vendorId, string? vendorRef, DateOnly date, int fiscalPeriodId, string? narration,
         string createdBy, IEnumerable<PurchaseLineInput> lines, DateTime nowUtc, string? lpoNo = null,
-        string? notes = null)
+        string? notes = null, int? costCenterId = null)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -119,6 +120,7 @@ public class PurchaseInvoiceService
             VendorRef = string.IsNullOrWhiteSpace(vendorRef) ? null : vendorRef.Trim(),
             LpoNo = string.IsNullOrWhiteSpace(lpoNo) ? null : lpoNo.Trim(),
             VendorId = vendorId,
+            CostCenterId = costCenterId,
             Date = date,
             DueDate = date.AddDays(vendor.PaymentTermsDays),
             FiscalPeriodId = fiscalPeriodId,
@@ -135,10 +137,14 @@ public class PurchaseInvoiceService
                 LineNo = no++,
                 Description = l.Description,
                 ExpenseAccountId = l.ExpenseAccountId,
-                CostCenterId = l.CostCenterId,
+                // A line's own Cost Center wins when set (standard format); otherwise it falls
+                // back to the invoice-level one (PRO Service format), so the same posting path
+                // serves both without branching on which format was used to build these inputs.
+                CostCenterId = l.CostCenterId ?? costCenterId,
                 Quantity = l.Quantity,
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
+                NonTaxableAmount = l.NonTaxableAmount,
             });
 
         invoice.Post(nowUtc); // domain validation (positive totals, valid lines, due date)
