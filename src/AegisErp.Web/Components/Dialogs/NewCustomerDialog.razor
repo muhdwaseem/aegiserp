@@ -123,7 +123,10 @@
                         {
                             <MudItem xs="12" sm="4"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="e.g. 100123456700003" /></MudItem>
                         }
-                        <MudItem xs="12" sm="4">@EmirateSelect("Place of Supply", () => _placeOfSupply, v => _placeOfSupply = v)</MudItem>
+                        @if (RequiresPlaceOfSupply(_taxTreatment))
+                        {
+                            <MudItem xs="12" sm="4">@EmirateSelect("Place of Supply", () => _placeOfSupply, v => _placeOfSupply = v)</MudItem>
+                        }
                         <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_openingBalance" Label="Opening Balance" HideSpinButtons="true" Adornment="Adornment.End" AdornmentText="@_currency" HelperText="Informational only — does not post to the ledger" /></MudItem>
                         <MudItem xs="12" sm="4" Class="d-flex align-center"><MudSwitch T="bool" @bind-Value="_enablePortal" Label="Enable Portal" Color="Color.Primary" /></MudItem>
                     </MudGrid>
@@ -432,10 +435,15 @@
     private static bool RequiresTrn(TaxTreatment? t) => t is
         TaxTreatment.VatRegistered or TaxTreatment.GccVatRegistered or TaxTreatment.VatRegisteredDesignatedZone;
 
+    /// <summary>Place of Supply is a UAE-VAT concept — it has nothing to determine for a customer
+    /// who is Non GCC entirely, so that's the one treatment that hides it too.</summary>
+    private static bool RequiresPlaceOfSupply(TaxTreatment? t) => t != TaxTreatment.NonGcc;
+
     private void OnTaxTreatmentChanged(TaxTreatment? value)
     {
         _taxTreatment = value;
         if (!RequiresTrn(value)) _trn = null;
+        if (!RequiresPlaceOfSupply(value)) _placeOfSupply = null;
     }
 
     private RenderFragment EmirateSelect(string label, Func<string?> get, Action<string?> set) => __builder =>
