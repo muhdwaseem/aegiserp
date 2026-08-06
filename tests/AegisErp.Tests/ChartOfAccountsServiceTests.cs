@@ -14,6 +14,24 @@ public class ChartOfAccountsServiceTests : IDisposable
     public void Dispose() => _db.Dispose();
 
     [Fact]
+    public async Task SuggestCodeAsync_appends_a_running_two_digit_suffix_to_the_parent_code()
+    {
+        var header = await _coa.CreateAsync(
+            new("510", "Sales Revenue", AccountType.Income, IsPostable: false, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+
+        // No children yet — the very first one offered is "01".
+        Assert.Equal("51001", await _coa.SuggestCodeAsync(header.Id));
+
+        await _coa.CreateAsync(
+            new("51001", "Consulting Revenue", AccountType.Income, IsPostable: true, Category: null, Currency: "AED", ParentId: header.Id, Description: null, OpeningBalance: 0),
+            "tester");
+
+        // The next suggestion picks up right after the last one created — not a jump of ten.
+        Assert.Equal("51002", await _coa.SuggestCodeAsync(header.Id));
+    }
+
+    [Fact]
     public async Task SetActiveAsync_toggles_the_account()
     {
         await _coa.SetActiveAsync(_db.Expense.Id, false);

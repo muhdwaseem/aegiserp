@@ -59,7 +59,7 @@
             </MudItem>
 
             <MudItem xs="12" sm="4">
-                <MudSelect T="int?" @bind-Value="_parentId" Label="Parent Account / Group" Clearable="true">
+                <MudSelect T="int?" Value="_parentId" ValueChanged="OnParentChanged" Label="Parent Account / Group" Clearable="true">
                     @foreach (var h in Headers.Where(h => h.Id != Existing?.Id))
                     {
                         <MudSelectItem T="int?" Value="h.Id">@h.Code — @h.Name</MudSelectItem>
@@ -116,6 +116,7 @@
     private bool IsEdit => Existing is not null;
 
     private string _code = "";
+    private string? _autoSuggestedCode;
     private string _name = "";
     private AccountType _type = AccountType.Expense;
     private PnlSection _pnlSection = PnlSection.OperatingExpense;
@@ -177,11 +178,26 @@
         _ => s.ToString(),
     };
 
+    /// <summary>Picking a parent group is the point a user has committed to where this account
+    /// lives, so the next code in that group's sequence fills in right away — no separate click
+    /// needed. It only overwrites the code if it still holds our own last suggestion (or is empty),
+    /// so it never clobbers a code the user typed themselves.</summary>
+    private async Task OnParentChanged(int? parentId)
+    {
+        _parentId = parentId;
+        if (IsEdit) return;
+        if (!string.IsNullOrEmpty(_code) && _code != _autoSuggestedCode) return;
+
+        var next = parentId is not null ? await Coa.SuggestCodeAsync(parentId) : "";
+        _code = next;
+        _autoSuggestedCode = string.IsNullOrEmpty(next) ? null : next;
+    }
+
     private async Task AutoNumber()
     {
         if (_parentId is null) { Snackbar.Add("Pick a parent group first, then Auto.", Severity.Info); return; }
         var next = await Coa.SuggestCodeAsync(_parentId);
-        if (!string.IsNullOrEmpty(next)) _code = next;
+        if (!string.IsNullOrEmpty(next)) { _code = next; _autoSuggestedCode = next; }
     }
 
     private async Task Save()

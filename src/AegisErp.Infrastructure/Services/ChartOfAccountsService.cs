@@ -130,6 +130,12 @@ public class ChartOfAccountsService
     }
 
     /// <summary>Suggests the next free numeric code under a parent (max child + 10), or parent + 10 if it has none.</summary>
+    /// <summary>
+    /// Suggests the next posting-account code under a header, e.g. header "510" already has
+    /// postable children "51001", "51002" — the next one offered is "51003". Children are numbered
+    /// by appending a running suffix to the header's own code, so the suggestion is always the
+    /// highest existing suffix plus one (not a jump — the very next number a user expects).
+    /// </summary>
     public async Task<string> SuggestCodeAsync(int? parentId)
     {
         await using var db = await _dbf.CreateDbContextAsync();
@@ -141,11 +147,19 @@ public class ChartOfAccountsService
         var childCodes = await db.Accounts.AsNoTracking()
             .Where(a => a.ParentId == pid).Select(a => a.Code).ToListAsync();
 
-        var baseNum = int.TryParse(parent.Code, out var pn) ? pn : 0;
-        var max = baseNum;
+        const int defaultSuffixWidth = 2;
+        var suffixWidth = defaultSuffixWidth;
+        var maxSuffix = 0;
         foreach (var c in childCodes)
-            if (int.TryParse(c, out var n) && n > max) max = n;
-        return (max + 10).ToString();
+        {
+            if (c.Length > parent.Code.Length && c.StartsWith(parent.Code) &&
+                int.TryParse(c[parent.Code.Length..], out var suf))
+            {
+                suffixWidth = Math.Max(suffixWidth, c.Length - parent.Code.Length);
+                if (suf > maxSuffix) maxSuffix = suf;
+            }
+        }
+        return parent.Code + (maxSuffix + 1).ToString(new string('0', suffixWidth));
     }
 
     /// <summary>
