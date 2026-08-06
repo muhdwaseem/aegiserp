@@ -34,6 +34,17 @@
             <div class="tb-lbl">Manage</div>
         </div>
         <div class="tb-sep"></div>
+        @if (_checked.Count > 0)
+        {
+            <div class="tb-grp">
+                <div class="tb-btns">
+                    <button class="tb-b dng" @onclick="BulkDelete"><span>🗑</span>Delete Checked (@_checked.Count)</button>
+                    <button class="tb-b" @onclick="@(() => _checked.Clear())"><span>✖</span>Clear</button>
+                </div>
+                <div class="tb-lbl">Bulk</div>
+            </div>
+            <div class="tb-sep"></div>
+        }
         <div class="tb-grp">
             <div class="tb-btns">
                 <button class="tb-b" @onclick="OpenImport"><span>📥</span>Import</button>
@@ -64,6 +75,12 @@
             <table class="coa">
                 <thead>
                     <tr>
+                        @if (Session.CanPost)
+                        {
+                            <th style="width:28px">
+                                <MudCheckBox T="bool" Value="_allChecked" ValueChanged="ToggleAllChecked" Dense="true" />
+                            </th>
+                        }
                         <th style="width:34px"></th>
                         <th>Account No.</th><th>Account Name</th><th>Type</th>
                         <th>Category</th><th>P&amp;L Section</th><th>Currency</th><th class="ctr">Dr/Cr</th><th>Status</th>
@@ -80,6 +97,12 @@
                         <tr class="@(a.IsPostable ? "" : "hdr") @(a.Id == _selectedId ? "sel" : "")"
                             @onclick="() => Select(a.Id)" @ondblclick="@(() => Session.CanPost ? SelectAndEditAsync(a.Id) : Task.CompletedTask)"
                             title="@(Session.CanPost ? "Double-click to edit" : null)">
+                            @if (Session.CanPost)
+                            {
+                                <td @onclick:stopPropagation="true">
+                                    <MudCheckBox T="bool" Value="_checked.Contains(a.Id)" ValueChanged="@(v => ToggleChecked(a.Id, v))" Dense="true" />
+                                </td>
+                            }
                             <td class="exp" style="padding-left:@(6 + row.Level * 20)px">
                                 @if (row.HasChildren)
                                 {
@@ -160,8 +183,11 @@
     private List<Account>? _all;
     private List<Account> _headers = new();
     private readonly HashSet<int> _collapsed = new();
+    private readonly HashSet<int> _checked = new();
     private int? _selectedId;
     private string _search = "";
+
+    private bool _allChecked => _all is { Count: > 0 } && _all.All(a => _checked.Contains(a.Id));
 
     protected override async Task OnInitializedAsync() => await Reload();
 
@@ -169,6 +195,49 @@
     {
         _all = await Coa.GetAllAsync();
         _headers = await Coa.GetHeaderAccountsAsync();
+        _checked.RemoveWhere(id => _all.All(a => a.Id != id));
+    }
+
+    private void ToggleChecked(int id, bool isChecked)
+    {
+        if (isChecked) _checked.Add(id); else _checked.Remove(id);
+    }
+
+    private void ToggleAllChecked(bool isChecked)
+    {
+        if (!isChecked) { _checked.Clear(); return; }
+        if (_all is null) return;
+        foreach (var a in _all) _checked.Add(a.Id);
+    }
+
+    /// <summary>Deletes every checked account it safely can — e.g. clearing out an old chart of
+    /// accounts before importing a new one. Anything still referenced (sub-accounts, ledger
+    /// entries, invoices, receipts) is skipped and reported, never force-deleted.</summary>
+    private async Task BulkDelete()
+    {
+        if (_checked.Count == 0) return;
+        var ok = await DialogService.ShowMessageBox("Delete checked accounts",
+            $"Delete {_checked.Count} checked account(s)? Anything still in use (sub-accounts, " +
+            "ledger entries, invoices, receipts) will be skipped and left in place.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+
+        var results = await Coa.DeleteManyAsync(_checked);
+        _checked.Clear();
+        await Reload();
+
+        var deleted = results.Count(r => r.Success);
+        var skipped = results.Where(r => !r.Success).ToList();
+        if (skipped.Count == 0)
+        {
+            Snackbar.Add($"{deleted} account(s) deleted.", Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add($"{deleted} deleted, {skipped.Count} skipped.", Severity.Warning);
+            foreach (var s in skipped.Take(5))
+                Snackbar.Add($"{s.Code}: {s.Message}", Severity.Info);
+        }
     }
 
     // Builds the visible, ordered rows honouring collapsed headers. When searching, a flat match list.

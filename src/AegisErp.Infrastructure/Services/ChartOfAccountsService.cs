@@ -19,6 +19,9 @@ public record ImportAccountRow(
 /// <summary>Outcome of importing one CSV row — surfaced per-row so a bad row doesn't block the rest.</summary>
 public record ImportRowResult(int RowNumber, string Code, bool Success, string Message);
 
+/// <summary>Outcome of one account in a <see cref="ChartOfAccountsService.DeleteManyAsync"/> batch.</summary>
+public record BulkDeleteResult(int Id, string Code, bool Success, string Message);
+
 public class ChartOfAccountsService
 {
     private readonly IDbContextFactory<AegisDbContext> _dbf;
@@ -336,16 +339,72 @@ public class ChartOfAccountsService
         var acc = await db.Accounts.FirstOrDefaultAsync(a => a.Id == id)
             ?? throw new PostingException("Account not found.");
 
-        if (await db.Accounts.AnyAsync(a => a.ParentId == id))
-            throw new PostingException("This account has sub-accounts. Remove or reassign them first.");
-        if (await db.JournalLines.AnyAsync(l => l.AccountId == id))
-            throw new PostingException("This account has ledger entries and cannot be deleted — deactivate it instead.");
-        if (await db.SalesInvoiceLines.AnyAsync(l => l.RevenueAccountId == id))
-            throw new PostingException("This account is used on sales invoices and cannot be deleted.");
-        if (await db.CustomerReceipts.AnyAsync(r => r.BankAccountId == id))
-            throw new PostingException("This account is used on receipts and cannot be deleted.");
+        var reason = await DeleteBlockReasonAsync(db, id);
+        if (reason is not null) throw new PostingException(reason);
 
         db.Accounts.Remove(acc);
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Deletes as many of the given accounts as it safely can — e.g. clearing out an old chart of
+    /// accounts before importing a new one. Each account gets the same checks as
+    /// <see cref="DeleteAsync"/>, so anything still referenced is skipped (never force-deleted) and
+    /// reported back with its reason rather than aborting the whole batch. Runs in passes so a
+    /// header whose children are *also* selected this run is deleted right after they are, without
+    /// the caller having to pre-sort the selection.
+    /// </summary>
+    public async Task<List<BulkDeleteResult>> DeleteManyAsync(IEnumerable<int> ids)
+    {
+        var idSet = ids.ToHashSet();
+        await using var db = await _dbf.CreateDbContextAsync();
+        var accounts = await db.Accounts.Where(a => idSet.Contains(a.Id)).ToListAsync();
+        var pending = accounts.Select(a => a.Id).ToHashSet();
+        var results = new Dictionary<int, BulkDeleteResult>();
+
+        bool progressed;
+        do
+        {
+            progressed = false;
+            foreach (var id in pending.ToList())
+            {
+                var reason = await DeleteBlockReasonAsync(db, id, pending);
+                if (reason is not null) continue;
+
+                var acc = accounts.First(a => a.Id == id);
+                db.Accounts.Remove(acc);
+                await db.SaveChangesAsync();
+                results[id] = new BulkDeleteResult(id, acc.Code, true, "Deleted.");
+                pending.Remove(id);
+                progressed = true;
+            }
+        } while (progressed && pending.Count > 0);
+
+        foreach (var id in pending)
+        {
+            var acc = accounts.First(a => a.Id == id);
+            var reason = await DeleteBlockReasonAsync(db, id, pending) ?? "Could not be deleted.";
+            results[id] = new BulkDeleteResult(id, acc.Code, false, reason);
+        }
+
+        return accounts.Select(a => results[a.Id]).ToList();
+    }
+
+    /// <summary>Null if <paramref name="id"/> is safe to delete right now. <paramref name="alsoBeingDeleted"/>
+    /// lets a batch delete ignore sub-accounts that are themselves queued for deletion this run,
+    /// instead of treating them as a permanent blocker.</summary>
+    private static async Task<string?> DeleteBlockReasonAsync(AegisDbContext db, int id, HashSet<int>? alsoBeingDeleted = null)
+    {
+        var hasOtherChildren = alsoBeingDeleted is null
+            ? await db.Accounts.AnyAsync(a => a.ParentId == id)
+            : await db.Accounts.AnyAsync(a => a.ParentId == id && !alsoBeingDeleted.Contains(a.Id));
+        if (hasOtherChildren) return "This account has sub-accounts. Remove or reassign them first.";
+        if (await db.JournalLines.AnyAsync(l => l.AccountId == id))
+            return "This account has ledger entries and cannot be deleted — deactivate it instead.";
+        if (await db.SalesInvoiceLines.AnyAsync(l => l.RevenueAccountId == id))
+            return "This account is used on sales invoices and cannot be deleted.";
+        if (await db.CustomerReceipts.AnyAsync(r => r.BankAccountId == id))
+            return "This account is used on receipts and cannot be deleted.";
+        return null;
     }
 }

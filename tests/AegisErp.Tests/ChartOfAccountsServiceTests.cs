@@ -32,6 +32,41 @@ public class ChartOfAccountsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteManyAsync_deletes_a_header_and_its_children_regardless_of_selection_order()
+    {
+        var header = await _coa.CreateAsync(
+            new("610", "Old Group", AccountType.Expense, IsPostable: false, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+        var child = await _coa.CreateAsync(
+            new("61001", "Old Child", AccountType.Expense, IsPostable: true, Category: null, Currency: "AED", ParentId: header.Id, Description: null, OpeningBalance: 0),
+            "tester");
+
+        // Header listed before its own child — a naive single pass would skip it.
+        var results = await _coa.DeleteManyAsync(new[] { header.Id, child.Id });
+
+        Assert.All(results, r => Assert.True(r.Success, $"{r.Code}: {r.Message}"));
+        var remaining = await _coa.GetAllAsync();
+        Assert.DoesNotContain(remaining, a => a.Id == header.Id || a.Id == child.Id);
+    }
+
+    [Fact]
+    public async Task DeleteManyAsync_skips_a_header_whose_child_was_not_also_selected()
+    {
+        var header = await _coa.CreateAsync(
+            new("620", "Kept Group", AccountType.Expense, IsPostable: false, Category: null, Currency: "AED", ParentId: null, Description: null, OpeningBalance: 0),
+            "tester");
+        await _coa.CreateAsync(
+            new("62001", "Kept Child", AccountType.Expense, IsPostable: true, Category: null, Currency: "AED", ParentId: header.Id, Description: null, OpeningBalance: 0),
+            "tester");
+
+        var results = await _coa.DeleteManyAsync(new[] { header.Id });
+
+        Assert.False(results.Single().Success);
+        Assert.Contains("sub-accounts", results.Single().Message);
+        Assert.Contains(await _coa.GetAllAsync(), a => a.Id == header.Id);
+    }
+
+    [Fact]
     public async Task SetActiveAsync_toggles_the_account()
     {
         await _coa.SetActiveAsync(_db.Expense.Id, false);
