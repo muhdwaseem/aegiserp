@@ -1,10 +1,11 @@
 @page "/vendors"
 @page "/vendors/{Id:int?}"
 @attribute [Authorize]
+@using AegisErp.Web.Components.Dialogs
 @inject VendorService VendorSvc
 @inject NavigationManager Nav
-@inject ISnackbar Snackbar
 @inject CompanySession Session
+@inject IDialogService DialogService
 
 <PageTitle>Vendors · Aegis ERP</PageTitle>
 
@@ -14,56 +15,9 @@
     @if (Session.CanPost)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="OpenForm">New Vendor</MudButton>
+                   OnClick="OpenNewForm">New Vendor</MudButton>
     }
 </MudStack>
-
-@if (_showForm)
-{
-    <MudPaper Class="pa-4 mb-4" Elevation="2">
-        <MudText Typo="Typo.subtitle1" Class="mb-3">New Vendor</MudText>
-        <MudGrid>
-            <MudItem xs="12" sm="3"><MudTextField Value="_nextCode" Label="Vendor No." ReadOnly="true" HelperText="Auto-generated" /></MudItem>
-            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Vendor Name" Required="true" /></MudItem>
-            <MudItem xs="12" sm="3">
-                <MudSelect T="string" @bind-Value="_group" Label="Group" Clearable="true">
-                    <MudSelectItem Value="@("Supplier")">Supplier</MudSelectItem>
-                    <MudSelectItem Value="@("Contractor")">Contractor</MudSelectItem>
-                    <MudSelectItem Value="@("Utility")">Utility</MudSelectItem>
-                    <MudSelectItem Value="@("Government")">Government</MudSelectItem>
-                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-
-            <MudItem xs="12" sm="3">
-                <MudSelect T="string" @bind-Value="_currency" Label="Currency">
-                    <MudSelectItem Value="@("AED")">AED — UAE Dirham</MudSelectItem>
-                    <MudSelectItem Value="@("USD")">USD — US Dollar</MudSelectItem>
-                    <MudSelectItem Value="@("EUR")">EUR — Euro</MudSelectItem>
-                    <MudSelectItem Value="@("GBP")">GBP — British Pound</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="3">
-                <MudSelect T="int" @bind-Value="_terms" Label="Payment Terms">
-                    <MudSelectItem Value="0">Immediate</MudSelectItem>
-                    <MudSelectItem Value="15">Net 15</MudSelectItem>
-                    <MudSelectItem Value="30">Net 30</MudSelectItem>
-                    <MudSelectItem Value="45">Net 45</MudSelectItem>
-                    <MudSelectItem Value="60">Net 60</MudSelectItem>
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="Optional" /></MudItem>
-            <MudItem xs="12" sm="3"><MudTextField @bind-Value="_phone" Label="Phone" Placeholder="Optional" /></MudItem>
-
-            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="Email" Placeholder="Optional" /></MudItem>
-            <MudItem xs="12" sm="8"><MudTextField @bind-Value="_address" Label="Address" Placeholder="Optional" /></MudItem>
-        </MudGrid>
-        <MudStack Row="true" Spacing="2" Class="mt-3">
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Check" OnClick="Save">Save Vendor</MudButton>
-            <MudButton Variant="Variant.Text" OnClick="@(() => _showForm = false)">Cancel</MudButton>
-        </MudStack>
-    </MudPaper>
-}
 
 <MudGrid>
     <MudItem xs="12" md="4">
@@ -123,17 +77,6 @@
     private List<VendorSummary>? _summaries;
     private int? _selectedId;
 
-    private bool _showForm;
-    private string _nextCode = "";
-    private string _name = "";
-    private string? _group;
-    private string _currency = "AED";
-    private string? _trn;
-    private string? _email;
-    private string? _phone;
-    private string? _address;
-    private int _terms = 30;
-
     protected override async Task OnInitializedAsync() => await Load();
 
     protected override void OnParametersSet()
@@ -154,28 +97,19 @@
         Nav.NavigateTo($"/vendors/{v.Id}");
     }
 
-    private async Task OpenForm()
+    private async Task OpenNewForm()
     {
-        _showForm = true;
-        _nextCode = await VendorSvc.PeekNextCodeAsync();
-    }
-
-    private async Task Save()
-    {
-        try
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewVendorDialog>("New Vendor", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
         {
-            var input = new NewVendorInput(_name, _group, _currency, 0, _terms, _trn, _email, _phone, _address);
-            var v = await VendorSvc.CreateAsync(input);
-            Snackbar.Add($"Vendor {v.Code} created.", Severity.Success);
-            _name = ""; _group = null; _currency = "AED";
-            _trn = _email = _phone = _address = null; _terms = 30; _showForm = false;
             await Load();
-            _selectedId = v.Id;
-            Nav.NavigateTo($"/vendors/{v.Id}");
-        }
-        catch (PostingException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/vendors/{newId}");
+            }
         }
     }
 }

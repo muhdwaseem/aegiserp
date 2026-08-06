@@ -1,0 +1,589 @@
+@using Microsoft.AspNetCore.Components.Forms
+@inject VendorService VendorSvc
+@inject CustomFieldService CustomFieldSvc
+@inject TagService TagSvc
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsEdit ? $"Edit {Existing!.Code}" : "New Vendor")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudRadioGroup T="CustomerType" Value="_vendorType" ValueChanged="OnVendorTypeChanged">
+                    <MudRadio T="CustomerType" Value="CustomerType.Business" Color="Color.Primary">Business</MudRadio>
+                    <MudRadio T="CustomerType" Value="CustomerType.Individual" Color="Color.Primary">Individual</MudRadio>
+                </MudRadioGroup>
+            </MudItem>
+
+            @if (_vendorType == CustomerType.Business)
+            {
+                <MudItem xs="12"><MudTextField @bind-Value="_companyName" Label="Company Name" /></MudItem>
+            }
+
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_salutation" Label="Salutation" Clearable="true">
+                    <MudSelectItem Value="@("Mr.")">Mr.</MudSelectItem>
+                    <MudSelectItem Value="@("Mrs.")">Mrs.</MudSelectItem>
+                    <MudSelectItem Value="@("Ms.")">Ms.</MudSelectItem>
+                    <MudSelectItem Value="@("Dr.")">Dr.</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudTextField @bind-Value="_firstName" Label="@(_vendorType == CustomerType.Business ? "Primary Contact — First Name" : "First Name")" />
+            </MudItem>
+            <MudItem xs="12" sm="5"><MudTextField @bind-Value="_lastName" Label="Last Name" /></MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudAutocomplete T="string" @bind-Value="_name" Label="Display Name" Required="true"
+                                  SearchFunc="SearchDisplayNameSuggestions" CoerceText="true" ResetValueOnEmptyText="false"
+                                  HelperText="Shown everywhere else in the app — pick a suggestion or type your own" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_displayNameArabic" Label="Display Name (Arabic)" Placeholder="Optional" /></MudItem>
+
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_email" Label="Email Address" Placeholder="Optional" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_workPhone" Label="Work Phone" Placeholder="Optional" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_mobile" Label="Mobile" Placeholder="Optional" /></MudItem>
+
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_vendorLanguage" Label="Vendor Language">
+                    <MudSelectItem Value="@("English")">English</MudSelectItem>
+                    <MudSelectItem Value="@("Arabic")">Arabic</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="string" @bind-Value="_currency" Label="Currency">
+                    <MudSelectItem Value="@("AED")">AED — UAE Dirham</MudSelectItem>
+                    <MudSelectItem Value="@("USD")">USD — US Dollar</MudSelectItem>
+                    <MudSelectItem Value="@("EUR")">EUR — Euro</MudSelectItem>
+                    <MudSelectItem Value="@("GBP")">GBP — British Pound</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="3"><MudNumericField T="decimal" @bind-Value="_creditLimit" Label="Credit Limit" HideSpinButtons="true" Adornment="Adornment.End" AdornmentText="@_currency" HelperText="Credit the vendor extends to us" /></MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSelect T="int" @bind-Value="_paymentTermsDays" Label="Payment Terms">
+                    <MudSelectItem Value="0">Immediate</MudSelectItem>
+                    <MudSelectItem Value="15">Net 15</MudSelectItem>
+                    <MudSelectItem Value="30">Net 30</MudSelectItem>
+                    <MudSelectItem Value="60">Net 60</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudSelect T="string" @bind-Value="_group" Label="Group" Clearable="true">
+                    <MudSelectItem Value="@("Supplier")">Supplier</MudSelectItem>
+                    <MudSelectItem Value="@("Contractor")">Contractor</MudSelectItem>
+                    <MudSelectItem Value="@("Utility")">Utility</MudSelectItem>
+                    <MudSelectItem Value="@("Government")">Government</MudSelectItem>
+                    <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Elevation="0" Class="mt-4">
+            <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true">
+
+                @* ── Other Details ── *@
+                <MudTabPanel Text="Other Details">
+                    <MudGrid>
+                        <MudItem xs="12" sm="4">
+                            <MudSelect T="TaxTreatment?" Value="_taxTreatment" ValueChanged="OnTaxTreatmentChanged" Label="Tax Treatment" Clearable="true">
+                                @foreach (var t in Enum.GetValues<TaxTreatment>())
+                                {
+                                    <MudSelectItem T="TaxTreatment?" Value="t">@TaxTreatmentLabel(t)</MudSelectItem>
+                                }
+                            </MudSelect>
+                        </MudItem>
+                        @if (RequiresTrn(_taxTreatment))
+                        {
+                            <MudItem xs="12" sm="4"><MudTextField @bind-Value="_trn" Label="TRN / VAT No." Placeholder="e.g. 100123456700003" /></MudItem>
+                        }
+                        @if (RequiresPlaceOfSupply(_taxTreatment))
+                        {
+                            <MudItem xs="12" sm="4">@EmirateSelect("Place of Supply", () => _placeOfSupply, v => _placeOfSupply = v)</MudItem>
+                        }
+                        <MudItem xs="12" sm="4"><MudNumericField T="decimal" @bind-Value="_openingBalance" Label="Opening Balance" HideSpinButtons="true" Adornment="Adornment.End" AdornmentText="@_currency" HelperText="Informational only — does not post to the ledger" /></MudItem>
+                    </MudGrid>
+
+                    <MudDivider Class="my-4" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Documents</MudText>
+                    @if (_vendorId is null)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">Save the vendor first, then reopen to attach documents.</MudAlert>
+                    }
+                    else
+                    {
+                        <MudFileUpload T="IReadOnlyList<IBrowserFile>" FilesChanged="OnDocumentsSelected"
+                                       Accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                            <ActivatorContent>
+                                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">Upload Documents</MudButton>
+                            </ActivatorContent>
+                        </MudFileUpload>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">Up to @VendorService.MaxDocumentsPerVendor files, @(VendorService.MaxDocumentBytes / (1024 * 1024)) MB each.</MudText>
+
+                        @if (_documents is { Count: > 0 })
+                        {
+                            <MudStack Class="mt-2" Spacing="1">
+                                @foreach (var doc in _documents)
+                                {
+                                    <MudPaper Elevation="0" Class="pa-2" Style="border:1px solid var(--mud-palette-lines-default)">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center">
+                                            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                            <MudText>@doc.FileName</MudText>
+                                            <MudText Typo="Typo.caption" Class="mud-text-secondary">(@((doc.SizeBytes / 1024.0).ToString("N0")) KB)</MudText>
+                                            <MudSpacer />
+                                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="@(() => DownloadDocument(doc))" />
+                                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveDocument(doc))" />
+                                        </MudStack>
+                                    </MudPaper>
+                                }
+                            </MudStack>
+                        }
+                    }
+                </MudTabPanel>
+
+                @* ── Address ── *@
+                <MudTabPanel Text="Address">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Billing Address</MudText>
+                    @AddressFields(_billing)
+                    <MudStack Row="true" Class="my-3">
+                        <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyBillingToShipping">Copy billing address</MudButton>
+                    </MudStack>
+                    <MudDivider Class="mb-3" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Shipping Address</MudText>
+                    @AddressFields(_shipping)
+                </MudTabPanel>
+
+                @* ── Contact Persons ── *@
+                <MudTabPanel Text="Contact Persons">
+                    <div style="overflow-x:auto">
+                        <MudTable Items="_contactPersons" Dense="true" Bordered="true" Elevation="0" Style="min-width:960px">
+                            <HeaderContent>
+                                <MudTh Style="width:110px">Salutation</MudTh>
+                                <MudTh>First Name</MudTh>
+                                <MudTh>Last Name</MudTh>
+                                <MudTh>Email</MudTh>
+                                <MudTh>Work Phone</MudTh>
+                                <MudTh>Mobile</MudTh>
+                                <MudTh>Designation</MudTh>
+                                <MudTh Style="width:80px">Primary</MudTh>
+                                <MudTh Style="width:48px"></MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd><MudTextField @bind-Value="context.Salutation" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.FirstName" Margin="Margin.Dense" Required="true" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.LastName" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Email" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.WorkPhone" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Mobile" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudTextField @bind-Value="context.Designation" Margin="Margin.Dense" /></MudTd>
+                                <MudTd><MudCheckBox T="bool" Value="context.IsPrimary" ValueChanged="@(v => SetPrimaryContact(context, v))" Dense="true" /></MudTd>
+                                <MudTd>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => _contactPersons.Remove(context))" />
+                                </MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No contact persons yet.</MudText></NoRecordsContent>
+                        </MudTable>
+                    </div>
+                    <MudButton Class="mt-2" StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="@(() => _contactPersons.Add(new()))">Add Contact Person</MudButton>
+                </MudTabPanel>
+
+                @* ── Custom Fields ── *@
+                <MudTabPanel Text="Custom Fields">
+                    @if (_customFieldDefs is { Count: 0 })
+                    {
+                        <MudText Class="mud-text-secondary">No custom fields defined yet — an admin can add some under Settings → Custom Fields &amp; Tags.</MudText>
+                    }
+                    else if (_customFieldDefs is not null)
+                    {
+                        <MudGrid>
+                            @foreach (var def in _customFieldDefs)
+                            {
+                                <MudItem xs="12" sm="6" md="4">
+                                    @CustomFieldInput(def)
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    }
+                </MudTabPanel>
+
+                @* ── Reporting Tags ── *@
+                <MudTabPanel Text="Reporting Tags">
+                    @if (_tagGroups is { Count: 0 })
+                    {
+                        <MudText Class="mud-text-secondary">No tag groups defined yet — an admin can add some under Settings → Custom Fields &amp; Tags.</MudText>
+                    }
+                    else if (_tagGroups is not null)
+                    {
+                        <MudGrid>
+                            @foreach (var group in _tagGroups)
+                            {
+                                <MudItem xs="12" sm="6" md="4">
+                                    <MudSelect T="int?" Label="@group.Name" Value="_selectedTagByGroup.GetValueOrDefault(group.Id)"
+                                               ValueChanged="@(v => _selectedTagByGroup[group.Id] = v)" Clearable="true">
+                                        @foreach (var tag in group.Tags.Where(t => t.IsActive).OrderBy(t => t.SortOrder).ThenBy(t => t.Name))
+                                        {
+                                            <MudSelectItem T="int?" Value="tag.Id">@tag.Name</MudSelectItem>
+                                        }
+                                    </MudSelect>
+                                </MudItem>
+                            }
+                        </MudGrid>
+                    }
+                </MudTabPanel>
+
+                @* ── Remarks ── *@
+                <MudTabPanel Text="Remarks">
+                    <MudTextField @bind-Value="_remarks" Label="Remarks" Lines="4" Placeholder="Internal notes about this vendor" />
+                </MudTabPanel>
+            </MudTabs>
+        </MudPaper>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Check"
+                   Disabled="@(string.IsNullOrWhiteSpace(_name) || _saving)" OnClick="Save">
+            @(IsEdit ? "Save Changes" : "Save Vendor")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Vendor? Existing { get; set; }
+
+    private bool IsEdit => Existing is not null;
+    private int? _vendorId;
+    private bool _saving;
+
+    private CustomerType _vendorType = CustomerType.Business;
+    private string? _salutation, _firstName, _lastName, _companyName;
+    private string _name = "";
+    private string? _displayNameArabic;
+    private string _vendorLanguage = "English";
+    private string? _email, _workPhone, _mobile;
+    private string? _legacyPhone, _legacyAddress; // round-tripped, not editable here — see Vendor.Phone/Address docs
+    private string? _group;
+    private string _currency = "AED";
+    private decimal _creditLimit;
+    private int _paymentTermsDays = 30;
+    private string? _trn;
+
+    private TaxTreatment? _taxTreatment;
+    private string? _placeOfSupply;
+    private decimal _openingBalance;
+    private string? _remarks;
+
+    private readonly AddressVm _billing = new();
+    private readonly AddressVm _shipping = new();
+
+    private readonly List<ContactPersonVm> _contactPersons = new();
+
+    private List<CustomFieldDefinition>? _customFieldDefs;
+    private readonly Dictionary<int, string?> _customFieldValues = new();
+
+    private List<TagGroup>? _tagGroups;
+    private readonly Dictionary<int, int?> _selectedTagByGroup = new();
+
+    private List<VendorDocumentInfo>? _documents;
+
+    private static readonly string[] Emirates =
+        { "Abu Dhabi", "Dubai", "Sharjah", "Ajman", "Umm Al Quwain", "Ras Al Khaimah", "Fujairah" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _customFieldDefs = await CustomFieldSvc.GetDefinitionsAsync(VendorService.Module, activeOnly: true);
+        _tagGroups = await TagSvc.GetGroupsAsync(VendorService.Module, activeOnly: true);
+
+        if (Existing is { } v)
+        {
+            _vendorId = v.Id;
+            _vendorType = v.VendorType;
+            _salutation = v.Salutation; _firstName = v.FirstName; _lastName = v.LastName; _companyName = v.CompanyName;
+            _name = v.Name;
+            _displayNameArabic = v.DisplayNameArabic;
+            _vendorLanguage = v.VendorLanguage;
+            _email = v.Email; _workPhone = v.WorkPhone; _mobile = v.Mobile;
+            _legacyPhone = v.Phone; _legacyAddress = v.Address;
+            _group = v.Group; _currency = v.Currency; _creditLimit = v.CreditLimit; _paymentTermsDays = v.PaymentTermsDays;
+            _trn = v.Trn;
+
+            _taxTreatment = v.TaxTreatment;
+            _placeOfSupply = v.PlaceOfSupply;
+            _openingBalance = v.OpeningBalance;
+            _remarks = v.Remarks;
+
+            CopyInto(_billing, v.BillingAttention, v.BillingCountry, v.BillingAddressLine1, v.BillingAddressLine1Arabic,
+                v.BillingAddressLine2, v.BillingAddressLine2Arabic, v.BillingCity, v.BillingEmirate, v.BillingZip, v.BillingPhone, v.BillingFax);
+            CopyInto(_shipping, v.ShippingAttention, v.ShippingCountry, v.ShippingAddressLine1, v.ShippingAddressLine1Arabic,
+                v.ShippingAddressLine2, v.ShippingAddressLine2Arabic, v.ShippingCity, v.ShippingEmirate, v.ShippingZip, v.ShippingPhone, v.ShippingFax);
+
+            foreach (var p in v.ContactPersons)
+                _contactPersons.Add(new ContactPersonVm
+                {
+                    Salutation = p.Salutation, FirstName = p.FirstName, LastName = p.LastName, Email = p.Email,
+                    WorkPhone = p.WorkPhone, Mobile = p.Mobile, Designation = p.Designation, Department = p.Department,
+                    IsPrimary = p.IsPrimary,
+                });
+
+            foreach (var val in v.CustomFieldValues)
+                _customFieldValues[val.CustomFieldDefinitionId] = val.Value;
+
+            foreach (var t in v.Tags)
+                _selectedTagByGroup[t.Tag.TagGroupId] = t.TagId;
+
+            _documents = await VendorSvc.GetDocumentsAsync(v.Id);
+        }
+        else
+        {
+            _billing.Country = "United Arab Emirates";
+            _shipping.Country = "United Arab Emirates";
+        }
+    }
+
+    private static void CopyInto(AddressVm a, string? attention, string? country, string? line1, string? line1Ar,
+        string? line2, string? line2Ar, string? city, string? emirate, string? zip, string? phone, string? fax)
+    {
+        a.Attention = attention; a.Country = country; a.AddressLine1 = line1; a.AddressLine1Arabic = line1Ar;
+        a.AddressLine2 = line2; a.AddressLine2Arabic = line2Ar; a.City = city; a.Emirate = emirate;
+        a.Zip = zip; a.Phone = phone; a.Fax = fax;
+    }
+
+    private void OnVendorTypeChanged(CustomerType t)
+    {
+        _vendorType = t;
+        if (t == CustomerType.Individual) _companyName = null;
+    }
+
+    private Task<IEnumerable<string>> SearchDisplayNameSuggestions(string? value, CancellationToken ct)
+    {
+        var suggestions = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_companyName)) suggestions.Add(_companyName);
+        var fullName = string.Join(" ", new[] { _firstName, _lastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        if (!string.IsNullOrWhiteSpace(fullName)) suggestions.Add(fullName);
+
+        var q = value?.Trim() ?? "";
+        var matches = string.IsNullOrEmpty(q)
+            ? suggestions
+            : suggestions.Where(s => s.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        return Task.FromResult<IEnumerable<string>>(matches);
+    }
+
+    private static string TaxTreatmentLabel(TaxTreatment t) => t switch
+    {
+        TaxTreatment.VatRegistered => "VAT Registered",
+        TaxTreatment.NonVatRegistered => "Non VAT Registered",
+        TaxTreatment.GccVatRegistered => "GCC VAT Registered",
+        TaxTreatment.GccNonVatRegistered => "GCC Non VAT Registered",
+        TaxTreatment.NonGcc => "Non GCC",
+        TaxTreatment.VatRegisteredDesignatedZone => "VAT Registered — Designated Zone",
+        TaxTreatment.NonVatRegisteredDesignatedZone => "Non VAT Registered — Designated Zone",
+        _ => t.ToString(),
+    };
+
+    private static bool RequiresTrn(TaxTreatment? t) => t is
+        TaxTreatment.VatRegistered or TaxTreatment.GccVatRegistered or TaxTreatment.VatRegisteredDesignatedZone;
+
+    private static bool RequiresPlaceOfSupply(TaxTreatment? t) => t != TaxTreatment.NonGcc;
+
+    private void OnTaxTreatmentChanged(TaxTreatment? value)
+    {
+        _taxTreatment = value;
+        if (!RequiresTrn(value)) _trn = null;
+        if (!RequiresPlaceOfSupply(value)) _placeOfSupply = null;
+    }
+
+    private RenderFragment EmirateSelect(string label, Func<string?> get, Action<string?> set) => __builder =>
+    {
+        <MudSelect T="string" Label="@label" Value="get()" ValueChanged="set" Clearable="true">
+            @foreach (var em in Emirates)
+            {
+                <MudSelectItem Value="em">@em</MudSelectItem>
+            }
+        </MudSelect>
+    };
+
+    // Autocomplete rather than a plain dropdown — 190+ countries is too long a list to scroll.
+    private RenderFragment CountrySelect(string label, Func<string?> get, Action<string?> set) => __builder =>
+    {
+        <MudAutocomplete T="string" Label="@label" Value="get()" ValueChanged="set"
+                          SearchFunc="SearchCountries" ToStringFunc="@(c => c ?? "")"
+                          Clearable="true" ResetValueOnEmptyText="true" CoerceText="false" />
+    };
+
+    private static Task<IEnumerable<string>> SearchCountries(string? value, CancellationToken ct)
+    {
+        var q = value?.Trim() ?? "";
+        var matches = string.IsNullOrEmpty(q)
+            ? Countries.All
+            : Countries.All.Where(c => c.Contains(q, StringComparison.OrdinalIgnoreCase)).ToArray();
+        return Task.FromResult<IEnumerable<string>>(matches);
+    }
+
+    private static bool IsUae(string? country) => country is "United Arab Emirates" or "UAE";
+
+    private RenderFragment AddressFields(AddressVm a) => __builder =>
+    {
+        <MudGrid>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.Attention" Label="Attention" /></MudItem>
+            <MudItem xs="12" sm="6">@CountrySelect("Country/Region", () => a.Country, v => a.Country = v)</MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.AddressLine1" Label="Address Line 1" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.AddressLine1Arabic" Label="Address Line 1 (Arabic)" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.AddressLine2" Label="Address Line 2" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.AddressLine2Arabic" Label="Address Line 2 (Arabic)" /></MudItem>
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="a.City" Label="City" /></MudItem>
+            @if (IsUae(a.Country))
+            {
+                <MudItem xs="12" sm="4">@EmirateSelect("Emirate", () => a.Emirate, v => a.Emirate = v)</MudItem>
+            }
+            <MudItem xs="12" sm="4"><MudTextField @bind-Value="a.Zip" Label="ZIP / PO Box" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.Phone" Label="Phone" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="a.Fax" Label="Fax" /></MudItem>
+        </MudGrid>
+    };
+
+    private void CopyBillingToShipping() => CopyInto(_shipping,
+        _billing.Attention, _billing.Country, _billing.AddressLine1, _billing.AddressLine1Arabic,
+        _billing.AddressLine2, _billing.AddressLine2Arabic, _billing.City, _billing.Emirate, _billing.Zip, _billing.Phone, _billing.Fax);
+
+    private void SetPrimaryContact(ContactPersonVm target, bool value)
+    {
+        if (value) foreach (var p in _contactPersons) p.IsPrimary = false;
+        target.IsPrimary = value;
+    }
+
+    private RenderFragment CustomFieldInput(CustomFieldDefinition def) => __builder =>
+    {
+        var value = _customFieldValues.GetValueOrDefault(def.Id);
+        switch (def.FieldType)
+        {
+            case CustomFieldType.Dropdown:
+                var options = (def.DropdownOptionsCsv ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                <MudSelect T="string" Label="@LabelWithRequired(def)" Value="value" ValueChanged="@(v => _customFieldValues[def.Id] = v)" Clearable="true">
+                    @foreach (var opt in options)
+                    {
+                        <MudSelectItem Value="opt">@opt</MudSelectItem>
+                    }
+                </MudSelect>
+                break;
+            case CustomFieldType.Checkbox:
+                <MudCheckBox T="bool" Label="@def.Label" Value="@(value == "true")" ValueChanged="@(v => _customFieldValues[def.Id] = v ? "true" : "false")" />
+                break;
+            case CustomFieldType.Number:
+                <MudNumericField T="decimal?" Label="@LabelWithRequired(def)" Value="@(decimal.TryParse(value, out var n) ? n : null)"
+                                  ValueChanged="@(v => _customFieldValues[def.Id] = v?.ToString())" HideSpinButtons="true" />
+                break;
+            case CustomFieldType.Date:
+                <MudDatePicker Label="@LabelWithRequired(def)" Date="@(DateTime.TryParse(value, out var d) ? d : null)"
+                               DateChanged="@(v => _customFieldValues[def.Id] = v?.ToString("yyyy-MM-dd"))" />
+                break;
+            default:
+                <MudTextField T="string" Label="@LabelWithRequired(def)" Value="value" ValueChanged="@(v => _customFieldValues[def.Id] = v)" />
+                break;
+        }
+    };
+
+    private static string LabelWithRequired(CustomFieldDefinition def) => def.IsRequired ? $"{def.Label} *" : def.Label;
+
+    private async Task OnDocumentsSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        if (_vendorId is not int vendId) return;
+        foreach (var file in files)
+        {
+            try
+            {
+                using var stream = file.OpenReadStream(VendorService.MaxDocumentBytes);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                await VendorSvc.AddDocumentAsync(vendId, file.Name, file.ContentType, ms.ToArray(), DateTime.UtcNow);
+            }
+            catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        }
+        _documents = await VendorSvc.GetDocumentsAsync(vendId);
+    }
+
+    private async Task DownloadDocument(VendorDocumentInfo doc)
+    {
+        if (_vendorId is not int vendId) return;
+        var full = await VendorSvc.GetDocumentAsync(vendId, doc.Id);
+        if (full is null) return;
+        var base64 = Convert.ToBase64String(full.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", full.Value.FileName, full.Value.ContentType, base64);
+    }
+
+    private async Task RemoveDocument(VendorDocumentInfo doc)
+    {
+        if (_vendorId is not int vendId) return;
+        await VendorSvc.RemoveDocumentAsync(vendId, doc.Id);
+        _documents = await VendorSvc.GetDocumentsAsync(vendId);
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        try
+        {
+            var input = new NewVendorInput(
+                _name, _group, _currency, _creditLimit, _paymentTermsDays, _trn, _email, _legacyPhone, _legacyAddress,
+                _vendorType, _salutation, _firstName, _lastName, _companyName, _displayNameArabic,
+                _vendorLanguage, _workPhone, _mobile, _taxTreatment, _placeOfSupply, _openingBalance,
+                _remarks, ToAddressInput(_billing), ToAddressInput(_shipping));
+
+            var contactPersons = _contactPersons.Select(p => new ContactPersonInput(
+                p.Salutation, p.FirstName, p.LastName, p.Email, p.WorkPhone, p.Mobile, p.Designation, p.Department, p.IsPrimary));
+            var customFieldValues = _customFieldValues.Select(kv => new CustomFieldValueInput(kv.Key, kv.Value));
+            var tagIds = _selectedTagByGroup.Values.Where(v => v is not null).Select(v => v!.Value);
+
+            if (IsEdit)
+            {
+                await VendorSvc.UpdateAsync(Existing!.Id, input, contactPersons, customFieldValues, tagIds);
+                Snackbar.Add($"Vendor {Existing.Code} updated.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(Existing.Id));
+            }
+            else
+            {
+                var v = await VendorSvc.CreateAsync(input, contactPersons, customFieldValues, tagIds);
+                Snackbar.Add($"Vendor {v.Code} created.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(v.Id));
+            }
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _saving = false; }
+    }
+
+    private static VendorAddressInput ToAddressInput(AddressVm a) => new(
+        a.Attention, a.Country, a.AddressLine1, a.AddressLine1Arabic, a.AddressLine2, a.AddressLine2Arabic,
+        a.City, a.Emirate, a.Zip, a.Phone, a.Fax);
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private class AddressVm
+    {
+        public string? Attention { get; set; }
+        public string? Country { get; set; }
+        public string? AddressLine1 { get; set; }
+        public string? AddressLine1Arabic { get; set; }
+        public string? AddressLine2 { get; set; }
+        public string? AddressLine2Arabic { get; set; }
+        public string? City { get; set; }
+        public string? Emirate { get; set; }
+        public string? Zip { get; set; }
+        public string? Phone { get; set; }
+        public string? Fax { get; set; }
+    }
+
+    private class ContactPersonVm
+    {
+        public string? Salutation { get; set; }
+        public string FirstName { get; set; } = "";
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public string? WorkPhone { get; set; }
+        public string? Mobile { get; set; }
+        public string? Designation { get; set; }
+        public string? Department { get; set; }
+        public bool IsPrimary { get; set; }
+    }
+}
