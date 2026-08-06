@@ -67,6 +67,10 @@
         <MudItem xs="12" sm="6" Class="text-right">
             <MudText Typo="Typo.body2">Invoice Date: @Invoice.Date.ToString("dd MMM yyyy")</MudText>
             <MudText Typo="Typo.body2">Due Date: @Invoice.DueDate.ToString("dd MMM yyyy")</MudText>
+            @if (!string.IsNullOrWhiteSpace(Invoice.Salesperson))
+            {
+                <MudText Typo="Typo.body2">Salesperson: @Invoice.Salesperson</MudText>
+            }
             <MudText Typo="Typo.h6" Class="mt-2">Balance Due: AED @Balance.ToString("N2")</MudText>
         </MudItem>
     </MudGrid>

@@ -37,16 +37,13 @@
             <MudItem xs="12" sm="2">
                 <MudTextField Value="@_dueLabel" Label="Due date" ReadOnly="true" />
             </MudItem>
-            <MudItem xs="12" sm="6">
-                <MudTextField @bind-Value="_narration" Label="Narration" Placeholder="Defaults to 'Sales invoice — customer'" />
-            </MudItem>
-            <MudItem xs="12" sm="2">
+            <MudItem xs="12" sm="4">
                 <MudTextField @bind-Value="_customerPoNo" Label="Customer PO No." Placeholder="Optional" />
             </MudItem>
-            <MudItem xs="12" sm="2">
+            <MudItem xs="12" sm="4">
                 <MudTextField @bind-Value="_deliveryNoteRef" Label="Delivery Note Ref." Placeholder="Optional" />
             </MudItem>
-            <MudItem xs="12" sm="2">
+            <MudItem xs="12" sm="4">
                 <MudTextField @bind-Value="_salesOrderRef" Label="Sales Order Ref." Placeholder="Optional" />
             </MudItem>
             <MudItem xs="12" sm="@(_salespersonEnabled ? 8 : 12)">
@@ -63,13 +60,6 @@
                     </MudSelect>
                 </MudItem>
             }
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_notes" Label="Notes" Lines="2" Placeholder="Payment terms, delivery notes… (shown on the printed invoice)" />
-            </MudItem>
-            <MudItem xs="12">
-                <MudTextField @bind-Value="_termsAndConditions" Label="Terms &amp; Conditions" Lines="2"
-                              Placeholder="Enter the terms and conditions of your business to be displayed on this invoice" />
-            </MudItem>
             <MudItem xs="12">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                     <MudFileUpload T="IBrowserFile" FilesChanged="OnInvoiceFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
@@ -202,6 +192,18 @@
             <MudText Class="mr-4">VAT: <b>@TotalVat.ToString("N2")</b></MudText>
             <MudText Class="mr-4">Total: <b>AED @TotalGross.ToString("N2")</b></MudText>
         </MudStack>
+
+        @* Notes / Terms & Conditions sit below the line items — same place they print, matching
+           Zoho's own layout — rather than up top before the customer has even seen the totals. *@
+        <MudGrid Class="mt-2">
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_notes" Label="Notes" Lines="2" Placeholder="Payment terms, delivery notes… (shown on the printed invoice)" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_termsAndConditions" Label="Terms &amp; Conditions" Lines="2"
+                              Placeholder="Enter the terms and conditions of your business to be displayed on this invoice" />
+            </MudItem>
+        </MudGrid>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
