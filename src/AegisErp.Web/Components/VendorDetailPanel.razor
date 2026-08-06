@@ -1,9 +1,14 @@
+@using AegisErp.Web.Components.Dialogs
+@inject CompanySession Session
 @inject VendorService VendorSvc
 @inject PurchaseInvoiceService InvoiceSvc
 @inject VendorPaymentService PaymentSvc
 @inject DebitNoteService DebitNoteSvc
+@inject CustomFieldService CustomFieldSvc
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject ISnackbar Snackbar
 
 @if (_loaded && _vendor is null)
 {
@@ -13,7 +18,7 @@ else if (_vendor is not null)
 {
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
         <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
-            <MudIcon Icon="@Icons.Material.Filled.LocalShipping" />
+            <MudIcon Icon="@(_vendor.VendorType == CustomerType.Business ? Icons.Material.Filled.Business : Icons.Material.Filled.Person)" />
         </MudAvatar>
         <div>
             <MudText Typo="Typo.h6">@_vendor.Name</MudText>
@@ -31,6 +36,10 @@ else if (_vendor is not null)
         </MudChip>
         <MudSpacer />
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Assessment" OnClick="Report">Report</MudButton>
+        @if (Session.CanPost)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditVendor">Edit</MudButton>
+        }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
 
@@ -56,6 +65,19 @@ else if (_vendor is not null)
     </MudGrid>
 
     <MudPaper Elevation="1">
+        @* Applies to Bills / Payments / Debit Notes / Statement — whichever of those is open —
+           so a date range never has to be re-picked switching between them. Doesn't affect
+           General/Address/Contact Persons/Custom Fields/Tags/Documents, which aren't date-based. *@
+        <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="pa-3" Style="gap:12px;border-bottom:1px solid var(--mud-palette-lines-default)">
+            <MudText Typo="Typo.body2" Class="mud-text-secondary">Period:</MudText>
+            <div style="max-width:170px"><MudDatePicker @bind-Date="_periodFrom" Label="From" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" /></div>
+            <div style="max-width:170px"><MudDatePicker @bind-Date="_periodTo" Label="To" Margin="Margin.Dense" PickerVariant="PickerVariant.Dialog" /></div>
+            @if (_periodFrom is not null || _periodTo is not null)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _periodFrom = null; _periodTo = null; })">Clear</MudButton>
+            }
+        </MudStack>
+
         <MudTabs Elevation="0" ApplyEffectsToContainer="true" PanelClass="pa-4" Border="true" @bind-ActivePanelIndex="_activeTab">
             <MudTabPanel Text="General">
                 <MudGrid>
@@ -63,25 +85,106 @@ else if (_vendor is not null)
                         <MudText Typo="Typo.subtitle2" Class="mb-2">Contact Information</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Email</MudText>
                         <MudText Class="mb-2">@(_vendor.Email ?? "—")</MudText>
-                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Phone</MudText>
-                        <MudText Class="mb-2">@(_vendor.Phone ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Mobile</MudText>
+                        <MudText Class="mb-2">@(_vendor.Mobile ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Work Phone</MudText>
+                        <MudText Class="mb-2">@(_vendor.WorkPhone ?? _vendor.Phone ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Contact Person</MudText>
+                        <MudText Class="mb-2">@(PrimaryContactName() ?? "—")</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Address</MudText>
-                        <MudText Class="mb-2">@(_vendor.Address ?? "—")</MudText>
+                        <MudText Class="mb-2">@(FormattedAddress() ?? _vendor.Address ?? "—")</MudText>
                     </MudItem>
                     <MudItem xs="12" sm="6">
                         <MudText Typo="Typo.subtitle2" Class="mb-2">Additional Details</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">TRN</MudText>
                         <MudText Class="mb-2">@(_vendor.Trn ?? "—")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Tax Treatment</MudText>
+                        <MudText Class="mb-2">@(_vendor.TaxTreatment is { } t ? TaxTreatmentLabel(t) : "—")</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Currency</MudText>
                         <MudText Class="mb-2">@_vendor.Currency</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Credit Limit</MudText>
+                        <MudText Class="mb-2">@_vendor.CreditLimit.ToString("N2")</MudText>
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Payment Terms</MudText>
                         <MudText Class="mb-2">@(_vendor.PaymentTermsDays == 0 ? "Immediate" : $"Net {_vendor.PaymentTermsDays}")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Created</MudText>
+                        <MudText Class="mb-2">@_vendor.CreatedAtUtc.ToLocalTime().ToString("dd MMM yyyy")</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Notes</MudText>
+                        <MudText Class="mb-2">@(_vendor.Remarks ?? "—")</MudText>
                     </MudItem>
                 </MudGrid>
+                <MudDivider Class="my-4" />
+                <MudStack Row="true" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.subtitle2">Opening Balance</MudText>
+                    <MudSpacer />
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="EditVendor">@(_vendor.OpeningBalance > 0 ? "Edit" : "Set")</MudButton>
+                </MudStack>
+                <MudText Class="mt-1 mud-text-secondary">
+                    @(_vendor.OpeningBalance > 0 ? $"AED {_vendor.OpeningBalance:N2}" : "No opening balance set.")
+                </MudText>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Address">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Billing Address</MudText>
+                @if (string.IsNullOrWhiteSpace(FormattedAddress()))
+                {
+                    <MudText Class="mud-text-secondary">No billing address set — add one from Edit.</MudText>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(_vendor.BillingAttention))
+                    {
+                        <MudText>@_vendor.BillingAttention</MudText>
+                    }
+                    <MudText>@FormattedAddress()</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_vendor.BillingPhone))
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">Phone: @_vendor.BillingPhone</MudText>
+                    }
+                }
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Shipping Address</MudText>
+                @if (string.IsNullOrWhiteSpace(FormattedShippingAddress()))
+                {
+                    <MudText Class="mud-text-secondary">No shipping address set — add one from Edit.</MudText>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(_vendor.ShippingAttention))
+                    {
+                        <MudText>@_vendor.ShippingAttention</MudText>
+                    }
+                    <MudText>@FormattedShippingAddress()</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_vendor.ShippingPhone))
+                    {
+                        <MudText Typo="Typo.body2" Class="mud-text-secondary mt-1">Phone: @_vendor.ShippingPhone</MudText>
+                    }
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Contact Persons">
+                <MudTable Items="_vendor.ContactPersons" Dense="true" Bordered="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Name</MudTh>
+                        <MudTh>Email</MudTh>
+                        <MudTh>Work Phone</MudTh>
+                        <MudTh>Mobile</MudTh>
+                        <MudTh>Designation</MudTh>
+                        <MudTh Style="width:80px">Primary</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@string.Join(" ", new[] { context.Salutation, context.FirstName, context.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)))</MudTd>
+                        <MudTd>@(context.Email ?? "—")</MudTd>
+                        <MudTd>@(context.WorkPhone ?? "—")</MudTd>
+                        <MudTd>@(context.Mobile ?? "—")</MudTd>
+                        <MudTd>@(context.Designation ?? "—")</MudTd>
+                        <MudTd>@(context.IsPrimary ? "Yes" : "")</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No contact persons yet — add some from Edit.</MudText></NoRecordsContent>
+                </MudTable>
             </MudTabPanel>
 
             <MudTabPanel Text="Bills">
-                <MudTable Items="_invoices" Dense="true" Bordered="true" Elevation="0" Hover="true" RowStyle="cursor:pointer"
+                <MudTable Items="FilteredInvoices" Dense="true" Bordered="true" Elevation="0" Hover="true" RowStyle="cursor:pointer"
                           OnRowClick="@((TableRowClickEventArgs<PurchaseInvoice> e) => { if (e.Item is not null) Nav.NavigateTo($"/purchase-invoice/{e.Item.Id}"); })">
                     <HeaderContent>
                         <MudTh>Invoice</MudTh>
@@ -95,12 +198,12 @@ else if (_vendor is not null)
                         <MudTd Style="text-align:right">@context.TotalGross.ToString("N2")</MudTd>
                         <MudTd>@context.Status</MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No bills yet.</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No bills in this period.</MudText></NoRecordsContent>
                 </MudTable>
             </MudTabPanel>
 
             <MudTabPanel Text="Payments">
-                <MudTable Items="_payments" Dense="true" Bordered="true" Elevation="0">
+                <MudTable Items="FilteredPayments" Dense="true" Bordered="true" Elevation="0">
                     <HeaderContent>
                         <MudTh>Payment</MudTh>
                         <MudTh>Date</MudTh>
@@ -113,12 +216,12 @@ else if (_vendor is not null)
                         <MudTd>@context.PaymentMode</MudTd>
                         <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No payments yet.</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No payments in this period.</MudText></NoRecordsContent>
                 </MudTable>
             </MudTabPanel>
 
             <MudTabPanel Text="Debit Notes">
-                <MudTable Items="_debitNotes" Dense="true" Bordered="true" Elevation="0">
+                <MudTable Items="FilteredDebitNotes" Dense="true" Bordered="true" Elevation="0">
                     <HeaderContent>
                         <MudTh>Debit Note</MudTh>
                         <MudTh>Date</MudTh>
@@ -131,12 +234,12 @@ else if (_vendor is not null)
                         <MudTd>@context.Reason</MudTd>
                         <MudTd Style="text-align:right">@context.TotalGross.ToString("N2")</MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No debit notes yet.</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Class="pa-2 mud-text-secondary">No debit notes in this period.</MudText></NoRecordsContent>
                 </MudTable>
             </MudTabPanel>
 
             <MudTabPanel Text="Statement">
-                <MudTable Items="_statement" Dense="true" Bordered="true" Elevation="0">
+                <MudTable Items="FilteredStatement" Dense="true" Bordered="true" Elevation="0">
                     <HeaderContent>
                         <MudTh>Date</MudTh>
                         <MudTh>Document</MudTh>
@@ -155,15 +258,84 @@ else if (_vendor is not null)
                         <MudTd Style="text-align:right">@(context.Credit > 0 ? context.Credit.ToString("N2") : "—")</MudTd>
                         <MudTd Style="text-align:right;font-weight:600">@context.RunningBalance.ToString("N2")</MudTd>
                     </RowTemplate>
-                    <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No posted documents for this vendor.</MudText></NoRecordsContent>
+                    <NoRecordsContent><MudText Class="pa-4 mud-text-secondary">No posted documents in this period.</MudText></NoRecordsContent>
                 </MudTable>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Custom Fields">
+                @if (_customFieldDefs is { Count: 0 })
+                {
+                    <MudText Class="mud-text-secondary">No custom fields defined yet — an admin can add some under Settings → Custom Fields &amp; Tags.</MudText>
+                }
+                else if (_customFieldDefs is not null)
+                {
+                    <MudGrid>
+                        @foreach (var def in _customFieldDefs)
+                        {
+                            <MudItem xs="12" sm="6" md="4">
+                                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">@def.Label</MudText>
+                                <MudText Class="mb-2">@(CustomFieldValue(def.Id) ?? "—")</MudText>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Reporting Tags">
+                @if (_vendor.Tags.Count == 0)
+                {
+                    <MudText Class="mud-text-secondary">No tags selected for this vendor.</MudText>
+                }
+                else
+                {
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1">
+                        @foreach (var t in _vendor.Tags)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@t.Tag.TagGroup.Name: @t.Tag.Name</MudChip>
+                        }
+                    </MudStack>
+                }
+            </MudTabPanel>
+
+            <MudTabPanel Text="Documents">
+                <MudFileUpload T="IBrowserFile" FilesChanged="OnDocumentSelected" Accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.UploadFile">Upload Document</MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary d-block mt-1">
+                    Up to @VendorService.MaxDocumentsPerVendor files, @(VendorService.MaxDocumentBytes / (1024 * 1024)) MB each.
+                </MudText>
+
+                @if (_documents is { Count: > 0 })
+                {
+                    <MudStack Class="mt-3" Spacing="1">
+                        @foreach (var doc in _documents)
+                        {
+                            <MudPaper Elevation="0" Class="pa-2" Style="border:1px solid var(--mud-palette-lines-default)">
+                                <MudStack Row="true" AlignItems="AlignItems.Center">
+                                    <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                    <MudText>@doc.FileName</MudText>
+                                    <MudText Typo="Typo.caption" Class="mud-text-secondary">(@((doc.SizeBytes / 1024.0).ToString("N0")) KB)</MudText>
+                                    <MudSpacer />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" OnClick="@(() => DownloadDocument(doc))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => RemoveDocument(doc))" />
+                                </MudStack>
+                            </MudPaper>
+                        }
+                    </MudStack>
+                }
+                else
+                {
+                    <MudText Class="mt-3 mud-text-secondary">No documents attached.</MudText>
+                }
             </MudTabPanel>
         </MudTabs>
     </MudPaper>
 }
 
 @code {
-    private const int StatementTabIndex = 4;
+    private const int StatementTabIndex = 6;
 
     [Parameter, EditorRequired] public int VendorId { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
@@ -177,6 +349,20 @@ else if (_vendor is not null)
     private List<VendorPayment> _payments = new();
     private List<DebitNote> _debitNotes = new();
     private List<StatementRow> _statement = new();
+    private List<VendorDocumentInfo>? _documents;
+    private List<CustomFieldDefinition>? _customFieldDefs;
+
+    private DateTime? _periodFrom;
+    private DateTime? _periodTo;
+
+    private IEnumerable<PurchaseInvoice> FilteredInvoices => _invoices.Where(i => InRange(i.Date.ToDateTime(TimeOnly.MinValue)));
+    private IEnumerable<VendorPayment> FilteredPayments => _payments.Where(p => InRange(p.Date.ToDateTime(TimeOnly.MinValue)));
+    private IEnumerable<DebitNote> FilteredDebitNotes => _debitNotes.Where(d => InRange(d.Date.ToDateTime(TimeOnly.MinValue)));
+    private IEnumerable<StatementRow> FilteredStatement => _statement.Where(s => InRange(s.Date.ToDateTime(TimeOnly.MinValue)));
+
+    private bool InRange(DateTime date) =>
+        (_periodFrom is null || date >= _periodFrom.Value.Date) &&
+        (_periodTo is null || date <= _periodTo.Value.Date);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -200,6 +386,66 @@ else if (_vendor is not null)
         _payments = await PaymentSvc.GetByVendorAsync(VendorId);
         _debitNotes = await DebitNoteSvc.GetByVendorAsync(VendorId);
         _statement = await VendorSvc.GetStatementAsync(VendorId);
+        _documents = await VendorSvc.GetDocumentsAsync(VendorId);
+        _customFieldDefs = await CustomFieldSvc.GetDefinitionsAsync(VendorService.Module, activeOnly: true);
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await Load();
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync();
+    }
+
+    private string? PrimaryContactName()
+    {
+        var p = _vendor!.ContactPersons.FirstOrDefault(c => c.IsPrimary) ?? _vendor.ContactPersons.FirstOrDefault();
+        if (p is null) return null;
+        return string.Join(" ", new[] { p.Salutation, p.FirstName, p.LastName }.Where(s => !string.IsNullOrWhiteSpace(s)));
+    }
+
+    private string? FormattedAddress()
+    {
+        var parts = new[]
+        {
+            _vendor!.BillingAddressLine1, _vendor.BillingAddressLine2,
+            _vendor.BillingCity, _vendor.BillingEmirate, _vendor.BillingCountry,
+        }.Where(s => !string.IsNullOrWhiteSpace(s));
+        var joined = string.Join(", ", parts);
+        return string.IsNullOrWhiteSpace(joined) ? null : joined;
+    }
+
+    private string? FormattedShippingAddress()
+    {
+        var parts = new[]
+        {
+            _vendor!.ShippingAddressLine1, _vendor.ShippingAddressLine2,
+            _vendor.ShippingCity, _vendor.ShippingEmirate, _vendor.ShippingCountry,
+        }.Where(s => !string.IsNullOrWhiteSpace(s));
+        var joined = string.Join(", ", parts);
+        return string.IsNullOrWhiteSpace(joined) ? null : joined;
+    }
+
+    private string? CustomFieldValue(int defId) =>
+        _vendor!.CustomFieldValues.FirstOrDefault(v => v.CustomFieldDefinitionId == defId)?.Value;
+
+    private static string TaxTreatmentLabel(TaxTreatment t) => t switch
+    {
+        TaxTreatment.VatRegistered => "VAT Registered",
+        TaxTreatment.NonVatRegistered => "Non VAT Registered",
+        TaxTreatment.GccVatRegistered => "GCC VAT Registered",
+        TaxTreatment.GccNonVatRegistered => "GCC Non VAT Registered",
+        TaxTreatment.NonGcc => "Non GCC",
+        TaxTreatment.VatRegisteredDesignatedZone => "VAT Registered — Designated Zone",
+        TaxTreatment.NonVatRegisteredDesignatedZone => "Non VAT Registered — Designated Zone",
+        _ => t.ToString(),
+    };
+
+    private async Task EditVendor()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
+        var parameters = new DialogParameters<NewVendorDialog> { { x => x.Existing, _vendor } };
+        var dialog = await DialogService.ShowAsync<NewVendorDialog>("Edit Vendor", parameters, options);
+        if ((await dialog.Result) is { Canceled: false }) await NotifyChangedAsync();
     }
 
     private async Task Report()
@@ -208,5 +454,39 @@ else if (_vendor is not null)
         StateHasChanged();
         await Task.Delay(50);
         await JS.InvokeVoidAsync("print");
+    }
+
+    private async Task OnDocumentSelected(IBrowserFile file)
+    {
+        if (file.Size > VendorService.MaxDocumentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {VendorService.MaxDocumentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(VendorService.MaxDocumentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+
+        try
+        {
+            await VendorSvc.AddDocumentAsync(VendorId, file.Name, file.ContentType, ms.ToArray(), DateTime.UtcNow);
+            _documents = await VendorSvc.GetDocumentsAsync(VendorId);
+        }
+        catch (PostingException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DownloadDocument(VendorDocumentInfo doc)
+    {
+        var full = await VendorSvc.GetDocumentAsync(VendorId, doc.Id);
+        if (full is null) return;
+        var base64 = Convert.ToBase64String(full.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", full.Value.FileName, full.Value.ContentType, base64);
+    }
+
+    private async Task RemoveDocument(VendorDocumentInfo doc)
+    {
+        await VendorSvc.RemoveDocumentAsync(VendorId, doc.Id);
+        _documents = await VendorSvc.GetDocumentsAsync(VendorId);
     }
 }
