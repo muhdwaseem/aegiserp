@@ -1,4 +1,7 @@
+@using AegisErp.Web.Components.Dialogs
 @inject FixedAssetService AssetSvc
+@inject CompanySession Session
+@inject IDialogService DialogService
 
 @if (_loaded && _asset is null)
 {
@@ -25,8 +28,19 @@ else if (_asset is not null)
             @_asset.Status
         </MudChip>
         <MudSpacer />
+        @if (Session.CanPost && _asset.Status == FixedAssetStatus.Active)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.RemoveCircleOutline" OnClick="OpenDispose">Dispose</MudButton>
+        }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
+
+    @if (_asset.Status == FixedAssetStatus.Disposed)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3" Dense="true">
+            Disposed @_asset.DisposalDate?.ToString("dd MMM yyyy") — proceeds AED @((_asset.DisposalProceeds ?? 0).ToString("N2"))
+        </MudAlert>
+    }
 
     <MudGrid Class="mb-3">
         <MudItem xs="12" sm="3">
@@ -97,5 +111,18 @@ else if (_asset is not null)
     {
         _asset = await AssetSvc.GetByIdAsync(AssetId);
         _loaded = true;
+    }
+
+    private async Task OpenDispose()
+    {
+        var parameters = new DialogParameters<DisposeAssetDialog> { { x => x.Asset, _asset! } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<DisposeAssetDialog>("Dispose Asset", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
     }
 }

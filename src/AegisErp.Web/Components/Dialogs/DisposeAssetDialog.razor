@@ -1,0 +1,96 @@
+@inject FixedAssetService AssetSvc
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Dispose Asset — @Asset.AssetCode</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_disposalDate" DateChanged="@(d => _disposalDate = d)" Label="Disposal Date" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudNumericField T="decimal" @bind-Value="_proceeds" Label="Proceeds Received" HideSpinButtons="true" Min="0" />
+            </MudItem>
+            @if (_proceeds > 0)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int?" @bind-Value="_bankAccountId" Label="Deposited Into">
+                        @if (_bankAccounts is not null)
+                        {
+                            @foreach (var a in _bankAccounts)
+                            {
+                                <MudSelectItem T="int?" Value="@((int?)a.Id)">@a.Code — @a.Name</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            <MudItem xs="12" sm="6">
+                <MudSelect T="int" @bind-Value="_gainLossAccountId" Label="Gain/Loss on Disposal Account">
+                    @if (_gainLossAccounts is not null)
+                    {
+                        @foreach (var a in _gainLossAccounts)
+                        {
+                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12">
+                <MudAlert Severity="@(GainLossPreview >= 0 ? Severity.Success : Severity.Warning)" Dense="true">
+                    Net book value: AED @NetBookValue.ToString("N2") — @(GainLossPreview >= 0 ? "Gain" : "Loss") of AED @Math.Abs(GainLossPreview).ToString("N2")
+                </MudAlert>
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="Save">Dispose</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter, EditorRequired] public FixedAsset Asset { get; set; } = null!;
+
+    private List<Account>? _bankAccounts;
+    private List<Account>? _gainLossAccounts;
+
+    private DateTime? _disposalDate = DateTime.Today;
+    private decimal _proceeds;
+    private int? _bankAccountId;
+    private int _gainLossAccountId;
+
+    private decimal NetBookValue => Asset.NetBookValue;
+    private decimal GainLossPreview => _proceeds - NetBookValue;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _bankAccounts = accounts.Where(a => a.Type == AccountType.Asset).ToList();
+        _gainLossAccounts = accounts.Where(a => a.Type is AccountType.Income or AccountType.Expense).ToList();
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            await AssetSvc.DisposeAsync(
+                Asset.Id, DateOnly.FromDateTime(_disposalDate ?? DateTime.Today), _proceeds, _bankAccountId,
+                _gainLossAccountId, userName, DateTime.UtcNow);
+            Snackbar.Add("Asset disposed.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

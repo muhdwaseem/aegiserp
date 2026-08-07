@@ -138,4 +138,63 @@ public class FixedAssetService
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return voucher;
     }
+
+    /// <summary>
+    /// Retires an asset (sale or scrap): Dr the bank/cash account for any proceeds received, Dr
+    /// Accumulated Depreciation to clear it, Cr the asset's own account for its full original cost,
+    /// and a balancing gain (Cr) or loss (Dr) to <paramref name="gainLossAccountId"/> — gain credits,
+    /// loss debits, same normal-balance direction as revenue/expense. Reviewed with the Bookkeeper
+    /// &amp; Controller agent: verified the four-line shape ties out exactly in both the gain and
+    /// loss case. Does not itself post a final partial-period depreciation charge — if the asset is
+    /// due for depreciation in its disposal period, run that first; skipping it just folds the
+    /// un-charged amount into the gain/loss instead of Depreciation Expense (a documented v1
+    /// limitation, not a bug).
+    /// </summary>
+    public async Task<JournalVoucher> DisposeAsync(
+        int assetId, DateOnly disposalDate, decimal proceeds, int? bankAccountId, int gainLossAccountId,
+        string postedBy, DateTime nowUtc)
+    {
+        if (proceeds < 0) throw new PostingException("Disposal proceeds cannot be negative.");
+        if (proceeds > 0 && bankAccountId is null)
+            throw new PostingException("Select the bank/cash account the disposal proceeds were received into.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var asset = await db.FixedAssets.Include(a => a.DepreciationEntries).FirstOrDefaultAsync(a => a.Id == assetId)
+            ?? throw new PostingException("Asset not found.");
+        if (asset.Status == FixedAssetStatus.Disposed)
+            throw new PostingException("This asset has already been disposed.");
+
+        var period = await db.FiscalPeriods.FirstOrDefaultAsync(p => disposalDate >= p.StartDate && disposalDate <= p.EndDate)
+            ?? throw new PostingException("No fiscal period covers the disposal date.");
+
+        var accumulatedDepreciation = asset.AccumulatedDepreciation;
+        var netBookValue = asset.PurchaseCost - accumulatedDepreciation;
+        var gain = proceeds - netBookValue; // > 0 gain (credit), < 0 loss (debit), never both
+
+        var lines = new List<VoucherLineInput>();
+        if (proceeds > 0)
+            lines.Add(new VoucherLineInput(bankAccountId!.Value, null, $"Disposal proceeds — {asset.AssetCode}", proceeds, 0));
+        if (accumulatedDepreciation > 0)
+        {
+            var accDep = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.AccumulatedDepreciation);
+            lines.Add(new VoucherLineInput(accDep.Id, null, $"Clear accumulated depreciation — {asset.AssetCode}", accumulatedDepreciation, 0));
+        }
+        lines.Add(new VoucherLineInput(asset.AssetAccountId, asset.CostCenterId, $"Disposal — {asset.AssetCode}", 0, asset.PurchaseCost));
+        if (gain > 0)
+            lines.Add(new VoucherLineInput(gainLossAccountId, null, $"Gain on disposal — {asset.AssetCode}", 0, gain));
+        else if (gain < 0)
+            lines.Add(new VoucherLineInput(gainLossAccountId, null, $"Loss on disposal — {asset.AssetCode}", -gain, 0));
+
+        var voucher = await JournalPoster.PostAsync(db, VoucherType.Journal, null, disposalDate, period.Id,
+            $"Disposal — {asset.AssetCode} — {asset.Name}", null, postedBy, lines, nowUtc);
+
+        asset.Status = FixedAssetStatus.Disposed;
+        asset.DisposalDate = disposalDate;
+        asset.DisposalProceeds = proceeds;
+
+        await JournalPoster.SaveAndCommitAsync(db, tx);
+        return voucher;
+    }
 }

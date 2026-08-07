@@ -128,4 +128,80 @@ public class FixedAssetServiceTests : IDisposable
         var ours = await _assets.GetAllAsync();
         Assert.Empty(ours);
     }
+
+    [Fact]
+    public async Task DisposeAsync_with_proceeds_above_book_value_posts_a_gain()
+    {
+        var asset = await CreateAsset(cost: 10000); // no depreciation run — NBV = 10000
+
+        var voucher = await _assets.DisposeAsync(
+            asset.Id, new(2026, 5, 25), proceeds: 12000, bankAccountId: _db.Bank.Id, gainLossAccountId: _db.Revenue.Id,
+            "tester", Now);
+
+        Assert.Equal(12000m, voucher.Lines.Single(l => l.AccountId == _db.Bank.Id).Debit);
+        Assert.Equal(10000m, voucher.Lines.Single(l => l.AccountId == _assetAccount.Id).Credit);
+        Assert.Equal(2000m, voucher.Lines.Single(l => l.AccountId == _db.Revenue.Id).Credit); // gain
+
+        var reloaded = await _assets.GetByIdAsync(asset.Id);
+        Assert.Equal(FixedAssetStatus.Disposed, reloaded!.Status);
+        Assert.Equal(new DateOnly(2026, 5, 25), reloaded.DisposalDate);
+        Assert.Equal(12000m, reloaded.DisposalProceeds);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_with_proceeds_below_book_value_posts_a_loss()
+    {
+        var asset = await CreateAsset(cost: 10000);
+
+        var voucher = await _assets.DisposeAsync(
+            asset.Id, new(2026, 5, 25), proceeds: 3000, bankAccountId: _db.Bank.Id, gainLossAccountId: _db.Expense.Id,
+            "tester", Now);
+
+        Assert.Equal(3000m, voucher.Lines.Single(l => l.AccountId == _db.Bank.Id).Debit);
+        Assert.Equal(10000m, voucher.Lines.Single(l => l.AccountId == _assetAccount.Id).Credit);
+        Assert.Equal(7000m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit); // loss
+    }
+
+    [Fact]
+    public async Task DisposeAsync_clears_accumulated_depreciation_and_omits_zero_lines()
+    {
+        var asset = await CreateAsset(cost: 12000, lifeMonths: 12);
+        await _assets.RunDepreciationAsync(_db.May.Id, "tester", Now); // 1000 accumulated
+
+        // Scrapped for zero proceeds — no bank line expected.
+        var voucher = await _assets.DisposeAsync(
+            asset.Id, new(2026, 5, 25), proceeds: 0, bankAccountId: null, gainLossAccountId: _db.Expense.Id,
+            "tester", Now);
+
+        Assert.DoesNotContain(voucher.Lines, l => l.AccountId == _db.Bank.Id);
+        Assert.Equal(1000m, voucher.Lines.Single(l => l.AccountId == _accDep.Id).Debit);
+        Assert.Equal(12000m, voucher.Lines.Single(l => l.AccountId == _assetAccount.Id).Credit);
+        Assert.Equal(11000m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id && l.Debit == 11000m).Debit); // loss = NBV
+    }
+
+    [Fact]
+    public async Task DisposeAsync_rejects_negative_or_unbanked_proceeds_and_double_disposal()
+    {
+        var asset = await CreateAsset();
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _assets.DisposeAsync(asset.Id, new(2026, 5, 25), -1, _db.Bank.Id, _db.Revenue.Id, "tester", Now));
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _assets.DisposeAsync(asset.Id, new(2026, 5, 25), 500, null, _db.Revenue.Id, "tester", Now));
+
+        await _assets.DisposeAsync(asset.Id, new(2026, 5, 25), 0, null, _db.Expense.Id, "tester", Now);
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _assets.DisposeAsync(asset.Id, new(2026, 5, 26), 0, null, _db.Expense.Id, "tester", Now));
+    }
+
+    [Fact]
+    public async Task RunDepreciationAsync_skips_disposed_assets()
+    {
+        var asset = await CreateAsset(cost: 12000, lifeMonths: 12);
+        await _assets.DisposeAsync(asset.Id, new(2026, 5, 5), 0, null, _db.Expense.Id, "tester", Now);
+
+        var voucher = await _assets.RunDepreciationAsync(_db.May.Id, "tester", Now);
+
+        Assert.Null(voucher); // the only asset is already disposed — nothing due
+    }
 }
