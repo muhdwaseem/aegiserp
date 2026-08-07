@@ -27,4 +27,8 @@ public static class WellKnownAccounts
     /// <summary>Liability — payroll runs credit this for each employee's net pay; paying salaries
     /// out later debits it against Bank.</summary>
     public const string SalariesPayable = "21020";
+
+    /// <summary>Liability — gratuity (End of Service Benefits) postings credit this; paying it out
+    /// later debits it against Bank. See <c>GratuityService</c>.</summary>
+    public const string GratuityPayable = "21040";
 }

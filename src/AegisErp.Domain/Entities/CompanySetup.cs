@@ -120,6 +120,11 @@ public class CompanySetup
     /// flat service charge with no quantity-based pricing involved.</summary>
     public bool ProServiceModeEnabled { get; set; }
 
+    /// <summary>13-digit MOHRE Establishment ID, required on every UAE WPS SIF salary file line —
+    /// validated at export time (see <c>WpsFileService</c>), not here, since a company might
+    /// configure payroll before actually registering for WPS.</summary>
+    public string? MohreEstablishmentId { get; set; }
+
     /// <summary>The company's maintained list of salesperson names — admin-curated here, offered
     /// as a dropdown on the New Customer form instead of free text, so names stay consistent.</summary>
     public List<Salesperson> Salespersons { get; set; } = new();

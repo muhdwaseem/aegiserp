@@ -90,6 +90,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<PayrollRunLine> PayrollRunLines => Set<PayrollRunLine>();
     public DbSet<Lead> Leads => Set<Lead>();
     public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
+    public DbSet<GratuityPayment> GratuityPayments => Set<GratuityPayment>();
+    public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -168,9 +170,37 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(m => m.Notes).HasMaxLength(500);
             e.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(m => m.CreatedBy).HasMaxLength(80);
+            e.Property(m => m.EmiratesIdNumber).HasMaxLength(20);
+            e.Property(m => m.LabourCardNumber).HasMaxLength(20);
+            e.Property(m => m.PassportNumber).HasMaxLength(20);
+            e.Property(m => m.WpsAgentId).HasMaxLength(20);
+            e.Property(m => m.GratuityEligible).HasDefaultValue(true);
             e.Ignore(m => m.GrossSalary);
             e.HasOne(m => m.CostCenter).WithMany().HasForeignKey(m => m.CostCenterId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(m => m.EmployeeExpenseAccount).WithMany().HasForeignKey(m => m.EmployeeExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<GratuityPayment>(e =>
+        {
+            e.Property(g => g.YearsOfService).HasPrecision(10, 4);
+            e.Property(g => g.BasicSalaryUsed).HasPrecision(18, 2);
+            e.Property(g => g.CalculatedAmount).HasPrecision(18, 2);
+            e.Property(g => g.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(g => g.CreatedBy).HasMaxLength(80);
+            e.HasOne(g => g.Employee).WithMany().HasForeignKey(g => g.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(g => g.ExpenseAccount).WithMany().HasForeignKey(g => g.ExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(g => g.JournalVoucher).WithMany().HasForeignKey(g => g.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(g => g.PaidFromBankAccount).WithMany().HasForeignKey(g => g.PaidFromBankAccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<LeaveRequest>(e =>
+        {
+            e.Property(l => l.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.Reason).HasMaxLength(500);
+            e.Property(l => l.DecisionBy).HasMaxLength(80);
+            e.Property(l => l.CreatedBy).HasMaxLength(80);
+            e.HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<PayrollRun>(e =>
@@ -965,6 +995,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<Employee>(b);
         ConfigureCompanyScope<PayrollRun>(b);
         ConfigureCompanyScope<Lead>(b);
+        ConfigureCompanyScope<GratuityPayment>(b);
+        ConfigureCompanyScope<LeaveRequest>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()

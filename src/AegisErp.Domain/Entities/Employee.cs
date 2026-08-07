@@ -40,6 +40,26 @@ public class Employee : ICompanyScoped
 
     public string? Notes { get; set; }
 
+    // ── UAE compliance documents (all optional — not every employer has entered all four) ──
+    public DateOnly? VisaExpiryDate { get; set; }
+    public string? EmiratesIdNumber { get; set; }
+    public DateOnly? EmiratesIdExpiryDate { get; set; }
+
+    /// <summary>Also serves as the UAE WPS 14-digit Person ID (see <c>WpsFileService</c>).</summary>
+    public string? LabourCardNumber { get; set; }
+    public DateOnly? LabourCardExpiryDate { get; set; }
+    public string? PassportNumber { get; set; }
+    public DateOnly? PassportExpiryDate { get; set; }
+
+    /// <summary>Escape hatch for a category the employer knows is excluded from gratuity (e.g. a
+    /// contract type outside UAE Federal Decree-Law No. 33 of 2021's scope) — the app doesn't try
+    /// to infer this itself. See <c>GratuityService</c>.</summary>
+    public bool GratuityEligible { get; set; } = true;
+
+    /// <summary>9-digit bank/exchange-house routing code required on every UAE WPS SIF file line
+    /// for this employee — see <c>WpsFileService</c>.</summary>
+    public string? WpsAgentId { get; set; }
+
     public string CreatedBy { get; set; } = "System Admin";
     public DateTime CreatedAtUtc { get; set; }
 
