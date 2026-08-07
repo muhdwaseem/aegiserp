@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<TransactionService>();
         services.AddScoped<ExpenseTransactionService>();
         services.AddScoped<FixedAssetService>();
+        services.AddScoped<EmployeeService>();
         services.AddScoped<FiscalPeriodService>();
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
         services.AddScoped<EmailService>();
