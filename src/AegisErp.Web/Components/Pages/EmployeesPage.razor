@@ -25,6 +25,15 @@ else
         }
     </MudStack>
 
+    @if (_expiringDocs is { Count: > 0 })
+    {
+        <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">
+            @_expiringDocs.Count document@(_expiringDocs.Count == 1 ? "" : "s") expiring within 90 days:
+            @string.Join(", ", _expiringDocs.Take(3).Select(d => $"{d.EmployeeName} ({d.DocumentType}, {d.ExpiryDate:dd MMM yyyy})"))
+            @(_expiringDocs.Count > 3 ? $" and {_expiringDocs.Count - 3} more" : "")
+        </MudAlert>
+    }
+
     <MudGrid>
         <MudItem xs="12" md="4">
             <MudPaper Class="employee-list-pane" Elevation="1">
@@ -83,6 +92,7 @@ else
 
     private bool _ready;
     private List<Employee>? _employees;
+    private List<ExpiringDocument>? _expiringDocs;
     private int? _selectedId;
 
     protected override async Task OnInitializedAsync()
@@ -108,6 +118,7 @@ else
     private async Task Load()
     {
         _employees = await EmployeeSvc.GetAllAsync();
+        _expiringDocs = await EmployeeSvc.GetExpiringDocumentsAsync();
         if (_selectedId is null && _employees.Count > 0) _selectedId = Id ?? _employees[0].Id;
     }
 

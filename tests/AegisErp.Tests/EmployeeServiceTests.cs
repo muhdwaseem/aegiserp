@@ -67,6 +67,38 @@ public class EmployeeServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetExpiringDocumentsAsync_returns_only_documents_within_the_window_soonest_first()
+    {
+        var soon = await _employees.CreateAsync(Input(), "tester", Now); // visa expires in 10 days below
+        await _employees.UpdateAsync(soon.Id, Input() with { VisaExpiryDate = new DateOnly(2026, 5, 30) });
+
+        var later = await _employees.CreateAsync(Input(), "tester", Now);
+        await _employees.UpdateAsync(later.Id, Input() with { EmiratesIdExpiryDate = new DateOnly(2026, 6, 15) });
+
+        var farAway = await _employees.CreateAsync(Input(), "tester", Now);
+        await _employees.UpdateAsync(farAway.Id, Input() with { PassportExpiryDate = new DateOnly(2027, 1, 1) });
+
+        var results = await _employees.GetExpiringDocumentsAsync(withinDays: 90, asOfUtc: Now);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(soon.Id, results[0].EmployeeId);
+        Assert.Equal("Visa", results[0].DocumentType);
+        Assert.Equal(later.Id, results[1].EmployeeId);
+    }
+
+    [Fact]
+    public async Task GetExpiringDocumentsAsync_excludes_terminated_employees()
+    {
+        var employee = await _employees.CreateAsync(Input(), "tester", Now);
+        await _employees.UpdateAsync(employee.Id, Input() with { VisaExpiryDate = new DateOnly(2026, 5, 25) });
+        await _employees.SetStatusAsync(employee.Id, EmployeeStatus.Terminated, new DateOnly(2026, 5, 21));
+
+        var results = await _employees.GetExpiringDocumentsAsync(withinDays: 90, asOfUtc: Now);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
     public async Task Employees_of_another_company_are_not_visible()
     {
         var other = _db.SeedOtherCompany();

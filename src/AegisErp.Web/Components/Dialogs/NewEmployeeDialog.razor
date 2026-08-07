@@ -58,6 +58,28 @@
             <MudItem xs="12" sm="6"><MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" /></MudItem>
             <MudItem xs="12" sm="6"><MudTextField @bind-Value="_bankName" Label="Bank Name" /></MudItem>
             <MudItem xs="12" sm="6"><MudTextField @bind-Value="_iban" Label="IBAN" /></MudItem>
+
+            <MudItem xs="12"><MudText Typo="Typo.subtitle2" Class="mt-2">Compliance Documents</MudText></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_visaExpiry" DateChanged="@(d => _visaExpiry = d)" Label="Visa Expiry" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_emiratesIdNumber" Label="Emirates ID Number" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_emiratesIdExpiry" DateChanged="@(d => _emiratesIdExpiry = d)" Label="Emirates ID Expiry" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_labourCardNumber" Label="Labour Card / Person ID" HelperText="Also used as the WPS Person ID" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_labourCardExpiry" DateChanged="@(d => _labourCardExpiry = d)" Label="Labour Card Expiry" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_passportNumber" Label="Passport Number" /></MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Date="_passportExpiry" DateChanged="@(d => _passportExpiry = d)" Label="Passport Expiry" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_wpsAgentId" Label="WPS Agent ID (bank routing)" /></MudItem>
+            <MudItem xs="12" sm="6" Class="d-flex align-center">
+                <MudCheckBox T="bool" @bind-Value="_gratuityEligible" Label="Eligible for gratuity (End of Service Benefits)" />
+            </MudItem>
+
             <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="Notes" Lines="2" /></MudItem>
         </MudGrid>
     </DialogContent>
@@ -91,6 +113,16 @@
     private string? _iban;
     private string? _notes;
 
+    private DateTime? _visaExpiry;
+    private string? _emiratesIdNumber;
+    private DateTime? _emiratesIdExpiry;
+    private string? _labourCardNumber;
+    private DateTime? _labourCardExpiry;
+    private string? _passportNumber;
+    private DateTime? _passportExpiry;
+    private string? _wpsAgentId;
+    private bool _gratuityEligible = true;
+
     private decimal GrossSalary => _basicSalary + _housingAllowance + _transportAllowance + _otherAllowance;
 
     protected override async Task OnInitializedAsync()
@@ -115,6 +147,15 @@
             _bankName = e.BankName;
             _iban = e.Iban;
             _notes = e.Notes;
+            _visaExpiry = e.VisaExpiryDate?.ToDateTime(TimeOnly.MinValue);
+            _emiratesIdNumber = e.EmiratesIdNumber;
+            _emiratesIdExpiry = e.EmiratesIdExpiryDate?.ToDateTime(TimeOnly.MinValue);
+            _labourCardNumber = e.LabourCardNumber;
+            _labourCardExpiry = e.LabourCardExpiryDate?.ToDateTime(TimeOnly.MinValue);
+            _passportNumber = e.PassportNumber;
+            _passportExpiry = e.PassportExpiryDate?.ToDateTime(TimeOnly.MinValue);
+            _wpsAgentId = e.WpsAgentId;
+            _gratuityEligible = e.GratuityEligible;
         }
     }
 
@@ -125,7 +166,16 @@
             var input = new EmployeeInput(
                 _fullName, _designation, _costCenterId, DateOnly.FromDateTime(_joiningDate ?? DateTime.Today),
                 _basicSalary, _housingAllowance, _transportAllowance, _otherAllowance,
-                _mobile, _email, _bankName, _iban, _employeeExpenseAccountId, _notes);
+                _mobile, _email, _bankName, _iban, _employeeExpenseAccountId, _notes,
+                VisaExpiryDate: _visaExpiry is null ? null : DateOnly.FromDateTime(_visaExpiry.Value),
+                EmiratesIdNumber: _emiratesIdNumber,
+                EmiratesIdExpiryDate: _emiratesIdExpiry is null ? null : DateOnly.FromDateTime(_emiratesIdExpiry.Value),
+                LabourCardNumber: _labourCardNumber,
+                LabourCardExpiryDate: _labourCardExpiry is null ? null : DateOnly.FromDateTime(_labourCardExpiry.Value),
+                PassportNumber: _passportNumber,
+                PassportExpiryDate: _passportExpiry is null ? null : DateOnly.FromDateTime(_passportExpiry.Value),
+                GratuityEligible: _gratuityEligible,
+                WpsAgentId: _wpsAgentId);
 
             if (IsEdit)
             {

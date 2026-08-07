@@ -103,6 +103,54 @@ else if (_employee is not null)
             </MudItem>
         }
     </MudGrid>
+
+    <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Compliance Documents</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Visa</MudText>
+            @if (_employee.VisaExpiryDate is DateOnly visa)
+            {
+                <MudChip T="string" Size="Size.Small" Color="DocColor(visa)" Variant="Variant.Text">@visa.ToString("dd MMM yyyy")</MudChip>
+            }
+            else
+            {
+                <MudText>—</MudText>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Emirates ID @(_employee.EmiratesIdNumber is null ? "" : $"({_employee.EmiratesIdNumber})")</MudText>
+            @if (_employee.EmiratesIdExpiryDate is DateOnly eid)
+            {
+                <MudChip T="string" Size="Size.Small" Color="DocColor(eid)" Variant="Variant.Text">@eid.ToString("dd MMM yyyy")</MudChip>
+            }
+            else
+            {
+                <MudText>—</MudText>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Labour Card @(_employee.LabourCardNumber is null ? "" : $"({_employee.LabourCardNumber})")</MudText>
+            @if (_employee.LabourCardExpiryDate is DateOnly lc)
+            {
+                <MudChip T="string" Size="Size.Small" Color="DocColor(lc)" Variant="Variant.Text">@lc.ToString("dd MMM yyyy")</MudChip>
+            }
+            else
+            {
+                <MudText>—</MudText>
+            }
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Passport @(_employee.PassportNumber is null ? "" : $"({_employee.PassportNumber})")</MudText>
+            @if (_employee.PassportExpiryDate is DateOnly pp)
+            {
+                <MudChip T="string" Size="Size.Small" Color="DocColor(pp)" Variant="Variant.Text">@pp.ToString("dd MMM yyyy")</MudChip>
+            }
+            else
+            {
+                <MudText>—</MudText>
+            }
+        </MudItem>
+    </MudGrid>
 }
 
 @code {
@@ -118,6 +166,14 @@ else if (_employee is not null)
     {
         _employee = await EmployeeSvc.GetByIdAsync(EmployeeId);
         _loaded = true;
+    }
+
+    /// <summary>Red &lt; 30 days, amber &lt; 90 days, green otherwise — matches
+    /// EmployeeService.GetExpiringDocumentsAsync's default 90-day window.</summary>
+    private static Color DocColor(DateOnly expiry)
+    {
+        var daysLeft = expiry.DayNumber - DateOnly.FromDateTime(DateTime.UtcNow).DayNumber;
+        return daysLeft < 30 ? Color.Error : daysLeft < 90 ? Color.Warning : Color.Success;
     }
 
     private async Task EditEmployee()

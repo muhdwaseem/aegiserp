@@ -7,7 +7,15 @@ namespace AegisErp.Infrastructure.Services;
 public record EmployeeInput(
     string FullName, string? Designation, int? CostCenterId, DateOnly JoiningDate,
     decimal BasicSalary, decimal HousingAllowance, decimal TransportAllowance, decimal OtherAllowance,
-    string? Mobile, string? Email, string? BankName, string? Iban, int EmployeeExpenseAccountId, string? Notes);
+    string? Mobile, string? Email, string? BankName, string? Iban, int EmployeeExpenseAccountId, string? Notes,
+    DateOnly? VisaExpiryDate = null, string? EmiratesIdNumber = null, DateOnly? EmiratesIdExpiryDate = null,
+    string? LabourCardNumber = null, DateOnly? LabourCardExpiryDate = null,
+    string? PassportNumber = null, DateOnly? PassportExpiryDate = null,
+    bool GratuityEligible = true, string? WpsAgentId = null);
+
+/// <summary>One employee's document-compliance flag for the expiry warning banner — see
+/// <see cref="EmployeeService.GetExpiringDocumentsAsync"/>.</summary>
+public record ExpiringDocument(int EmployeeId, string EmployeeCode, string EmployeeName, string DocumentType, DateOnly ExpiryDate);
 
 public class EmployeeService
 {
@@ -99,5 +107,45 @@ public class EmployeeService
         employee.Iban = string.IsNullOrWhiteSpace(input.Iban) ? null : input.Iban.Trim();
         employee.EmployeeExpenseAccountId = input.EmployeeExpenseAccountId;
         employee.Notes = string.IsNullOrWhiteSpace(input.Notes) ? null : input.Notes.Trim();
+        employee.VisaExpiryDate = input.VisaExpiryDate;
+        employee.EmiratesIdNumber = string.IsNullOrWhiteSpace(input.EmiratesIdNumber) ? null : input.EmiratesIdNumber.Trim();
+        employee.EmiratesIdExpiryDate = input.EmiratesIdExpiryDate;
+        employee.LabourCardNumber = string.IsNullOrWhiteSpace(input.LabourCardNumber) ? null : input.LabourCardNumber.Trim();
+        employee.LabourCardExpiryDate = input.LabourCardExpiryDate;
+        employee.PassportNumber = string.IsNullOrWhiteSpace(input.PassportNumber) ? null : input.PassportNumber.Trim();
+        employee.PassportExpiryDate = input.PassportExpiryDate;
+        employee.GratuityEligible = input.GratuityEligible;
+        employee.WpsAgentId = string.IsNullOrWhiteSpace(input.WpsAgentId) ? null : input.WpsAgentId.Trim();
+    }
+
+    /// <summary>
+    /// Every Active employee's compliance documents expiring within <paramref name="withinDays"/>
+    /// (visa, Emirates ID, labour card, passport), soonest first — for a warning banner. An
+    /// employee with multiple documents expiring soon appears once per document.
+    /// </summary>
+    public async Task<List<ExpiringDocument>> GetExpiringDocumentsAsync(int withinDays = 90, DateTime? asOfUtc = null)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var cutoff = DateOnly.FromDateTime(asOfUtc ?? DateTime.UtcNow).AddDays(withinDays);
+
+        var employees = await db.Employees
+            .Where(m => m.Status == EmployeeStatus.Active)
+            .ToListAsync();
+
+        var results = new List<ExpiringDocument>();
+        foreach (var m in employees)
+        {
+            void AddIfExpiring(string docType, DateOnly? expiry)
+            {
+                if (expiry is DateOnly d && d <= cutoff)
+                    results.Add(new ExpiringDocument(m.Id, m.EmployeeCode, m.FullName, docType, d));
+            }
+            AddIfExpiring("Visa", m.VisaExpiryDate);
+            AddIfExpiring("Emirates ID", m.EmiratesIdExpiryDate);
+            AddIfExpiring("Labour Card", m.LabourCardExpiryDate);
+            AddIfExpiring("Passport", m.PassportExpiryDate);
+        }
+
+        return results.OrderBy(r => r.ExpiryDate).ToList();
     }
 }
