@@ -1,0 +1,128 @@
+@inject FixedAssetService AssetSvc
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">New Fixed Asset</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_name" Label="Asset Name" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_category" Label="Category" Placeholder="e.g. IT Equipment, Furniture" /></MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Date="_purchaseDate" DateChanged="@(d => _purchaseDate = d)" Label="Purchase Date" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal" @bind-Value="_purchaseCost" Label="Purchase Cost" HideSpinButtons="true" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal" @bind-Value="_salvageValue" Label="Salvage Value" HideSpinButtons="true" Min="0" />
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int" @bind-Value="_usefulLifeMonths" Label="Useful Life (months)" HideSpinButtons="true" Min="1" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_assetAccountId" Label="Asset Account (Balance Sheet)">
+                    @if (_assetAccounts is not null)
+                    {
+                        @foreach (var a in _assetAccounts)
+                        {
+                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_depreciationExpenseAccountId" Label="Depreciation Expense Account">
+                    @if (_expenseAccounts is not null)
+                    {
+                        @foreach (var a in _expenseAccounts)
+                        {
+                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int?" @bind-Value="_costCenterId" Label="Cost Center" Clearable="true">
+                    @if (_costCenters is not null)
+                    {
+                        @foreach (var c in _costCenters)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Code — @c.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            @if (_monthlyPreview is decimal preview)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        Straight-line depreciation: AED @preview.ToString("N2") / month
+                    </MudAlert>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<Account>? _assetAccounts;
+    private List<Account>? _expenseAccounts;
+    private List<CostCenter>? _costCenters;
+
+    private string _name = "";
+    private string? _category;
+    private DateTime? _purchaseDate = DateTime.Today;
+    private decimal _purchaseCost;
+    private decimal _salvageValue;
+    private int _usefulLifeMonths = 12;
+    private int _assetAccountId;
+    private int _depreciationExpenseAccountId;
+    private int? _costCenterId;
+
+    private decimal? _monthlyPreview =>
+        _usefulLifeMonths > 0 && _purchaseCost > _salvageValue
+            ? Math.Round((_purchaseCost - _salvageValue) / _usefulLifeMonths, 2, MidpointRounding.AwayFromZero)
+            : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _assetAccounts = accounts.Where(a => a.Type == AccountType.Asset).ToList();
+        _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense).ToList();
+        _costCenters = await Coa.GetCostCentersAsync();
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var input = new FixedAssetInput(
+                _name, _category, DateOnly.FromDateTime(_purchaseDate ?? DateTime.Today), _purchaseCost, _salvageValue,
+                _usefulLifeMonths, _assetAccountId, _depreciationExpenseAccountId, _costCenterId);
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            var asset = await AssetSvc.CreateAsync(input, userName, DateTime.UtcNow);
+            Snackbar.Add($"Asset {asset.AssetCode} created.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(asset.Id));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

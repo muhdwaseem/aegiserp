@@ -1,0 +1,31 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Run Depreciation</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+            Posts one straight-line depreciation entry for every active asset that hasn't already
+            been depreciated for the selected period.
+        </MudText>
+        <MudSelect T="int" @bind-Value="_fiscalPeriodId" Label="Fiscal Period">
+            @foreach (var p in Periods)
+            {
+                <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Run" Disabled="_fiscalPeriodId == 0">Run</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter, EditorRequired] public List<FiscalPeriod> Periods { get; set; } = new();
+
+    private int _fiscalPeriodId;
+
+    private void Run() => MudDialog.Close(DialogResult.Ok(_fiscalPeriodId));
+    private void Cancel() => MudDialog.Cancel();
+}

@@ -1,0 +1,101 @@
+@inject FixedAssetService AssetSvc
+
+@if (_loaded && _asset is null)
+{
+    <MudAlert Severity="Severity.Error">Asset not found.</MudAlert>
+}
+else if (_asset is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+            <MudIcon Icon="@Icons.Material.Filled.Inventory2" />
+        </MudAvatar>
+        <div>
+            <MudText Typo="Typo.h6">@_asset.Name</MudText>
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_asset.AssetCode</MudText>
+                @if (!string.IsNullOrWhiteSpace(_asset.Category))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">·</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@_asset.Category</MudText>
+                }
+            </MudStack>
+        </div>
+        <MudChip T="string" Size="Size.Small" Color="@(_asset.Status == FixedAssetStatus.Active ? Color.Success : Color.Default)" Variant="Variant.Text">
+            @_asset.Status
+        </MudChip>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">PURCHASE COST</MudText>
+                <MudText Typo="Typo.h6">@_asset.PurchaseCost.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">ACCUMULATED DEPRECIATION</MudText>
+                <MudText Typo="Typo.h6">@_asset.AccumulatedDepreciation.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">NET BOOK VALUE</MudText>
+                <MudText Typo="Typo.h6">@_asset.NetBookValue.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">USEFUL LIFE</MudText>
+                <MudText Typo="Typo.h6">@_asset.UsefulLifeMonths mo</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Asset Account</MudText>
+            <MudText>@_asset.AssetAccount.Code — @_asset.AssetAccount.Name</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Depreciation Expense Account</MudText>
+            <MudText>@_asset.DepreciationExpenseAccount.Code — @_asset.DepreciationExpenseAccount.Name</MudText>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Depreciation History</MudText>
+    <MudTable Items="_asset.DepreciationEntries.OrderByDescending(e => e.Date)" Dense="true" Bordered="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Period</MudTh>
+            <MudTh>Date</MudTh>
+            <MudTh Style="text-align:right">Amount</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.FiscalPeriod.Name</MudTd>
+            <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+            <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4 mud-text-secondary">No depreciation posted yet.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public int AssetId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _loaded;
+    private FixedAsset? _asset;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _asset = await AssetSvc.GetByIdAsync(AssetId);
+        _loaded = true;
+    }
+}
