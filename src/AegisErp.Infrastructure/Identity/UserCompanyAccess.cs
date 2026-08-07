@@ -19,4 +19,12 @@ public class UserCompanyAccess
 
     /// <summary>Role held in this company: Admin, Accountant or Viewer.</summary>
     public string Role { get; set; } = AppRoles.Viewer;
+
+    /// <summary>
+    /// Extra grant on top of <see cref="Role"/>: lets an Accountant see and enter HR & Payroll data
+    /// without being promoted to Admin (which would also hand them settings/user management).
+    /// Meaningless for Admin/Viewer — Admin already has it implicitly via
+    /// <c>CompanySession.CanAccessPayroll</c>, Viewer can't post anything regardless.
+    /// </summary>
+    public bool CanAccessPayroll { get; set; }
 }

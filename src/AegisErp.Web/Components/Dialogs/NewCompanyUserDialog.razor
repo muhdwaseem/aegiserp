@@ -40,6 +40,12 @@
                     documents. <b>Viewer</b> can see everything but not change it.
                 </MudText>
             </MudItem>
+            @if (_role == AppRoles.Accountant)
+            {
+                <MudItem xs="12">
+                    <MudCheckBox T="bool" @bind-Value="_canAccessPayroll" Label="Also give access to HR & Payroll" Dense="true" />
+                </MudItem>
+            }
         </MudGrid>
     </DialogContent>
     <DialogActions>
@@ -58,6 +64,7 @@
     private string _email = "";
     private string _password = "";
     private string _role = AppRoles.Accountant;
+    private bool _canAccessPayroll;
     private bool _showPassword;
     private bool _saving;
 
@@ -75,7 +82,7 @@
         _saving = true;
         try
         {
-            var result = await AccessSvc.CreateUserAndGrantAsync(_email, _name, _password, CompanyId, _role);
+            var result = await AccessSvc.CreateUserAndGrantAsync(_email, _name, _password, CompanyId, _role, _canAccessPayroll);
             Snackbar.Add(result.UserWasCreated
                 ? $"{result.Email} was created and given {_role} access."
                 : $"{result.Email} already had a login — granted {_role} access to this company.",

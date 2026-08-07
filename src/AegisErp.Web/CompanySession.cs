@@ -52,6 +52,17 @@ public class CompanySession
     /// </summary>
     public bool CanAdminister => IsFirmAdmin || ActiveRole == AppRoles.Admin;
 
+    /// <summary>
+    /// True when the signed-in user may see and enter HR &amp; Payroll data for the active
+    /// company — a FirmAdmin, an Admin, or an Accountant specifically granted payroll access
+    /// (<see cref="CompanyAccessRow.CanAccessPayroll"/>). Salary data is more sensitive than
+    /// typical AP/AR documents, but gating it behind <see cref="CanAdminister"/> alone would force
+    /// an owner to either run payroll personally or hand a bookkeeper full Admin just to delegate
+    /// it — this is the narrower, additive grant instead.
+    /// </summary>
+    public bool CanAccessPayroll => IsFirmAdmin || ActiveRole == AppRoles.Admin
+        || (ActiveRole == AppRoles.Accountant && Active?.CanAccessPayroll == true);
+
     /// <summary>Raised when the active company changes so pages can reload their data.</summary>
     public event Action? Changed;
 

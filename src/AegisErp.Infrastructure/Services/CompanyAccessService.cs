@@ -6,10 +6,10 @@ using Microsoft.EntityFrameworkCore;
 namespace AegisErp.Infrastructure.Services;
 
 /// <summary>A company the signed-in user may work in, and the role they hold there.</summary>
-public record CompanyAccessRow(int CompanyId, string Code, string Name, string Role);
+public record CompanyAccessRow(int CompanyId, string Code, string Name, string Role, bool CanAccessPayroll);
 
 /// <summary>One user's grant on a company (for the access-management screen).</summary>
-public record CompanyMemberRow(string UserId, string Email, string DisplayName, string Role);
+public record CompanyMemberRow(string UserId, string Email, string DisplayName, string Role, bool CanAccessPayroll);
 
 /// <summary>Result of <see cref="CompanyAccessService.CreateUserAndGrantAsync"/> — tells the caller
 /// whether a brand-new login was created or an existing account was simply granted access, so the
@@ -38,16 +38,19 @@ public class CompanyAccessService
 
         if (isFirmAdmin)
         {
+            // A FirmAdmin already bypasses every other per-company restriction (settings, GL,
+            // every document type) — payroll gets no special exception from that same trust
+            // boundary; see the Identity & Access Engineer review in the HR & Payroll plan.
             return await db.CompanySetups.AsNoTracking()
                 .OrderBy(c => c.LegalName)
-                .Select(c => new CompanyAccessRow(c.Id, c.CompanyCode, c.LegalName, AppRoles.Admin))
+                .Select(c => new CompanyAccessRow(c.Id, c.CompanyCode, c.LegalName, AppRoles.Admin, true))
                 .ToListAsync();
         }
 
         return await db.UserCompanyAccess.AsNoTracking()
             .Where(a => a.UserId == userId)
             .OrderBy(a => a.Company.LegalName)
-            .Select(a => new CompanyAccessRow(a.CompanyId, a.Company.CompanyCode, a.Company.LegalName, a.Role))
+            .Select(a => new CompanyAccessRow(a.CompanyId, a.Company.CompanyCode, a.Company.LegalName, a.Role, a.CanAccessPayroll))
             .ToListAsync();
     }
 
@@ -74,8 +77,24 @@ public class CompanyAccessService
         return await db.UserCompanyAccess.AsNoTracking()
             .Where(a => a.CompanyId == companyId)
             .OrderBy(a => a.User.Email)
-            .Select(a => new CompanyMemberRow(a.UserId, a.User.Email ?? "", a.User.DisplayName, a.Role))
+            .Select(a => new CompanyMemberRow(a.UserId, a.User.Email ?? "", a.User.DisplayName, a.Role, a.CanAccessPayroll))
             .ToListAsync();
+    }
+
+    /// <summary>
+    /// Grants or revokes an Accountant's extra access to HR &amp; Payroll data — lets an owner
+    /// delegate payroll to a trusted bookkeeper without promoting them to Admin (which would also
+    /// unlock settings and team management). No-op in effect for Admin (already has it implicitly
+    /// via <c>CompanySession.CanAccessPayroll</c>) or Viewer (can't post anything regardless), but
+    /// still settable so the flag reflects intent if their role changes later.
+    /// </summary>
+    public async Task SetPayrollAccessAsync(string userId, int companyId, bool canAccess)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var existing = await db.UserCompanyAccess.FirstOrDefaultAsync(a => a.UserId == userId && a.CompanyId == companyId)
+            ?? throw new PostingException("This user has no access to this company.");
+        existing.CanAccessPayroll = canAccess;
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Grants or updates a user's role on a company.</summary>
@@ -136,7 +155,8 @@ public class CompanyAccessService
     /// (otherwise reuses the existing account, so someone already working in another company can
     /// simply be added to this one too), then grants the given role on <paramref name="companyId"/>.
     /// </summary>
-    public async Task<CreateUserResult> CreateUserAndGrantAsync(string email, string displayName, string password, int companyId, string role)
+    public async Task<CreateUserResult> CreateUserAndGrantAsync(
+        string email, string displayName, string password, int companyId, string role, bool canAccessPayroll = false)
     {
         email = email.Trim();
         if (string.IsNullOrWhiteSpace(email)) throw new PostingException("Email is required.");
@@ -160,6 +180,7 @@ public class CompanyAccessService
         }
 
         await GrantAsync(user.Id, companyId, role);
+        if (canAccessPayroll) await SetPayrollAccessAsync(user.Id, companyId, true);
         return new CreateUserResult(created, email);
     }
 }

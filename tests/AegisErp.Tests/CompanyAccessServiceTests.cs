@@ -108,6 +108,29 @@ public class CompanyAccessServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SetPayrollAccessAsync_grants_and_revokes_the_extra_flag()
+    {
+        await _access.CreateUserAndGrantAsync("book.keeper@client.com", "Book Keeper", "Passw0rd!", _db.Company.Id, AppRoles.Accountant);
+        var userId = Assert.Single(await _access.GetMembersAsync(_db.Company.Id)).UserId;
+
+        await _access.SetPayrollAccessAsync(userId, _db.Company.Id, true);
+        Assert.True(Assert.Single(await _access.GetMembersAsync(_db.Company.Id)).CanAccessPayroll);
+
+        await _access.SetPayrollAccessAsync(userId, _db.Company.Id, false);
+        Assert.False(Assert.Single(await _access.GetMembersAsync(_db.Company.Id)).CanAccessPayroll);
+    }
+
+    [Fact]
+    public async Task CreateUserAndGrantAsync_can_grant_payroll_access_at_creation_time()
+    {
+        var result = await _access.CreateUserAndGrantAsync(
+            "book.keeper2@client.com", "Book Keeper 2", "Passw0rd!", _db.Company.Id, AppRoles.Accountant, canAccessPayroll: true);
+
+        Assert.True(result.UserWasCreated);
+        Assert.True(Assert.Single(await _access.GetMembersAsync(_db.Company.Id)).CanAccessPayroll);
+    }
+
+    [Fact]
     public async Task GetMembersAsync_does_not_leak_grants_across_companies()
     {
         await _access.CreateUserAndGrantAsync("a@client.com", "A", "Passw0rd!", _db.Company.Id, AppRoles.Accountant);

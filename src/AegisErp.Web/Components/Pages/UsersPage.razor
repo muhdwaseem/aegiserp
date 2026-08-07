@@ -33,6 +33,7 @@
             <MudTh>Name</MudTh>
             <MudTh>Email</MudTh>
             <MudTh Style="width:200px">Role</MudTh>
+            <MudTh Style="width:130px">Payroll Access</MudTh>
             <MudTh Style="width:100px"></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -45,6 +46,16 @@
                         <MudSelectItem T="string" Value="@r">@r</MudSelectItem>
                     }
                 </MudSelect>
+            </MudTd>
+            <MudTd>
+                @if (context.Role == AppRoles.Accountant)
+                {
+                    <MudCheckBox T="bool" Value="context.CanAccessPayroll" ValueChanged="@(v => TogglePayrollAccess(context, v))" Dense="true" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@(context.Role == AppRoles.Admin ? "Always" : "—")</MudText>
+                }
             </MudTd>
             <MudTd>
                 <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="@(() => Revoke(context))">Remove</MudButton>
@@ -102,6 +113,21 @@
         {
             await AccessSvc.GrantAsync(member.UserId, Session.Active.CompanyId, role);
             Snackbar.Add($"{member.DisplayName} is now {role}.", Severity.Success);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task TogglePayrollAccess(CompanyMemberRow member, bool canAccess)
+    {
+        if (Session.Active is null) return;
+        try
+        {
+            await AccessSvc.SetPayrollAccessAsync(member.UserId, Session.Active.CompanyId, canAccess);
+            Snackbar.Add(canAccess ? $"{member.DisplayName} can now access HR & Payroll." : $"{member.DisplayName}'s payroll access was removed.", Severity.Success);
             await Load();
         }
         catch (PostingException ex)
