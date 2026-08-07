@@ -43,6 +43,13 @@ public static class SeedData
                     Console.Error.WriteLine($"[SeedData] Could not seed the bootstrap admin: {ex.Message}");
                 }
             }
+            // Belt and suspenders: if this database was ever seeded with Seed:DemoData=true
+            // before (or on) this deployment, its hardcoded demo accounts — including a
+            // FirmAdmin with full cross-company access — would otherwise sit in the database
+            // forever with a publicly-known password. Remove them the moment a real deployment
+            // switches this flag off, so flipping the config env var alone (no manual DB/SQL
+            // access) is enough to close the hole.
+            await PurgeDemoAccountsAsync(userManager);
             return;
         }
 
@@ -330,6 +337,30 @@ public static class SeedData
         await MigrateOrCreateUserAsync(users, "admin@aegisfze.com", DemoAdminEmail, DemoAdminPassword, "System Admin", AppRoles.FirmAdmin, AppRoles.Admin, AppRoles.Accountant);
         await MigrateOrCreateUserAsync(users, "finance@aegisfze.com", DemoFinanceEmail, DemoFinancePassword, "Fatima Al Rashidi", AppRoles.Accountant);
         await MigrateOrCreateUserAsync(users, "viewer@aegisfze.com", DemoViewerEmail, DemoViewerPassword, "Ahmed Al Mansoori", AppRoles.Viewer);
+    }
+
+    /// <summary>
+    /// Deletes the three hardcoded demo accounts (and, since they're never renamed once they
+    /// migrated once, the original pre-rotation emails too) if they exist — run whenever a
+    /// deployment declares itself a real client (Seed:DemoData=false) so a database that was
+    /// ever seeded with demo data before doesn't keep a publicly-known-password FirmAdmin
+    /// account alive indefinitely. Safe/no-op on a database that never had them.
+    /// </summary>
+    private static async Task PurgeDemoAccountsAsync(UserManager<AppUser> users)
+    {
+        foreach (var email in new[]
+        {
+            DemoAdminEmail, DemoFinanceEmail, DemoViewerEmail,
+            "admin@aegisfze.com", "finance@aegisfze.com", "viewer@aegisfze.com",
+        })
+        {
+            var user = await users.FindByNameAsync(email);
+            if (user is null) continue;
+            var result = await users.DeleteAsync(user);
+            if (!result.Succeeded)
+                Console.Error.WriteLine($"[SeedData] Could not purge demo account {email}: " +
+                    string.Join("; ", result.Errors.Select(e => e.Description)));
+        }
     }
 
     /// <summary>
