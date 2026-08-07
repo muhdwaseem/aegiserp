@@ -9,12 +9,20 @@ public class PayrollServiceTests : IDisposable
     private readonly TestDb _db = new();
     private readonly EmployeeService _employees;
     private readonly PayrollService _payroll;
+    private readonly Account _salariesPayable;
+    private readonly Account _deductionsClearing;
     private static readonly DateTime Now = new(2026, 5, 20, 12, 0, 0, DateTimeKind.Utc);
 
     public PayrollServiceTests()
     {
         _employees = new EmployeeService(_db);
         _payroll = new PayrollService(_db);
+
+        using var db = _db.CreateUnscopedDbContext();
+        _salariesPayable = new Account { CompanyId = _db.Company.Id, Code = WellKnownAccounts.SalariesPayable, Name = "Salaries Payable", Type = AccountType.Liability };
+        _deductionsClearing = new Account { CompanyId = _db.Company.Id, Code = "21030", Name = "Payroll Deductions — Clearing", Type = AccountType.Liability };
+        db.Accounts.AddRange(_salariesPayable, _deductionsClearing);
+        db.SaveChanges();
     }
 
     public void Dispose() => _db.Dispose();
@@ -92,6 +100,57 @@ public class PayrollServiceTests : IDisposable
 
         await Assert.ThrowsAsync<PostingException>(() => _payroll.UpdateRunLineAsync(line.Id, 5001));
         await Assert.ThrowsAsync<PostingException>(() => _payroll.UpdateRunLineAsync(line.Id, -1));
+    }
+
+    [Fact]
+    public async Task PostRunAsync_with_no_deductions_debits_expense_credits_salaries_payable_only()
+    {
+        await CreateEmployee("Ahmed", 5000, 1500); // gross 6500
+        var run = await _payroll.CreateDraftRunAsync(_db.May.Id, new(2026, 5, 31), "tester", Now);
+
+        var voucher = await _payroll.PostRunAsync(run.Id, deductionsAccountId: null, "tester", Now);
+
+        Assert.Equal(6500m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit);
+        Assert.Equal(6500m, voucher.Lines.Single(l => l.AccountId == _salariesPayable.Id).Credit);
+        Assert.DoesNotContain(voucher.Lines, l => l.AccountId == _deductionsClearing.Id);
+
+        var reloaded = await _payroll.GetByIdAsync(run.Id);
+        Assert.Equal(VoucherStatus.Posted, reloaded!.Status);
+        Assert.NotNull(reloaded.JournalVoucherId);
+    }
+
+    [Fact]
+    public async Task PostRunAsync_with_deductions_splits_gross_into_net_plus_deductions()
+    {
+        await CreateEmployee("Ahmed", 5000, 0); // gross 5000
+        var run = await _payroll.CreateDraftRunAsync(_db.May.Id, new(2026, 5, 31), "tester", Now);
+        await _payroll.UpdateRunLineAsync(run.Lines.Single().Id, 500);
+
+        var voucher = await _payroll.PostRunAsync(run.Id, _deductionsClearing.Id, "tester", Now);
+
+        Assert.Equal(5000m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit);
+        Assert.Equal(4500m, voucher.Lines.Single(l => l.AccountId == _salariesPayable.Id).Credit);
+        Assert.Equal(500m, voucher.Lines.Single(l => l.AccountId == _deductionsClearing.Id).Credit);
+    }
+
+    [Fact]
+    public async Task PostRunAsync_requires_a_deductions_account_when_any_deduction_exists()
+    {
+        await CreateEmployee("Ahmed", 5000, 0);
+        var run = await _payroll.CreateDraftRunAsync(_db.May.Id, new(2026, 5, 31), "tester", Now);
+        await _payroll.UpdateRunLineAsync(run.Lines.Single().Id, 500);
+
+        await Assert.ThrowsAsync<PostingException>(() => _payroll.PostRunAsync(run.Id, null, "tester", Now));
+    }
+
+    [Fact]
+    public async Task PostRunAsync_rejects_posting_the_same_run_twice()
+    {
+        await CreateEmployee();
+        var run = await _payroll.CreateDraftRunAsync(_db.May.Id, new(2026, 5, 31), "tester", Now);
+        await _payroll.PostRunAsync(run.Id, null, "tester", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() => _payroll.PostRunAsync(run.Id, null, "tester", Now));
     }
 
     [Fact]

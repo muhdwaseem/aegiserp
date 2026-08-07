@@ -68,7 +68,11 @@ public class PayrollService
             });
 
         db.PayrollRuns.Add(run);
-        await db.SaveChangesAsync();
+        // Translated save: the DB's unique (CompanyId, FiscalPeriodId) index is the real race
+        // guard if two requests both pass the AnyAsync check above at the same instant — this
+        // turns that into the same friendly "conflicts with one just posted" message every other
+        // document type already gives, instead of a raw DbUpdateException.
+        await JournalPoster.SaveChangesTranslatedAsync(db);
         return run;
     }
 
@@ -91,5 +95,57 @@ public class PayrollService
 
         line.Deductions = deductions;
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Posts a Draft run: one voucher with Dr each employee's own salary expense account for their
+    /// Gross pay, Cr <see cref="WellKnownAccounts.SalariesPayable"/> for the total Net pay, and (if
+    /// any line has a deduction) Cr <paramref name="deductionsAccountId"/> for the total deducted —
+    /// a three-way split mirroring the existing Dr-gross/Cr-net/Cr-tax idiom used for AR. Reviewed
+    /// with the Bookkeeper &amp; Controller agent: deductions can represent genuinely different
+    /// things (a loan recovery, unpaid leave, a statutory withholding) that a single flat field
+    /// can't distinguish, so — unlike Salaries Payable — this is deliberately a user-picked account
+    /// per run, not a fixed control-account code; a Liability "clearing" account is the recommended
+    /// default since it stays visible and reconcilable rather than silently reducing expense.
+    /// </summary>
+    public async Task<JournalVoucher> PostRunAsync(int runId, int? deductionsAccountId, string postedBy, DateTime nowUtc)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var run = await db.PayrollRuns.Include(r => r.FiscalPeriod).Include(r => r.Lines).ThenInclude(l => l.Employee)
+            .FirstOrDefaultAsync(r => r.Id == runId)
+            ?? throw new PostingException("Payroll run not found.");
+        if (run.Status != VoucherStatus.Draft)
+            throw new PostingException("This payroll run has already been posted.");
+        if (run.Lines.Count == 0)
+            throw new PostingException("Payroll run has no employees.");
+        if (run.TotalGross <= 0)
+            throw new PostingException("Payroll run total must be positive.");
+        if (run.TotalDeductions > 0 && deductionsAccountId is null)
+            throw new PostingException("Select an account for the payroll deductions.");
+
+        var period = run.FiscalPeriod;
+
+        var lines = run.Lines.Select(l => new VoucherLineInput(
+            l.ExpenseAccountId, null, $"Salary — {l.Employee.FullName} — {period.Name}", l.GrossPay, 0)).ToList();
+
+        // Credit totals are sums of the already-persisted per-line Net/Deductions amounts — never
+        // independently recomputed (e.g. never TotalGross minus a separately-summed deduction
+        // total) — so the voucher can never be a cent off balanced.
+        var salariesPayable = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.SalariesPayable);
+        lines.Add(new VoucherLineInput(salariesPayable.Id, null, $"Salaries payable — {period.Name}", 0, run.TotalNet));
+        if (run.TotalDeductions > 0)
+            lines.Add(new VoucherLineInput(deductionsAccountId!.Value, null, $"Payroll deductions — {period.Name}", 0, run.TotalDeductions));
+
+        var voucher = await JournalPoster.PostAsync(db, VoucherType.Journal, null, run.RunDate, run.FiscalPeriodId,
+            $"Payroll run — {period.Name}", null, postedBy, lines, nowUtc);
+
+        run.JournalVoucher = voucher;
+        run.Status = VoucherStatus.Posted;
+        run.PostedAtUtc = nowUtc;
+
+        await JournalPoster.SaveAndCommitAsync(db, tx);
+        return voucher;
     }
 }
