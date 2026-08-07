@@ -134,4 +134,10 @@ public class PurchaseInvoiceLine
     public decimal Net => TaxableNet + NonTaxableAmount;
     public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;
+
+    /// <summary>Fulfillment tracking for the Expense Transactions view — has this purchased
+    /// item/service actually been received, independent of whether it's been paid for.</summary>
+    public bool IsCompleted { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+    public string? CompletedBy { get; set; }
 }

@@ -1,0 +1,173 @@
+@page "/expense-transactions"
+@attribute [Authorize]
+@using System.Text
+@inject ExpenseTransactionService TxnSvc
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+@inject CompanySession Session
+
+<PageTitle>Expense Transactions · Aegis ERP</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+    <MudIcon Icon="@Icons.Material.Filled.ViewList" Class="mud-text-secondary" Size="Size.Large" />
+    <div>
+        <MudText Typo="Typo.h5">Expense Transactions</MudText>
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">@FilteredRows().Count() lines</MudText>
+    </div>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportCsv">Export</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-3 mb-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2">
+        <MudTextField @bind-Value="_search" Placeholder="Search…" Immediate="true" DebounceInterval="200"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Margin="Margin.Dense"
+                      Variant="Variant.Outlined" Style="max-width:220px" Class="mt-0" />
+        <MudSelect T="string" @bind-Value="_completionFilter" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:170px" Label="Completion">
+            <MudSelectItem Value="@("All")">All Completion</MudSelectItem>
+            <MudSelectItem Value="@("Completed")">Completed</MudSelectItem>
+            <MudSelectItem Value="@("Pending")">Pending</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" @bind-Value="_invoiceStatusFilter" Margin="Margin.Dense" Variant="Variant.Outlined" Style="max-width:150px" Label="Invoice">
+            <MudSelectItem Value="@("All")">All Invoice</MudSelectItem>
+            <MudSelectItem Value="@("Draft")">Draft</MudSelectItem>
+            <MudSelectItem Value="@("Posted")">Posted</MudSelectItem>
+        </MudSelect>
+        @* PickerVariant.Dialog opens the calendar as a real modal dialog instead of an anchored
+           popover — the popover variant kept rendering a clipped calendar (its width tracked the
+           narrow trigger field) no matter how the field itself was sized/styled. *@
+        <div style="max-width:170px">
+            <MudDatePicker @bind-Date="_invoiceDateFrom" Label="Invoice date from" Margin="Margin.Dense" Variant="Variant.Outlined" PickerVariant="PickerVariant.Dialog" />
+        </div>
+        <div style="max-width:170px">
+            <MudDatePicker @bind-Date="_invoiceDateTo" Label="Invoice date to" Margin="Margin.Dense" Variant="Variant.Outlined" PickerVariant="PickerVariant.Dialog" />
+        </div>
+    </MudStack>
+</MudPaper>
+
+<div style="overflow-x:auto">
+<MudTable Items="FilteredRows()" Dense="true" Hover="true" Bordered="true" Loading="_rows is null" FixedHeader="true" Height="calc(100vh - 300px)">
+    <HeaderContent>
+        <MudTh>Tran Ref</MudTh>
+        <MudTh>Bill #</MudTh>
+        <MudTh>Bill Date</MudTh>
+        <MudTh>Vendor</MudTh>
+        <MudTh>LPO #</MudTh>
+        <MudTh>Description</MudTh>
+        <MudTh Style="text-align:right">Qty</MudTh>
+        <MudTh Style="text-align:right">Amount</MudTh>
+        <MudTh>Paid To</MudTh>
+        <MudTh>Completion</MudTh>
+        <MudTh Style="width:120px"></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd Style="font-family:monospace">@context.TranRef</MudTd>
+        <MudTd><MudLink Href="@($"/purchase-invoice/{context.InvoiceId}")">@context.InvoiceNo</MudLink></MudTd>
+        <MudTd>@context.InvoiceDate.ToString("dd MMM yyyy")</MudTd>
+        <MudTd>@context.VendorName</MudTd>
+        <MudTd>@(context.LpoNo ?? "—")</MudTd>
+        <MudTd>@context.Description</MudTd>
+        <MudTd Style="text-align:right">@context.Quantity.ToString("N2")</MudTd>
+        <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+        <MudTd>@(context.PaidToAccountName ?? "—")</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : Color.Default)" Variant="Variant.Text">
+                @(context.IsCompleted ? "Completed" : "Pending")
+            </MudChip>
+        </MudTd>
+        <MudTd>
+            @if (Session.CanPost)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Outlined"
+                           Color="@(context.IsCompleted ? Color.Default : Color.Success)"
+                           StartIcon="@(context.IsCompleted ? Icons.Material.Filled.Replay : Icons.Material.Filled.CheckCircle)"
+                           OnClick="@(() => ToggleCompletion(context))">
+                    @(context.IsCompleted ? "Reopen" : "Complete")
+                </MudButton>
+            }
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Class="pa-4 mud-text-secondary">No transactions match these filters.</MudText>
+    </NoRecordsContent>
+</MudTable>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<ExpenseTransactionRow>? _rows;
+
+    private string _search = "";
+    private string _completionFilter = "All";
+    private string _invoiceStatusFilter = "All";
+    private DateTime? _invoiceDateFrom;
+    private DateTime? _invoiceDateTo;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load() => _rows = await TxnSvc.GetAllAsync();
+
+    private IEnumerable<ExpenseTransactionRow> FilteredRows()
+    {
+        if (_rows is null) return Enumerable.Empty<ExpenseTransactionRow>();
+        IEnumerable<ExpenseTransactionRow> q = _rows;
+
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(r =>
+                r.TranRef.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                r.InvoiceNo.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                r.VendorName.Contains(s, StringComparison.OrdinalIgnoreCase) ||
+                (r.LpoNo?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (r.VendorRef?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                r.Description.Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+
+        q = _completionFilter switch
+        {
+            "Completed" => q.Where(r => r.IsCompleted),
+            "Pending" => q.Where(r => !r.IsCompleted),
+            _ => q,
+        };
+        q = _invoiceStatusFilter switch
+        {
+            "Draft" => q.Where(r => r.InvoiceStatus == VoucherStatus.Draft),
+            "Posted" => q.Where(r => r.InvoiceStatus == VoucherStatus.Posted),
+            _ => q,
+        };
+        if (_invoiceDateFrom is { } from) q = q.Where(r => r.InvoiceDate >= DateOnly.FromDateTime(from));
+        if (_invoiceDateTo is { } to) q = q.Where(r => r.InvoiceDate <= DateOnly.FromDateTime(to));
+
+        return q;
+    }
+
+    private async Task ToggleCompletion(ExpenseTransactionRow row)
+    {
+        var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+        await TxnSvc.SetCompletionAsync(row.LineId, !row.IsCompleted, userName, DateTime.UtcNow);
+        await Load();
+    }
+
+    private async Task ExportCsv()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Tran Ref,Bill #,Bill Date,Vendor,LPO #,Description,Qty,Amount,Paid To,Completion");
+        foreach (var r in FilteredRows())
+            sb.AppendLine(string.Join(",",
+                Csv(r.TranRef), Csv(r.InvoiceNo), r.InvoiceDate.ToString("yyyy-MM-dd"), Csv(r.VendorName),
+                Csv(r.LpoNo), Csv(r.Description), r.Quantity.ToString("F2"), r.Amount.ToString("F2"),
+                Csv(r.PaidToAccountName), r.IsCompleted ? "Completed" : "Pending"));
+        await JS.InvokeVoidAsync("aegisDownload", "expense-transactions.csv", sb.ToString(), "text/csv");
+    }
+
+    private static string Csv(string? s)
+    {
+        s ??= "";
+        // Neutralize formula triggers so Excel/LibreOffice/Sheets can't execute attacker-controlled
+        // text (vendor names, descriptions) as a formula on open.
+        if (s.Length > 0 && "=+-@\t\r".Contains(s[0])) s = "'" + s;
+        return s.Contains(',') || s.Contains('"') || s.Contains('\n') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+    }
+}

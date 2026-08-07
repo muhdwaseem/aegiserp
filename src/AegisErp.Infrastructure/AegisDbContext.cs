@@ -617,6 +617,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(l => l.UnitPrice).HasPrecision(18, 2);
             e.Property(l => l.VatRate).HasPrecision(5, 4);
             e.Property(l => l.NonTaxableAmount).HasPrecision(18, 2);
+            e.Property(l => l.CompletedBy).HasMaxLength(80);
             e.Ignore(l => l.Net);
             e.Ignore(l => l.Vat);
             e.Ignore(l => l.Gross);
