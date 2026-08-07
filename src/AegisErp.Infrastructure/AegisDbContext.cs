@@ -88,6 +88,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<Employee> Employees => Set<Employee>();
     public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
     public DbSet<PayrollRunLine> PayrollRunLines => Set<PayrollRunLine>();
+    public DbSet<Lead> Leads => Set<Lead>();
+    public DbSet<LeadActivity> LeadActivities => Set<LeadActivity>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -196,6 +198,29 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Ignore(l => l.NetPay);
             e.HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.ExpenseAccount).WithMany().HasForeignKey(l => l.ExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<Lead>(e =>
+        {
+            e.Property(l => l.Name).HasMaxLength(160).IsRequired();
+            e.Property(l => l.CompanyName).HasMaxLength(160);
+            e.Property(l => l.Mobile).HasMaxLength(30);
+            e.Property(l => l.Email).HasMaxLength(200);
+            e.Property(l => l.Source).HasMaxLength(80);
+            e.Property(l => l.Stage).HasConversion<string>().HasMaxLength(20);
+            e.Property(l => l.EstimatedValue).HasPrecision(18, 2);
+            e.Property(l => l.AssignedTo).HasMaxLength(160);
+            e.Property(l => l.Notes).HasMaxLength(500);
+            e.Property(l => l.CreatedBy).HasMaxLength(80);
+            e.HasOne(l => l.ConvertedCustomer).WithMany().HasForeignKey(l => l.ConvertedCustomerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(l => l.Activities).WithOne(a => a.Lead).HasForeignKey(a => a.LeadId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<LeadActivity>(e =>
+        {
+            e.Property(a => a.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(a => a.Description).HasMaxLength(500).IsRequired();
+            e.Property(a => a.CreatedBy).HasMaxLength(80);
         });
 
         b.Entity<ServiceKitLine>(e =>
@@ -939,6 +964,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<FixedAsset>(b);
         ConfigureCompanyScope<Employee>(b);
         ConfigureCompanyScope<PayrollRun>(b);
+        ConfigureCompanyScope<Lead>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()
