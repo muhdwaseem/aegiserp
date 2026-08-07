@@ -413,12 +413,15 @@
         public decimal UnitPrice { get; set; }
         public decimal VatRate { get; set; } = 0.05m;
 
-        /// <summary>Only ever nonzero in the PRO Service format — a flat amount this line
-        /// carries no VAT on at all (e.g. a government fee disbursement).</summary>
+        /// <summary>Only ever nonzero in the PRO Service format — a per-unit amount this line
+        /// carries no VAT on at all (e.g. a government fee disbursement per stamp/unit).</summary>
         public decimal NonTaxableAmount { get; set; }
 
         private decimal TaxableNet => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
-        public decimal Net => TaxableNet + NonTaxableAmount;
+        // This dialog only ever creates new lines (no edit path exists for Purchase Invoice), and
+        // every new line posts with NonTaxablePerUnit=true — see PurchaseInvoiceLine.NonTaxablePerUnit
+        // — so the live preview here must match that, not the flat legacy formula.
+        public decimal Net => TaxableNet + Math.Round(Quantity * NonTaxableAmount, 2, MidpointRounding.AwayFromZero);
         public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
         public decimal Gross => Net + Vat;
     }

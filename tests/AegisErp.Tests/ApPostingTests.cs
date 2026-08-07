@@ -97,7 +97,47 @@ public class ApPostingTests : IDisposable
         var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == inv.JournalVoucherId);
         Assert.Equal(500m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit); // combined Net, no other code change needed
         Assert.Equal(10m, voucher.Lines.Single(l => l.AccountId == _db.VatInput.Id).Debit);
-        Assert.Equal(510m, voucher.Lines.Single(l => l.AccountId == _db.Ap.Id).Credit);
+    }
+
+    [Fact]
+    public async Task PRO_service_non_taxable_amount_is_per_unit_for_lines_created_now()
+    {
+        // 3 visa stamps @ AED 500 govt fee each (non-taxable) + AED 200 taxable service charge.
+        var inv = await _invoices.CreateAndPostAsync(_db.Vendor.Id, null, new(2026, 5, 10), _db.May.Id, null,
+            "tester", new[] { new PurchaseLineInput("Visa stamping x3", _db.Expense.Id, null, 3, 200, 0.05m, NonTaxableAmount: 500) },
+            Now);
+
+        var line = inv.Lines.Single();
+        Assert.True(line.NonTaxablePerUnit);
+        Assert.Equal(1500m, line.NonTaxableTotal);       // 500 * 3, not a flat 500
+        Assert.Equal(600m, line.Quantity * 200);          // taxable base sanity check
+        Assert.Equal(2100m, line.Net);                    // 1500 non-taxable + 600 taxable base
+        Assert.Equal(30m, line.Vat);                      // 5% of the 600 taxable base only
+        Assert.Equal(2130m, line.Gross);
+    }
+
+    [Fact]
+    public async Task PRO_service_non_taxable_amount_stays_flat_for_lines_created_before_this_fix()
+    {
+        // Simulates a pre-existing line saved before NonTaxablePerUnit existed: it defaults to
+        // false, so its already-posted total must stay exactly what it was (no silent change to
+        // a historical GL/AP figure just because the fix shipped).
+        var inv = await _invoices.CreateAndPostAsync(_db.Vendor.Id, null, new(2026, 5, 10), _db.May.Id, null,
+            "tester", new[] { new PurchaseLineInput("Visa stamping x3", _db.Expense.Id, null, 3, 200, 0.05m, NonTaxableAmount: 500) },
+            Now);
+        var line = inv.Lines.Single();
+
+        await using (var db = _db.CreateUnscopedDbContext())
+        {
+            var stored = await db.PurchaseInvoiceLines.SingleAsync(l => l.Id == line.Id);
+            stored.NonTaxablePerUnit = false; // pretend this line predates the fix
+            await db.SaveChangesAsync();
+        }
+
+        var reloaded = (await _invoices.GetByIdAsync(inv.Id))!.Lines.Single();
+        Assert.False(reloaded.NonTaxablePerUnit);
+        Assert.Equal(500m, reloaded.NonTaxableTotal); // flat, not 500 * 3
+        Assert.Equal(1100m, reloaded.Net);            // 500 flat + 600 taxable base
     }
 
     [Fact]

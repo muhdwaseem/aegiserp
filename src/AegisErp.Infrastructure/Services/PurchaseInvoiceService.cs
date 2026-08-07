@@ -145,6 +145,10 @@ public class PurchaseInvoiceService
                 UnitPrice = l.UnitPrice,
                 VatRate = l.VatRate,
                 NonTaxableAmount = l.NonTaxableAmount,
+                // Every line created from here on uses the corrected per-unit interpretation of
+                // NonTaxableAmount (see PurchaseInvoiceLine.NonTaxablePerUnit) — not user-facing,
+                // just fixes a bug where a multi-quantity govt fee line understated the total.
+                NonTaxablePerUnit = true,
             });
 
         invoice.Post(nowUtc); // domain validation (positive totals, valid lines, due date)

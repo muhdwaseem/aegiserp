@@ -139,6 +139,10 @@ public class SalesInvoice : ICompanyScoped
                 throw new PostingException($"Line {line.LineNo} quantity must be positive.");
             if (line.UnitPrice < 0)
                 throw new PostingException($"Line {line.LineNo} unit price cannot be negative.");
+            if (line.GovtFee < 0)
+                throw new PostingException($"Line {line.LineNo} govt fee cannot be negative.");
+            if (line.BankCharge < 0)
+                throw new PostingException($"Line {line.LineNo} bank charge cannot be negative.");
             if (line.VatRate is < 0 or > 1)
                 throw new PostingException($"Line {line.LineNo} VAT rate is invalid.");
             if (line.DiscountType == DiscountType.Percent && line.DiscountValue is < 0 or > 100)

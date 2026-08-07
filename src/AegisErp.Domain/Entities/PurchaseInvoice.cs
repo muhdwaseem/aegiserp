@@ -120,18 +120,33 @@ public class PurchaseInvoiceLine
     /// <summary>Fractional VAT rate, e.g. 0.05 for UAE 5%.</summary>
     public decimal VatRate { get; set; } = 0.05m;
 
-    /// <summary>A flat amount on this line that carries no VAT at all (e.g. a government fee
+    /// <summary>An amount on this line that carries no VAT at all (e.g. a government fee
     /// disbursement) — only used by the "PRO Service" invoice format
     /// (<see cref="CompanySetup.ProServiceModeEnabled"/>); zero for every line entered the
     /// standard Quantity × Unit Price way.</summary>
     public decimal NonTaxableAmount { get; set; }
 
+    /// <summary>Whether <see cref="NonTaxableAmount"/> is a per-unit rate (multiplied by
+    /// <see cref="Quantity"/>, matching how Sales Invoice's GovtFee/BankCharge always worked) or a
+    /// flat one-time amount regardless of quantity. Every line created before this field existed
+    /// used the flat interpretation (defaults to <c>false</c> so their already-posted GL totals
+    /// never silently change); every line created since defaults to <c>true</c> so a multi-quantity
+    /// PRO Service bill (e.g. 3 visa stamps at one govt fee each) books the correct total.</summary>
+    public bool NonTaxablePerUnit { get; set; }
+
     /// <summary>Quantity × Unit Price, rounded — the taxable base VAT is charged on. Never
     /// includes <see cref="NonTaxableAmount"/>.</summary>
     private decimal TaxableNet => Math.Round(Quantity * UnitPrice, 2, MidpointRounding.AwayFromZero);
 
+    /// <summary><see cref="NonTaxableAmount"/> after applying <see cref="NonTaxablePerUnit"/> —
+    /// the actual non-taxable amount this line contributes. Use this everywhere instead of the
+    /// raw field so quantity is never silently dropped (e.g. invoice breakdown footers).</summary>
+    public decimal NonTaxableTotal => NonTaxablePerUnit
+        ? Math.Round(Quantity * NonTaxableAmount, 2, MidpointRounding.AwayFromZero)
+        : NonTaxableAmount;
+
     /// <summary>Taxable base plus whatever's non-taxable on this line.</summary>
-    public decimal Net => TaxableNet + NonTaxableAmount;
+    public decimal Net => TaxableNet + NonTaxableTotal;
     public decimal Vat => Math.Round(TaxableNet * VatRate, 2, MidpointRounding.AwayFromZero);
     public decimal Gross => Net + Vat;
 
