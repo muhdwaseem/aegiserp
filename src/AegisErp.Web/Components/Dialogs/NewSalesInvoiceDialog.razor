@@ -6,6 +6,7 @@
 @inject ServiceKitService KitSvc
 @inject CompanyService CompanySvc
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <MudDialog>
     <TitleContent>
@@ -21,16 +22,22 @@
     <DialogContent>
         <MudGrid>
             <MudItem xs="12" sm="4">
-                <MudSelect T="int" Value="_customerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true">
-                    <MudSelectItem Value="0">— select —</MudSelectItem>
-                    @if (_customers is not null)
-                    {
-                        @foreach (var c in _customers)
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.End">
+                    <MudSelect T="int" Value="_customerId" ValueChanged="OnCustomerChanged" Label="Customer" Dense="true">
+                        <MudSelectItem Value="0">— select —</MudSelectItem>
+                        @if (_customers is not null)
                         {
-                            <MudSelectItem Value="c.Id">@c.Code — @c.Name</MudSelectItem>
+                            @foreach (var c in _customers)
+                            {
+                                <MudSelectItem Value="c.Id">@c.Code — @c.Name</MudSelectItem>
+                            }
                         }
-                    }
-                </MudSelect>
+                    </MudSelect>
+                    <MudTooltip Text="New customer">
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="OpenNewCustomer" />
+                    </MudTooltip>
+                </MudStack>
             </MudItem>
             <MudItem xs="12" sm="2">
                 <MudTextField Value="@_invoiceNo" Label="Invoice No." ReadOnly="true" />
@@ -663,6 +670,20 @@
         _contactPerson = customer.ContactPersons.FirstOrDefault()?.FirstName;
         _customerBillingAddress = customer.BillingAddressLine1;
         _customerShippingAddress = customer.ShippingAddressLine1;
+    }
+
+    /// <summary>Opens the New Customer dialog without leaving this one — on save, reloads the
+    /// customer list and selects the newly created customer, same as picking it from the dropdown.</summary>
+    private async Task OpenNewCustomer()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraLarge, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewCustomerDialog>("New Customer", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false } && result.Data is int newId)
+        {
+            _customers = await CustomerSvc.GetAllAsync(activeOnly: true);
+            await OnCustomerChanged(newId);
+        }
     }
 
     /// <summary>Picking an Organization overwrites the Contact TRN with the organization's own —
