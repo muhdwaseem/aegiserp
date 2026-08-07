@@ -32,6 +32,16 @@ else if (_lead is not null)
                     <MudSelectItem Value="s">@s</MudSelectItem>
                 }
             </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Handshake" OnClick="ConvertToCustomer">
+                Convert to Customer
+            </MudButton>
+        }
+        @if (_lead.ConvertedCustomer is not null)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.OpenInNew"
+                       Href="@($"/customers/{_lead.ConvertedCustomer.Id}")">
+                View @_lead.ConvertedCustomer.Name
+            </MudButton>
         }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
@@ -88,6 +98,7 @@ else if (_lead is not null)
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Parameter, EditorRequired] public int LeadId { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
 
@@ -116,6 +127,27 @@ else if (_lead is not null)
         try
         {
             await LeadSvc.ChangeStageAsync(_lead!.Id, stage);
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ConvertToCustomer()
+    {
+        var ok = await DialogService.ShowMessageBox("Convert to Customer",
+            $"Create a new Customer from {_lead!.Name}? This moves the lead to Won.",
+            yesText: "Convert", cancelText: "Cancel");
+        if (ok != true) return;
+
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            await LeadSvc.ConvertToCustomerAsync(_lead.Id, userName, DateTime.UtcNow);
+            Snackbar.Add("Lead converted to Customer.", Severity.Success);
             await Load();
             await OnChanged.InvokeAsync();
         }

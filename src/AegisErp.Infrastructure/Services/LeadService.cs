@@ -11,7 +11,12 @@ public record LeadInput(
 public class LeadService
 {
     private readonly IDbContextFactory<AegisDbContext> _dbf;
-    public LeadService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
+    private readonly CustomerService _customers;
+    public LeadService(IDbContextFactory<AegisDbContext> dbf, CustomerService customers)
+    {
+        _dbf = dbf;
+        _customers = customers;
+    }
 
     public async Task<List<Lead>> GetAllAsync(LeadStage? stage = null)
     {
@@ -93,6 +98,36 @@ public class LeadService
         });
         lead.LastActivityAtUtc = nowUtc;
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Converts a lead into a real Customer via the existing <see cref="CustomerService.CreateAsync"/>
+    /// — mirrors <c>EstimateService.ConvertToInvoiceAsync</c>'s "one document produces another,
+    /// linked by FK" shape. Moves the lead to Won and links <see cref="Lead.ConvertedCustomerId"/>;
+    /// no GL impact here — accounting only starts once the new Customer goes through the normal
+    /// Estimate/Sales Invoice flow.
+    /// </summary>
+    public async Task<Customer> ConvertToCustomerAsync(int leadId, string createdBy, DateTime nowUtc)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var lead = await db.Leads.FirstOrDefaultAsync(l => l.Id == leadId)
+            ?? throw new PostingException("Lead not found.");
+        if (lead.ConvertedCustomerId is not null)
+            throw new PostingException("This lead has already been converted.");
+        if (lead.Stage is LeadStage.Won or LeadStage.Lost)
+            throw new PostingException("A Won or Lost lead can no longer be converted.");
+
+        var input = new NewCustomerInput(
+            Name: lead.CompanyName ?? lead.Name,
+            Group: null, Currency: "AED", CreditLimit: 0, PaymentTermsDays: 30,
+            Trn: null, Email: lead.Email, Phone: lead.Mobile, Address: null,
+            Salesperson: lead.AssignedTo);
+        var customer = await _customers.CreateAsync(input, changedBy: createdBy, nowUtc: nowUtc);
+
+        lead.ConvertedCustomerId = customer.Id;
+        lead.Stage = LeadStage.Won;
+        await db.SaveChangesAsync();
+        return customer;
     }
 
     private static void ValidateInput(LeadInput input)
