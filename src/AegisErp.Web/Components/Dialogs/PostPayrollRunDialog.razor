@@ -1,0 +1,65 @@
+@inject PayrollService PayrollSvc
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Post Payroll Run</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Class="mb-2">Gross: AED @Run.TotalGross.ToString("N2") · Deductions: AED @Run.TotalDeductions.ToString("N2") · Net: AED @Run.TotalNet.ToString("N2")</MudText>
+        @if (Run.TotalDeductions > 0)
+        {
+            <MudSelect T="int" @bind-Value="_deductionsAccountId" Label="Deductions Account">
+                @if (_liabilityAccounts is not null)
+                {
+                    @foreach (var a in _liabilityAccounts)
+                    {
+                        <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                    }
+                }
+            </MudSelect>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">No deductions on this run — nothing to select.</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="Run.TotalDeductions > 0 && _deductionsAccountId == 0">Post</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter, EditorRequired] public PayrollRun Run { get; set; } = null!;
+
+    private List<Account>? _liabilityAccounts;
+    private int _deductionsAccountId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _liabilityAccounts = accounts.Where(a => a.Type == AccountType.Liability).ToList();
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            int? deductionsAccountId = Run.TotalDeductions > 0 ? _deductionsAccountId : null;
+            await PayrollSvc.PostRunAsync(Run.Id, deductionsAccountId, userName, DateTime.UtcNow);
+            Snackbar.Add("Payroll run posted.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

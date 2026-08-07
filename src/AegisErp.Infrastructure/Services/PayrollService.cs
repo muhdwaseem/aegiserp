@@ -148,4 +148,49 @@ public class PayrollService
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return voucher;
     }
+
+    /// <summary>
+    /// Records that a posted run's salaries were actually transferred: Dr
+    /// <see cref="WellKnownAccounts.SalariesPayable"/> / Cr the bank account, one combined entry
+    /// for the run's total net pay — not per-employee payment tracking, which is intentionally
+    /// deferred (that's <c>VendorPaymentAllocation</c>-level complexity). This is a separate step
+    /// from <see cref="PostRunAsync"/> because posting recognises the expense/liability the moment
+    /// payroll is run, while the cash might not actually move until later (or via a batch WPS
+    /// transfer) — the two events are rarely simultaneous in practice.
+    /// </summary>
+    public async Task<JournalVoucher> MarkPaidAsync(int runId, int bankAccountId, DateOnly paidDate, string postedBy, DateTime nowUtc)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var run = await db.PayrollRuns.Include(r => r.FiscalPeriod).Include(r => r.Lines).FirstOrDefaultAsync(r => r.Id == runId)
+            ?? throw new PostingException("Payroll run not found.");
+        if (run.Status != VoucherStatus.Posted)
+            throw new PostingException("Only a posted payroll run can be marked as paid.");
+        if (run.IsPaid)
+            throw new PostingException("This payroll run has already been marked as paid.");
+
+        // The payment can land in a later fiscal period than the run itself (e.g. run for May,
+        // paid in June) — resolve the period from paidDate, not the run's own FiscalPeriodId,
+        // the same way FixedAssetService.DisposeAsync resolves its own posting date's period.
+        var paymentPeriod = await db.FiscalPeriods.FirstOrDefaultAsync(p => paidDate >= p.StartDate && paidDate <= p.EndDate)
+            ?? throw new PostingException("No fiscal period covers the payment date.");
+
+        var salariesPayable = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.SalariesPayable);
+        var lines = new List<VoucherLineInput>
+        {
+            new(salariesPayable.Id, null, $"Salaries paid — {run.FiscalPeriod.Name}", run.TotalNet, 0),
+            new(bankAccountId, null, $"Salaries paid — {run.FiscalPeriod.Name}", 0, run.TotalNet),
+        };
+
+        var voucher = await JournalPoster.PostAsync(db, VoucherType.Journal, null, paidDate, paymentPeriod.Id,
+            $"Payroll payment — {run.FiscalPeriod.Name}", null, postedBy, lines, nowUtc);
+
+        run.IsPaid = true;
+        run.PaidDate = paidDate;
+        run.PaidFromBankAccountId = bankAccountId;
+
+        await JournalPoster.SaveAndCommitAsync(db, tx);
+        return voucher;
+    }
 }

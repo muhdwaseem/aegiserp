@@ -1,0 +1,144 @@
+@using AegisErp.Web.Components.Dialogs
+@inject PayrollService PayrollSvc
+@inject CompanySession Session
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_loaded && _run is null)
+{
+    <MudAlert Severity="Severity.Error">Payroll run not found.</MudAlert>
+}
+else if (_run is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+            <MudIcon Icon="@Icons.Material.Filled.Payments" />
+        </MudAvatar>
+        <div>
+            <MudText Typo="Typo.h6">@_run.FiscalPeriod.Name Payroll</MudText>
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">@_run.RunDate.ToString("dd MMM yyyy")</MudText>
+        </div>
+        <MudChip T="string" Size="Size.Small" Color="@(_run.Status == VoucherStatus.Posted ? Color.Success : Color.Default)" Variant="Variant.Text">
+            @_run.Status
+        </MudChip>
+        @if (_run.IsPaid)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">Paid</MudChip>
+        }
+        <MudSpacer />
+        @if (Session.CanAccessPayroll)
+        {
+            @if (_run.Status == VoucherStatus.Draft)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpenPost">Post</MudButton>
+            }
+            else if (_run.Status == VoucherStatus.Posted && !_run.IsPaid)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenMarkPaid">Mark as Paid</MudButton>
+            }
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">GROSS</MudText>
+                <MudText Typo="Typo.h6">@_run.TotalGross.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">DEDUCTIONS</MudText>
+                <MudText Typo="Typo.h6">@_run.TotalDeductions.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">NET PAY</MudText>
+                <MudText Typo="Typo.h6">@_run.TotalNet.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudTable Items="_run.Lines.OrderBy(l => l.Employee.EmployeeCode)" Dense="true" Bordered="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Employee</MudTh>
+            <MudTh Style="text-align:right">Gross</MudTh>
+            <MudTh Style="text-align:right">Deductions</MudTh>
+            <MudTh Style="text-align:right">Net</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Employee.EmployeeCode — @context.Employee.FullName</MudTd>
+            <MudTd Style="text-align:right">@context.GrossPay.ToString("N2")</MudTd>
+            <MudTd Style="text-align:right">
+                @if (_run.Status == VoucherStatus.Draft && Session.CanAccessPayroll)
+                {
+                    <MudNumericField T="decimal" Value="context.Deductions" ValueChanged="@(v => UpdateDeductions(context, v))"
+                                     HideSpinButtons="true" Min="0" Margin="Margin.Dense" Style="max-width:120px" />
+                }
+                else
+                {
+                    @context.Deductions.ToString("N2")
+                }
+            </MudTd>
+            <MudTd Style="text-align:right">@context.NetPay.ToString("N2")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public int RunId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _loaded;
+    private PayrollRun? _run;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _run = await PayrollSvc.GetByIdAsync(RunId);
+        _loaded = true;
+    }
+
+    private async Task UpdateDeductions(PayrollRunLine line, decimal deductions)
+    {
+        try
+        {
+            await PayrollSvc.UpdateRunLineAsync(line.Id, deductions);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+            await Load();
+        }
+    }
+
+    private async Task OpenPost()
+    {
+        var parameters = new DialogParameters<PostPayrollRunDialog> { { x => x.Run, _run! } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<PostPayrollRunDialog>("Post Payroll Run", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task OpenMarkPaid()
+    {
+        var parameters = new DialogParameters<MarkPayrollPaidDialog> { { x => x.Run, _run! } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<MarkPayrollPaidDialog>("Mark Payroll as Paid", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+    }
+}

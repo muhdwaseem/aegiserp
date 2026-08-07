@@ -154,6 +154,35 @@ public class PayrollServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task MarkPaidAsync_debits_salaries_payable_and_credits_bank()
+    {
+        await CreateEmployee("Ahmed", 5000, 1500);
+        var run = await _payroll.CreateDraftRunAsync(_db.May.Id, new(2026, 5, 31), "tester", Now);
+        await _payroll.PostRunAsync(run.Id, null, "tester", Now);
+
+        var voucher = await _payroll.MarkPaidAsync(run.Id, _db.Bank.Id, new(2026, 5, 31), "tester", Now);
+
+        Assert.Equal(6500m, voucher.Lines.Single(l => l.AccountId == _salariesPayable.Id).Debit);
+        Assert.Equal(6500m, voucher.Lines.Single(l => l.AccountId == _db.Bank.Id).Credit);
+
+        var reloaded = await _payroll.GetByIdAsync(run.Id);
+        Assert.True(reloaded!.IsPaid);
+        Assert.Equal(_db.Bank.Id, reloaded.PaidFromBankAccountId);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_rejects_a_draft_run_or_a_run_already_marked_paid()
+    {
+        await CreateEmployee();
+        var draft = await _payroll.CreateDraftRunAsync(_db.May.Id, new(2026, 5, 31), "tester", Now);
+        await Assert.ThrowsAsync<PostingException>(() => _payroll.MarkPaidAsync(draft.Id, _db.Bank.Id, new(2026, 5, 31), "tester", Now));
+
+        await _payroll.PostRunAsync(draft.Id, null, "tester", Now);
+        await _payroll.MarkPaidAsync(draft.Id, _db.Bank.Id, new(2026, 5, 31), "tester", Now);
+        await Assert.ThrowsAsync<PostingException>(() => _payroll.MarkPaidAsync(draft.Id, _db.Bank.Id, new(2026, 5, 31), "tester", Now));
+    }
+
+    [Fact]
     public async Task Payroll_runs_of_another_company_are_not_visible_or_editable()
     {
         var other = _db.SeedOtherCompany();

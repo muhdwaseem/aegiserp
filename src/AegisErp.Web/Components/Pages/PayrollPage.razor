@@ -1,0 +1,137 @@
+@page "/payroll"
+@page "/payroll/{Id:int?}"
+@attribute [Authorize]
+@using AegisErp.Web.Components.Dialogs
+@inject PayrollService PayrollSvc
+@inject NavigationManager Nav
+@inject CompanySession Session
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Payroll · Aegis ERP</PageTitle>
+
+@if (!_ready)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudText Typo="Typo.h5">Payroll</MudText>
+        <MudSpacer />
+        @if (Session.CanAccessPayroll)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNewForm">New Payroll Run</MudButton>
+        }
+    </MudStack>
+
+    <MudGrid>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="run-list-pane" Elevation="1">
+                @if (_runs is null)
+                {
+                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                }
+                else if (_runs.Count == 0)
+                {
+                    <MudText Class="pa-4 mud-text-secondary">No payroll runs yet.</MudText>
+                }
+                else
+                {
+                    @foreach (var r in _runs)
+                    {
+                        <div class="run-row @(r.Id == _selectedId ? "selected" : "")" @onclick="@(() => SelectRow(r))">
+                            <div class="run-row-top">
+                                <span class="run-row-name">@r.FiscalPeriod.Name</span>
+                                <span class="run-row-amount">@r.TotalNet.ToString("N2")</span>
+                            </div>
+                            <div class="run-row-meta">
+                                @r.Status @(r.IsPaid ? "· Paid" : "")
+                            </div>
+                        </div>
+                    }
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="8">
+            @if (_selectedId is int id)
+            {
+                <PayrollRunDetailPanel @key="id" RunId="id" OnChanged="Load" />
+            }
+            else
+            {
+                <MudPaper Class="pa-8 d-flex flex-column align-center justify-center" Elevation="1" Style="min-height:300px">
+                    <MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Large" Class="mud-text-secondary mb-2" />
+                    <MudText Class="mud-text-secondary">Select a run on the left to view its details.</MudText>
+                </MudPaper>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+<style>
+    .run-list-pane { max-height: calc(100vh - 220px); overflow-y: auto; }
+    .run-row { padding: 12px 16px; border-bottom: 1px solid var(--mud-palette-lines-default); cursor: pointer; }
+    .run-row:hover { background: var(--mud-palette-action-default-hover); }
+    .run-row.selected { background: var(--mud-palette-primary-hover); border-left: 3px solid var(--mud-palette-primary); }
+    .run-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .run-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-row-amount { font-weight: 600; white-space: nowrap; }
+    .run-row-meta { font-size: 12px; color: var(--mud-palette-text-secondary); margin-top: 2px; }
+</style>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool _ready;
+    private List<PayrollRun>? _runs;
+    private int? _selectedId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.EnsureInitialisedAsync();
+        if (!Session.CanAccessPayroll)
+        {
+            Snackbar.Add("You don't have access to HR & Payroll for this company.", Severity.Error);
+            Nav.NavigateTo("");
+            return;
+        }
+
+        _ready = true;
+        await Load();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Id is int id) _selectedId = id;
+        else if (_selectedId is null && _runs is { Count: > 0 }) _selectedId = _runs[0].Id;
+    }
+
+    private async Task Load()
+    {
+        _runs = await PayrollSvc.GetAllAsync();
+        if (_selectedId is null && _runs.Count > 0) _selectedId = Id ?? _runs[0].Id;
+    }
+
+    private void SelectRow(PayrollRun r)
+    {
+        _selectedId = r.Id;
+        Nav.NavigateTo($"/payroll/{r.Id}");
+    }
+
+    private async Task OpenNewForm()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewPayrollRunDialog>("New Payroll Run", options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            if (result.Data is int newId)
+            {
+                _selectedId = newId;
+                Nav.NavigateTo($"/payroll/{newId}");
+            }
+        }
+    }
+}
