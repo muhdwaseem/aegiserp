@@ -18,4 +18,13 @@ public static class WellKnownAccounts
     /// <summary>Unearned revenue (Liability) — where a sales invoice line's credit lands when
     /// its <see cref="Domain.RevenueRecognition"/> is Deferred, instead of a P&amp;L revenue account.</summary>
     public const string DeferredRevenue = "23010";
+
+    /// <summary>Contra-asset (credit-normal, nets against fixed assets on the Balance Sheet) —
+    /// fixed-asset depreciation runs credit this control account instead of crediting each asset
+    /// directly.</summary>
+    public const string AccumulatedDepreciation = "15010";
+
+    /// <summary>Liability — payroll runs credit this for each employee's net pay; paying salaries
+    /// out later debits it against Bank.</summary>
+    public const string SalariesPayable = "21020";
 }

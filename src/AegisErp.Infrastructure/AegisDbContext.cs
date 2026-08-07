@@ -83,6 +83,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<InvoiceReminderLog> InvoiceReminderLogs => Set<InvoiceReminderLog>();
     public DbSet<RecurringInvoiceProfile> RecurringInvoiceProfiles => Set<RecurringInvoiceProfile>();
     public DbSet<RecurringInvoiceProfileLine> RecurringInvoiceProfileLines => Set<RecurringInvoiceProfileLine>();
+    public DbSet<FixedAsset> FixedAssets => Set<FixedAsset>();
+    public DbSet<AssetDepreciationEntry> AssetDepreciationEntries => Set<AssetDepreciationEntry>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -115,6 +117,33 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         {
             e.Property(k => k.Name).HasMaxLength(160).IsRequired();
             e.HasMany(k => k.Lines).WithOne(l => l.ServiceKit).HasForeignKey(l => l.ServiceKitId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<FixedAsset>(e =>
+        {
+            e.HasIndex(a => new { a.CompanyId, a.AssetCode }).IsUnique();
+            e.Property(a => a.AssetCode).HasMaxLength(20).IsRequired();
+            e.Property(a => a.Name).HasMaxLength(160).IsRequired();
+            e.Property(a => a.Category).HasMaxLength(80);
+            e.Property(a => a.PurchaseCost).HasPrecision(18, 2);
+            e.Property(a => a.SalvageValue).HasPrecision(18, 2);
+            e.Property(a => a.DisposalProceeds).HasPrecision(18, 2);
+            e.Property(a => a.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(a => a.CreatedBy).HasMaxLength(80);
+            e.Ignore(a => a.AccumulatedDepreciation);
+            e.Ignore(a => a.NetBookValue);
+            e.HasOne(a => a.AssetAccount).WithMany().HasForeignKey(a => a.AssetAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(a => a.DepreciationExpenseAccount).WithMany().HasForeignKey(a => a.DepreciationExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(a => a.CostCenter).WithMany().HasForeignKey(a => a.CostCenterId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(a => a.DepreciationEntries).WithOne(d => d.FixedAsset).HasForeignKey(d => d.FixedAssetId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AssetDepreciationEntry>(e =>
+        {
+            e.HasIndex(d => new { d.FixedAssetId, d.FiscalPeriodId }).IsUnique();
+            e.Property(d => d.Amount).HasPrecision(18, 2);
+            e.HasOne(d => d.FiscalPeriod).WithMany().HasForeignKey(d => d.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(d => d.JournalVoucher).WithMany().HasForeignKey(d => d.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<ServiceKitLine>(e =>
@@ -855,6 +884,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<CustomFieldDefinition>(b);
         ConfigureCompanyScope<TagGroup>(b);
         ConfigureCompanyScope<RecurringInvoiceProfile>(b);
+        ConfigureCompanyScope<FixedAsset>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()
