@@ -42,6 +42,13 @@
         <MudNavLink Href="assets" Icon="@Icons.Material.Filled.Chair">Assets</MudNavLink>
     </MudNavGroup>
 
+    @if (Session.CanAccessPayroll)
+    {
+        <MudNavGroup Title="HR & Payroll" Icon="@Icons.Material.Filled.Badge" Expanded="true">
+            <MudNavLink Href="employees" Icon="@Icons.Material.Filled.Badge">Employees</MudNavLink>
+        </MudNavGroup>
+    }
+
     <MudNavGroup Title="Accounts Payable" Icon="@Icons.Material.Filled.CallMade" Expanded="true">
         <MudNavLink Href="vendors" Icon="@Icons.Material.Filled.Factory">Vendors</MudNavLink>
         <MudNavLink Href="purchase-invoice" Icon="@Icons.Material.Filled.Description">Purchase Invoice</MudNavLink>

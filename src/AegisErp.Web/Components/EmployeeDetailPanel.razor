@@ -1,0 +1,153 @@
+@using AegisErp.Web.Components.Dialogs
+@inject EmployeeService EmployeeSvc
+@inject CompanySession Session
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_loaded && _employee is null)
+{
+    <MudAlert Severity="Severity.Error">Employee not found.</MudAlert>
+}
+else if (_employee is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+            <MudIcon Icon="@Icons.Material.Filled.Badge" />
+        </MudAvatar>
+        <div>
+            <MudText Typo="Typo.h6">@_employee.FullName</MudText>
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_employee.EmployeeCode</MudText>
+                @if (!string.IsNullOrWhiteSpace(_employee.Designation))
+                {
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">·</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@_employee.Designation</MudText>
+                }
+            </MudStack>
+        </div>
+        <MudChip T="string" Size="Size.Small" Color="@(_employee.Status == EmployeeStatus.Active ? Color.Success : Color.Default)" Variant="Variant.Text">
+            @_employee.Status
+        </MudChip>
+        <MudSpacer />
+        @if (Session.CanAccessPayroll)
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditEmployee">Edit</MudButton>
+            @if (_employee.Status == EmployeeStatus.Active)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="Terminate">Terminate</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Success" OnClick="Reactivate">Reactivate</MudButton>
+            }
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">BASIC SALARY</MudText>
+                <MudText Typo="Typo.h6">@_employee.BasicSalary.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">ALLOWANCES</MudText>
+                <MudText Typo="Typo.h6">@((_employee.HousingAllowance + _employee.TransportAllowance + _employee.OtherAllowance).ToString("N2"))</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">GROSS SALARY</MudText>
+                <MudText Typo="Typo.h6">@_employee.GrossSalary.ToString("N2")</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid var(--mud-palette-lines-default)">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">JOINING DATE</MudText>
+                <MudText Typo="Typo.h6">@_employee.JoiningDate.ToString("dd MMM yyyy")</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Department</MudText>
+            <MudText>@(_employee.CostCenter is null ? "—" : $"{_employee.CostCenter.Code} — {_employee.CostCenter.Name}")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Salary Expense Account</MudText>
+            <MudText>@_employee.EmployeeExpenseAccount.Code — @_employee.EmployeeExpenseAccount.Name</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Contact</MudText>
+            <MudText>@(_employee.Mobile ?? "—") · @(_employee.Email ?? "—")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Bank</MudText>
+            <MudText>@(_employee.BankName ?? "—") @(_employee.Iban ?? "")</MudText>
+        </MudItem>
+        @if (_employee.Status == EmployeeStatus.Terminated)
+        {
+            <MudItem xs="12" sm="4">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Termination Date</MudText>
+                <MudText>@_employee.TerminationDate?.ToString("dd MMM yyyy")</MudText>
+            </MudItem>
+        }
+        @if (!string.IsNullOrWhiteSpace(_employee.Notes))
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Notes</MudText>
+                <MudText>@_employee.Notes</MudText>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter, EditorRequired] public int EmployeeId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _loaded;
+    private Employee? _employee;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _employee = await EmployeeSvc.GetByIdAsync(EmployeeId);
+        _loaded = true;
+    }
+
+    private async Task EditEmployee()
+    {
+        var parameters = new DialogParameters<NewEmployeeDialog> { { x => x.Existing, _employee } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewEmployeeDialog>("Edit Employee", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task Terminate()
+    {
+        var ok = await DialogService.ShowMessageBox("Terminate Employee", $"Mark {_employee!.FullName} as terminated?", yesText: "Terminate", cancelText: "Cancel");
+        if (ok != true) return;
+        await EmployeeSvc.SetStatusAsync(_employee.Id, EmployeeStatus.Terminated, DateOnly.FromDateTime(DateTime.Today));
+        Snackbar.Add("Employee terminated.", Severity.Info);
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Reactivate()
+    {
+        await EmployeeSvc.SetStatusAsync(_employee!.Id, EmployeeStatus.Active, null);
+        Snackbar.Add("Employee reactivated.", Severity.Success);
+        await Load();
+        await OnChanged.InvokeAsync();
+    }
+}

@@ -1,0 +1,151 @@
+@inject EmployeeService EmployeeSvc
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsEdit ? $"Edit {Existing!.EmployeeCode}" : "New Employee")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_fullName" Label="Full Name" Required="true" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_designation" Label="Designation" Placeholder="e.g. Visa Officer" /></MudItem>
+
+            <MudItem xs="12" sm="4">
+                <MudDatePicker Date="_joiningDate" DateChanged="@(d => _joiningDate = d)" Label="Joining Date" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int?" @bind-Value="_costCenterId" Label="Department" Clearable="true">
+                    @if (_costCenters is not null)
+                    {
+                        @foreach (var c in _costCenters)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Code — @c.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="_employeeExpenseAccountId" Label="Salary Expense Account">
+                    @if (_expenseAccounts is not null)
+                    {
+                        @foreach (var a in _expenseAccounts)
+                        {
+                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            </MudItem>
+
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal" @bind-Value="_basicSalary" Label="Basic Salary" HideSpinButtons="true" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal" @bind-Value="_housingAllowance" Label="Housing Allowance" HideSpinButtons="true" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal" @bind-Value="_transportAllowance" Label="Transport Allowance" HideSpinButtons="true" Min="0" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudNumericField T="decimal" @bind-Value="_otherAllowance" Label="Other Allowance" HideSpinButtons="true" Min="0" />
+            </MudItem>
+
+            <MudItem xs="12">
+                <MudAlert Severity="Severity.Info" Dense="true">Gross salary: AED @GrossSalary.ToString("N2") / month</MudAlert>
+            </MudItem>
+
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_mobile" Label="Mobile" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_bankName" Label="Bank Name" /></MudItem>
+            <MudItem xs="12" sm="6"><MudTextField @bind-Value="_iban" Label="IBAN" /></MudItem>
+            <MudItem xs="12"><MudTextField @bind-Value="_notes" Label="Notes" Lines="2" /></MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter] public Employee? Existing { get; set; }
+    private bool IsEdit => Existing is not null;
+
+    private List<Account>? _expenseAccounts;
+    private List<CostCenter>? _costCenters;
+
+    private string _fullName = "";
+    private string? _designation;
+    private DateTime? _joiningDate = DateTime.Today;
+    private int? _costCenterId;
+    private int _employeeExpenseAccountId;
+    private decimal _basicSalary;
+    private decimal _housingAllowance;
+    private decimal _transportAllowance;
+    private decimal _otherAllowance;
+    private string? _mobile;
+    private string? _email;
+    private string? _bankName;
+    private string? _iban;
+    private string? _notes;
+
+    private decimal GrossSalary => _basicSalary + _housingAllowance + _transportAllowance + _otherAllowance;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense).ToList();
+        _costCenters = await Coa.GetCostCentersAsync();
+
+        if (Existing is { } e)
+        {
+            _fullName = e.FullName;
+            _designation = e.Designation;
+            _joiningDate = e.JoiningDate.ToDateTime(TimeOnly.MinValue);
+            _costCenterId = e.CostCenterId;
+            _employeeExpenseAccountId = e.EmployeeExpenseAccountId;
+            _basicSalary = e.BasicSalary;
+            _housingAllowance = e.HousingAllowance;
+            _transportAllowance = e.TransportAllowance;
+            _otherAllowance = e.OtherAllowance;
+            _mobile = e.Mobile;
+            _email = e.Email;
+            _bankName = e.BankName;
+            _iban = e.Iban;
+            _notes = e.Notes;
+        }
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var input = new EmployeeInput(
+                _fullName, _designation, _costCenterId, DateOnly.FromDateTime(_joiningDate ?? DateTime.Today),
+                _basicSalary, _housingAllowance, _transportAllowance, _otherAllowance,
+                _mobile, _email, _bankName, _iban, _employeeExpenseAccountId, _notes);
+
+            if (IsEdit)
+            {
+                await EmployeeSvc.UpdateAsync(Existing!.Id, input);
+                Snackbar.Add("Employee updated.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(Existing.Id));
+            }
+            else
+            {
+                var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+                var created = await EmployeeSvc.CreateAsync(input, userName, DateTime.UtcNow);
+                Snackbar.Add($"Employee {created.EmployeeCode} created.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok(created.Id));
+            }
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
