@@ -1,0 +1,48 @@
+@inject LeadService LeadSvc
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Log Activity</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudSelect T="LeadActivityType" @bind-Value="_type" Label="Type">
+            @foreach (var t in Enum.GetValues<LeadActivityType>())
+            {
+                <MudSelectItem Value="t">@t</MudSelectItem>
+            }
+        </MudSelect>
+        <MudDatePicker Date="_activityDate" DateChanged="@(d => _activityDate = d)" Label="Date" Class="mt-3" />
+        <MudTextField @bind-Value="_description" Label="Description" Lines="3" Required="true" Class="mt-3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Log</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter, EditorRequired] public int LeadId { get; set; }
+
+    private LeadActivityType _type = LeadActivityType.Call;
+    private DateTime? _activityDate = DateTime.Today;
+    private string _description = "";
+
+    private async Task Save()
+    {
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            await LeadSvc.LogActivityAsync(LeadId, _type, _description, DateOnly.FromDateTime(_activityDate ?? DateTime.Today), userName, DateTime.UtcNow);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

@@ -1,0 +1,149 @@
+@using AegisErp.Web.Components.Dialogs
+@inject LeadService LeadSvc
+@inject CompanySession Session
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_loaded && _lead is null)
+{
+    <MudAlert Severity="Severity.Error">Lead not found.</MudAlert>
+}
+else if (_lead is not null)
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3" Wrap="Wrap.Wrap">
+        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+            <MudIcon Icon="@Icons.Material.Filled.PersonSearch" />
+        </MudAvatar>
+        <div>
+            <MudText Typo="Typo.h6">@_lead.Name</MudText>
+            @if (!string.IsNullOrWhiteSpace(_lead.CompanyName))
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">@_lead.CompanyName</MudText>
+            }
+        </div>
+        <MudChip T="string" Size="Size.Small" Color="@StageColor(_lead.Stage)" Variant="Variant.Text">@_lead.Stage</MudChip>
+        <MudSpacer />
+        @if (Session.CanPost && _lead.Stage is not (LeadStage.Won or LeadStage.Lost))
+        {
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditLead">Edit</MudButton>
+            <MudSelect T="LeadStage" Value="_lead.Stage" ValueChanged="ChangeStage" Dense="true" Style="max-width:160px">
+                @foreach (var s in new[] { LeadStage.New, LeadStage.Contacted, LeadStage.Qualified, LeadStage.Lost })
+                {
+                    <MudSelectItem Value="s">@s</MudSelectItem>
+                }
+            </MudSelect>
+        }
+        <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
+    </MudStack>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Mobile / Email</MudText>
+            <MudText>@(_lead.Mobile ?? "—") · @(_lead.Email ?? "—")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Source</MudText>
+            <MudText>@(_lead.Source ?? "—")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Estimated Value</MudText>
+            <MudText>@(_lead.EstimatedValue is decimal v ? v.ToString("N2") : "—")</MudText>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudText Typo="Typo.caption" Class="mud-text-secondary">Assigned To</MudText>
+            <MudText>@(_lead.AssignedTo ?? "Unassigned")</MudText>
+        </MudItem>
+        @if (!string.IsNullOrWhiteSpace(_lead.Notes))
+        {
+            <MudItem xs="12">
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">Notes</MudText>
+                <MudText>@_lead.Notes</MudText>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudText Typo="Typo.subtitle1">Activity Timeline</MudText>
+        <MudSpacer />
+        @if (Session.CanPost)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenLogActivity">Log Activity</MudButton>
+        }
+    </MudStack>
+    <MudTable Items="_lead.Activities.OrderByDescending(a => a.ActivityDate).ThenByDescending(a => a.Id)" Dense="true" Bordered="true" Elevation="0">
+        <HeaderContent>
+            <MudTh>Date</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Description</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ActivityDate.ToString("dd MMM yyyy")</MudTd>
+            <MudTd>@context.Type</MudTd>
+            <MudTd>@context.Description</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4 mud-text-secondary">No activity logged yet.</MudText>
+        </NoRecordsContent>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public int LeadId { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _loaded;
+    private Lead? _lead;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        _lead = await LeadSvc.GetByIdAsync(LeadId);
+        _loaded = true;
+    }
+
+    private static Color StageColor(LeadStage stage) => stage switch
+    {
+        LeadStage.Won => Color.Success,
+        LeadStage.Lost => Color.Default,
+        LeadStage.Qualified => Color.Info,
+        LeadStage.Contacted => Color.Warning,
+        _ => Color.Secondary,
+    };
+
+    private async Task ChangeStage(LeadStage stage)
+    {
+        try
+        {
+            await LeadSvc.ChangeStageAsync(_lead!.Id, stage);
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task EditLead()
+    {
+        var parameters = new DialogParameters<NewLeadDialog> { { x => x.Existing, _lead } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<NewLeadDialog>("Edit Lead", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task OpenLogActivity()
+    {
+        var parameters = new DialogParameters<LogLeadActivityDialog> { { x => x.LeadId, LeadId } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<LogLeadActivityDialog>("Log Activity", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false }) await Load();
+    }
+}
