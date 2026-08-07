@@ -86,6 +86,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<FixedAsset> FixedAssets => Set<FixedAsset>();
     public DbSet<AssetDepreciationEntry> AssetDepreciationEntries => Set<AssetDepreciationEntry>();
     public DbSet<Employee> Employees => Set<Employee>();
+    public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
+    public DbSet<PayrollRunLine> PayrollRunLines => Set<PayrollRunLine>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -167,6 +169,33 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Ignore(m => m.GrossSalary);
             e.HasOne(m => m.CostCenter).WithMany().HasForeignKey(m => m.CostCenterId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(m => m.EmployeeExpenseAccount).WithMany().HasForeignKey(m => m.EmployeeExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<PayrollRun>(e =>
+        {
+            e.HasIndex(r => new { r.CompanyId, r.FiscalPeriodId }).IsUnique();
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.CreatedBy).HasMaxLength(80);
+            e.Ignore(r => r.TotalGross);
+            e.Ignore(r => r.TotalDeductions);
+            e.Ignore(r => r.TotalNet);
+            e.HasOne(r => r.FiscalPeriod).WithMany().HasForeignKey(r => r.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.JournalVoucher).WithMany().HasForeignKey(r => r.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(r => r.PaidFromBankAccount).WithMany().HasForeignKey(r => r.PaidFromBankAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(r => r.Lines).WithOne(l => l.PayrollRun).HasForeignKey(l => l.PayrollRunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<PayrollRunLine>(e =>
+        {
+            e.Property(l => l.BasicSalary).HasPrecision(18, 2);
+            e.Property(l => l.HousingAllowance).HasPrecision(18, 2);
+            e.Property(l => l.TransportAllowance).HasPrecision(18, 2);
+            e.Property(l => l.OtherAllowance).HasPrecision(18, 2);
+            e.Property(l => l.Deductions).HasPrecision(18, 2);
+            e.Ignore(l => l.GrossPay);
+            e.Ignore(l => l.NetPay);
+            e.HasOne(l => l.Employee).WithMany().HasForeignKey(l => l.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.ExpenseAccount).WithMany().HasForeignKey(l => l.ExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<ServiceKitLine>(e =>
@@ -909,6 +938,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<RecurringInvoiceProfile>(b);
         ConfigureCompanyScope<FixedAsset>(b);
         ConfigureCompanyScope<Employee>(b);
+        ConfigureCompanyScope<PayrollRun>(b);
 
         // Fail fast if a new company-scoped entity is added but not registered above.
         var unscoped = b.Model.GetEntityTypes()
