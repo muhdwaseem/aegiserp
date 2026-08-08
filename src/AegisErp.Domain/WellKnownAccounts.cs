@@ -31,4 +31,12 @@ public static class WellKnownAccounts
     /// <summary>Liability — gratuity (End of Service Benefits) postings credit this; paying it out
     /// later debits it against Bank. See <c>GratuityService</c>.</summary>
     public const string GratuityPayable = "21040";
+
+    /// <summary>Liability — a "Pay Later" Direct Expense credits this instead of Bank at posting;
+    /// the later payoff debits it against Bank. See <c>DirectExpensePaymentService</c>.
+    /// v1 limitation: input VAT on a Pay-Later expense is recovered in full at posting time and is
+    /// never automatically reversed under the UAE VAT Executive Regulations' Article 55 six-month
+    /// non-payment rule (input tax must be repaid if unpaid &gt;6 months past due, then re-claimed
+    /// once paid). Flag long-outstanding balances on this account for manual review.</summary>
+    public const string ExpensesPayable = "21050";
 }

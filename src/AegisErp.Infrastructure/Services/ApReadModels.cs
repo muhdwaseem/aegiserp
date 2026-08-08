@@ -23,3 +23,10 @@ public record PurchaseInvoiceLineBalance(int LineId, string Description, decimal
 {
     public decimal Balance => Gross - Allocated;
 }
+
+/// <summary>One "Pay Later" Direct Expense line with how much of it has actually been paid, via
+/// <see cref="Domain.Entities.DirectExpensePaymentAllocation"/> — mirrors <see cref="PurchaseInvoiceLineBalance"/>.</summary>
+public record DirectExpenseLineBalance(int LineId, string? Description, decimal Gross, decimal Allocated)
+{
+    public decimal Balance => Gross - Allocated;
+}

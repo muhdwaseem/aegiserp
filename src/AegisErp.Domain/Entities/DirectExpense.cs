@@ -29,9 +29,18 @@ public class DirectExpense : ICompanyScoped
     public int FiscalPeriodId { get; set; }
     public FiscalPeriod FiscalPeriod { get; set; } = null!;
 
-    /// <summary>Bank/cash account the money went out of ("Paid Through").</summary>
-    public int BankAccountId { get; set; }
-    public Account BankAccount { get; set; } = null!;
+    /// <summary>Bank/cash account the money went out of ("Paid Through") — null when
+    /// <see cref="IsPayLater"/>, since nothing has been paid out yet at posting time.</summary>
+    public int? BankAccountId { get; set; }
+    public Account? BankAccount { get; set; }
+
+    /// <summary>
+    /// When true, this expense was posted as owing rather than settled: it credits
+    /// <see cref="AegisErp.Domain.WellKnownAccounts.ExpensesPayable"/> instead of a bank account,
+    /// and its lines are later paid off — in full or split across specific lines — via
+    /// <c>DirectExpensePaymentService</c>. Set once at creation, never re-derived.
+    /// </summary>
+    public bool IsPayLater { get; set; }
 
     public string? Reference { get; set; }
 
@@ -74,7 +83,7 @@ public class DirectExpense : ICompanyScoped
     {
         if (Status == VoucherStatus.Posted)
             throw new PostingException("Expense is already posted.");
-        if (BankAccountId == 0)
+        if (!IsPayLater && (BankAccountId is null or 0))
             throw new PostingException("Expense has no \"Paid Through\" account.");
         if (Lines.Count == 0)
             throw new PostingException("Expense needs at least one line.");

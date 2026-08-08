@@ -185,6 +185,43 @@ public class DirectExpensePostingTests : IDisposable
     }
 
     [Fact]
+    public async Task Pay_later_expense_credits_expenses_payable_instead_of_bank()
+    {
+        using (var seedDb = _db.CreateUnscopedDbContext())
+        {
+            seedDb.Accounts.Add(new Account { CompanyId = _db.Company.Id, Code = WellKnownAccounts.ExpensesPayable, Name = "Expenses Payable", Type = AccountType.Liability });
+            seedDb.SaveChanges();
+        }
+
+        var e = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 10), _db.May.Id, null,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, null, 100, VatRate: 0.05m) },
+            amountsIncludeVat: false, payLater: true);
+
+        Assert.True(e.IsPayLater);
+        Assert.Null(e.BankAccountId);
+        Assert.Equal(VoucherStatus.Posted, e.Status);
+
+        await using var db = _db.CreateDbContext();
+        var payable = await db.Accounts.SingleAsync(a => a.Code == WellKnownAccounts.ExpensesPayable);
+        var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == e.JournalVoucherId);
+        Assert.Equal(voucher.TotalDebit, voucher.TotalCredit);
+        Assert.Equal(100m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit);
+        Assert.Equal(5m, voucher.Lines.Single(l => l.AccountId == _db.VatInput.Id).Debit);
+        Assert.Equal(105m, voucher.Lines.Single(l => l.AccountId == payable.Id).Credit);
+        Assert.DoesNotContain(voucher.Lines, l => l.AccountId == _db.Bank.Id);
+    }
+
+    [Fact]
+    public async Task Pay_now_expense_still_requires_a_bank_account()
+    {
+        await Assert.ThrowsAsync<PostingException>(() => _expenses.CreateAndPostAsync(
+            null, null, new(2026, 5, 10), _db.May.Id, null, null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, null, 100) },
+            payLater: false));
+    }
+
+    [Fact]
     public async Task An_itemized_line_picked_from_the_catalog_persists_its_ItemId()
     {
         var items = new ItemService(_db);

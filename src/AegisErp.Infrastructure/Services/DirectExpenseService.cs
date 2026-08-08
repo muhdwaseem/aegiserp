@@ -42,9 +42,10 @@ public class DirectExpenseService
     /// both optional (Vendor just records who was paid; Customer is a "billable to" tag only).
     /// </summary>
     public async Task<DirectExpense> CreateAndPostAsync(
-        int? vendorId, int? customerId, DateOnly date, int fiscalPeriodId, int bankAccountId,
+        int? vendorId, int? customerId, DateOnly date, int fiscalPeriodId, int? bankAccountId,
         string? reference, string? narration, string createdBy, DateTime nowUtc,
-        IEnumerable<DirectExpenseLineInput> lines, string? vendorInvoiceNo = null, bool amountsIncludeVat = false)
+        IEnumerable<DirectExpenseLineInput> lines, string? vendorInvoiceNo = null, bool amountsIncludeVat = false,
+        bool payLater = false)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -68,6 +69,7 @@ public class DirectExpenseService
             VendorInvoiceNo = string.IsNullOrWhiteSpace(vendorInvoiceNo) ? null : vendorInvoiceNo.Trim(),
             Narration = narration,
             AmountsIncludeVat = amountsIncludeVat,
+            IsPayLater = payLater,
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
         };
@@ -104,7 +106,15 @@ public class DirectExpenseService
             voucherLines.Add(new VoucherLineInput(vatInput.Id, null, $"Input VAT — {expenseNo}", expense.TotalVat, 0));
         }
 
-        voucherLines.Add(new VoucherLineInput(bankAccountId, null, expense.Narration, 0, expense.TotalAmount));
+        if (payLater)
+        {
+            var payable = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.ExpensesPayable);
+            voucherLines.Add(new VoucherLineInput(payable.Id, null, expense.Narration, 0, expense.TotalAmount));
+        }
+        else
+        {
+            voucherLines.Add(new VoucherLineInput(bankAccountId!.Value, null, expense.Narration, 0, expense.TotalAmount));
+        }
 
         expense.JournalVoucher = await JournalPoster.PostAsync(
             db, VoucherType.Expense, expenseNo, date, fiscalPeriodId,

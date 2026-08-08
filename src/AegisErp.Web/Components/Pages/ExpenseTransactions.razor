@@ -62,7 +62,7 @@
     </HeaderContent>
     <RowTemplate>
         <MudTd Style="font-family:monospace">@context.TranRef</MudTd>
-        <MudTd><MudLink Href="@($"/purchase-invoice/{context.InvoiceId}")">@context.InvoiceNo</MudLink></MudTd>
+        <MudTd><MudLink Href="@(context.IsDirectExpense ? $"/expenses/{context.InvoiceId}" : $"/purchase-invoice/{context.InvoiceId}")">@context.InvoiceNo</MudLink></MudTd>
         <MudTd>@context.InvoiceDate.ToString("dd MMM yyyy")</MudTd>
         <MudTd>@context.VendorName</MudTd>
         <MudTd>@(context.LpoNo ?? "—")</MudTd>
@@ -71,12 +71,19 @@
         <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
         <MudTd>@(context.PaidToAccountName ?? "—")</MudTd>
         <MudTd>
-            <MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : Color.Default)" Variant="Variant.Text">
-                @(context.IsCompleted ? "Completed" : "Pending")
-            </MudChip>
+            @if (context.IsDirectExpense)
+            {
+                <MudText Typo="Typo.caption" Class="mud-text-secondary">—</MudText>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="@(context.IsCompleted ? Color.Success : Color.Default)" Variant="Variant.Text">
+                    @(context.IsCompleted ? "Completed" : "Pending")
+                </MudChip>
+            }
         </MudTd>
         <MudTd>
-            @if (Session.CanPost)
+            @if (Session.CanPost && !context.IsDirectExpense)
             {
                 <MudButton Size="Size.Small" Variant="Variant.Outlined"
                            Color="@(context.IsCompleted ? Color.Default : Color.Success)"

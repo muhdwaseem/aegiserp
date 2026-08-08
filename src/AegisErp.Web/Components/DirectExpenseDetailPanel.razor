@@ -1,4 +1,7 @@
+@using AegisErp.Web.Components.Dialogs
 @inject DirectExpenseService ExpenseSvc
+@inject DirectExpensePaymentService PaymentSvc
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -12,6 +15,10 @@ else if (_expense is not null)
         <MudText Typo="Typo.h5">@_expense.ExpenseNo</MudText>
         <MudChip T="string" Size="Size.Small" Color="StatusColor(_expense.Status)" Variant="Variant.Text">@_expense.Status</MudChip>
         <MudSpacer />
+        @if (_expense.IsPayLater && Outstanding > 0)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Payments" OnClick="RecordPayment">Record Payment</MudButton>
+        }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
 
@@ -22,8 +29,8 @@ else if (_expense is not null)
                     <MudItem xs="12" sm="6">
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Date</MudText>
                         <MudText Class="mb-2">@_expense.Date.ToString("dd MMM yyyy")</MudText>
-                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Paid Through</MudText>
-                        <MudText Class="mb-2">@_expense.BankAccount.Name</MudText>
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">@(_expense.IsPayLater ? "Payment" : "Paid Through")</MudText>
+                        <MudText Class="mb-2">@(_expense.IsPayLater ? "Pay Later" : _expense.BankAccount?.Name ?? "—")</MudText>
                         @if (!string.IsNullOrWhiteSpace(_expense.Reference))
                         {
                             <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Reference#</MudText>
@@ -92,6 +99,58 @@ else if (_expense is not null)
                 </MudStack>
             </MudTabPanel>
 
+            @if (_expense.IsPayLater)
+            {
+                <MudTabPanel Text="Payment Status">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">Outstanding</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@(Outstanding > 0 ? Color.Warning : Color.Success)" Variant="Variant.Text">
+                            AED @Outstanding.ToString("N2")
+                        </MudChip>
+                        <MudSpacer />
+                        @if (Outstanding > 0)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="RecordPayment">Record Payment</MudButton>
+                        }
+                    </MudStack>
+                    <MudTable Items="_lineBalances" Dense="true" Bordered="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>Description</MudTh>
+                            <MudTh Style="text-align:right">Amount</MudTh>
+                            <MudTh Style="text-align:right">Paid</MudTh>
+                            <MudTh Style="text-align:right">Balance</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@(context.Description ?? "—")</MudTd>
+                            <MudTd Style="text-align:right">@context.Gross.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right">@context.Allocated.ToString("N2")</MudTd>
+                            <MudTd Style="text-align:right;font-weight:600">@context.Balance.ToString("N2")</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    @if (_payments is { Count: > 0 })
+                    {
+                        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">Payment History</MudText>
+                        <MudTable Items="_payments" Dense="true" Bordered="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Date</MudTh>
+                                <MudTh>Payment No.</MudTh>
+                                <MudTh>Paid From</MudTh>
+                                <MudTh>Reference</MudTh>
+                                <MudTh Style="text-align:right">Amount</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd>@context.Date.ToString("dd MMM yyyy")</MudTd>
+                                <MudTd style="font-family:monospace">@context.PaymentNo</MudTd>
+                                <MudTd>@context.BankAccount.Name</MudTd>
+                                <MudTd>@(context.ReferenceNo ?? "—")</MudTd>
+                                <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudTabPanel>
+            }
+
             <MudTabPanel Text="GL Voucher">
                 @if (_expense.JournalVoucher is null)
                 {
@@ -115,6 +174,10 @@ else if (_expense is not null)
     private int _loadedForId = -1;
     private bool _loaded;
     private DirectExpense? _expense;
+    private List<DirectExpenseLineBalance> _lineBalances = new();
+    private List<DirectExpensePayment>? _payments;
+
+    private decimal Outstanding => _lineBalances.Sum(l => l.Balance);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -129,6 +192,21 @@ else if (_expense is not null)
     {
         _expense = await ExpenseSvc.GetByIdAsync(ExpenseId);
         _loaded = true;
+        if (_expense is { IsPayLater: true })
+        {
+            _lineBalances = await PaymentSvc.GetLineBalancesAsync(ExpenseId);
+            _payments = await PaymentSvc.GetByExpenseAsync(ExpenseId);
+        }
+    }
+
+    private async Task RecordPayment()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        var parameters = new DialogParameters<NewDirectExpensePaymentDialog> { { x => x.ExpenseId, ExpenseId } };
+        var dialog = await DialogService.ShowAsync<NewDirectExpensePaymentDialog>("Record Payment", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+            await Load();
     }
 
     private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_expense!.JournalVoucher!.VoucherNo)}");

@@ -17,22 +17,32 @@
                 <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Date" />
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudSelect T="int" @bind-Value="_bankAccountId" Label="Paid Through" Dense="true">
-                    <MudSelectItem Value="0">— select account —</MudSelectItem>
-                    @if (_bankAccounts is not null)
-                    {
-                        @foreach (var a in _bankAccounts)
+                @if (_payLater)
+                {
+                    <MudTextField Value="@("Pay Later — posts to Expenses Payable")" Label="Paid Through" ReadOnly="true" Disabled="true" />
+                }
+                else
+                {
+                    <MudSelect T="int" @bind-Value="_bankAccountId" Label="Paid Through" Dense="true">
+                        <MudSelectItem Value="0">— select account —</MudSelectItem>
+                        @if (_bankAccounts is not null)
                         {
-                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                            @foreach (var a in _bankAccounts)
+                            {
+                                <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                            }
                         }
-                    }
-                </MudSelect>
+                    </MudSelect>
+                }
             </MudItem>
             <MudItem xs="12" sm="3">
                 <MudTextField @bind-Value="_reference" Label="Reference#" />
             </MudItem>
             <MudItem xs="12" sm="3">
                 <MudTextField @bind-Value="_vendorInvoiceNo" Label="Invoice/Receipt No. (optional)" />
+            </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudSwitch T="bool" @bind-Value="_payLater" Color="Color.Primary" Label="Pay Later" />
             </MudItem>
 
             <MudItem xs="12" sm="6">
@@ -41,6 +51,16 @@
             <MudItem xs="12" sm="6">
                 <MudSwitch T="bool" @bind-Value="_showVatColumn" Color="Color.Primary" Label="Show VAT amount column" />
             </MudItem>
+            @if (_payLater)
+            {
+                <MudItem xs="12">
+                    <MudAlert Severity="Severity.Info" Dense="true">
+                        This expense will post as owing (Dr each line's expense account / Cr Expenses Payable) instead of
+                        settling from a bank account now. Settle it — in full or split across its lines — from the
+                        expense's detail page later.
+                    </MudAlert>
+                </MudItem>
+            }
 
             @if (!_itemized)
             {
@@ -256,6 +276,7 @@
     private bool _posting;
     private bool _amountsIncludeVat;
     private bool _showVatColumn;
+    private bool _payLater;
 
     private string? _attachmentFileName;
     private string? _attachmentContentType;
@@ -275,7 +296,7 @@
     private decimal TotalVat => _itemized ? _lines.Sum(l => l.Split(_amountsIncludeVat).Vat) : SingleSplit.Vat;
     private decimal TotalAmount => _itemized ? _lines.Sum(l => l.Split(_amountsIncludeVat).Gross) : SingleSplit.Gross;
 
-    private bool CanPost => _bankAccountId > 0 && _periodId > 0 && TotalAmount > 0
+    private bool CanPost => (_payLater || _bankAccountId > 0) && _periodId > 0 && TotalAmount > 0
         && (_itemized
             ? _lines.All(l => l.ExpenseAccountId > 0 && l.Amount > 0)
             : _singleExpenseAccountId > 0);
@@ -356,9 +377,9 @@
 
             var e = await ExpenseSvc.CreateAndPostAsync(
                 _vendorId > 0 ? _vendorId : null, _customerId > 0 ? _customerId : null,
-                DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _bankAccountId,
+                DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _payLater ? null : _bankAccountId,
                 _reference, _narration, userName, DateTime.UtcNow, inputs,
-                _vendorInvoiceNo, _amountsIncludeVat);
+                _vendorInvoiceNo, _amountsIncludeVat, _payLater);
 
             if (_attachmentBytes is not null)
                 await ExpenseSvc.SetAttachmentAsync(e.Id, _attachmentFileName!,

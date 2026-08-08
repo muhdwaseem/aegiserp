@@ -7,8 +7,10 @@ namespace AegisErp.Infrastructure.Services;
 /// <summary>
 /// Backs the cross-invoice Expense Transactions view — the AP mirror of <see cref="TransactionService"/>.
 /// Every Purchase Invoice line, company-wide, flattened into one list with fulfillment (Completed)
-/// and payment ("Paid To") attribution. Direct Expenses are excluded: they're settled in full the
-/// moment they're posted, so there's nothing to track.
+/// and payment ("Paid To") attribution. "Pay Later" Direct Expense lines are included too, with
+/// "Paid To" attribution from <see cref="DirectExpensePaymentAllocation"/>. "Pay Now" Direct
+/// Expenses remain excluded: they're settled in full the moment they're posted, so there's nothing
+/// to track.
 /// </summary>
 public class ExpenseTransactionService
 {
@@ -45,8 +47,35 @@ public class ExpenseTransactionService
                     l.Id, $"{inv.InvoiceNo}-L{l.LineNo}", inv.Id, inv.InvoiceNo, inv.Date, inv.Status,
                     inv.Vendor.Name, inv.VendorRef, inv.LpoNo, l.Description,
                     l.Quantity, l.Gross, l.IsCompleted, l.CompletedAtUtc, l.CompletedBy,
-                    paidTo.GetValueOrDefault(l.Id)));
-        return rows;
+                    paidTo.GetValueOrDefault(l.Id), IsDirectExpense: false));
+
+        // "Pay Later" Direct Expenses, company-wide — same reasoning as above: DirectExpenseLine
+        // has no CompanyId/query filter of its own, so this is routed through the company-scoped
+        // DirectExpenses. "Pay Now" expenses are excluded — settled in full at posting already.
+        var payLaterExpenses = await db.DirectExpenses.AsNoTracking()
+            .Include(e => e.Vendor).Include(e => e.Lines)
+            .Where(e => e.IsPayLater && e.Status == VoucherStatus.Posted)
+            .OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
+            .ToListAsync();
+
+        var expenseLineIds = payLaterExpenses.SelectMany(e => e.Lines).Select(l => l.Id).ToList();
+        var expensePaidTo = (await db.DirectExpensePaymentAllocations.AsNoTracking()
+            .Where(a => expenseLineIds.Contains(a.DirectExpenseLineId))
+            .OrderByDescending(a => a.DirectExpensePayment.Date).ThenByDescending(a => a.DirectExpensePaymentId)
+            .Select(a => new { a.DirectExpenseLineId, AccountName = a.DirectExpensePayment.BankAccount.Name })
+            .ToListAsync())
+            .GroupBy(a => a.DirectExpenseLineId)
+            .ToDictionary(g => g.Key, g => g.First().AccountName);
+
+        foreach (var exp in payLaterExpenses)
+            foreach (var l in exp.Lines.OrderBy(l => l.LineNo))
+                rows.Add(new ExpenseTransactionRow(
+                    l.Id, $"{exp.ExpenseNo}-L{l.LineNo}", exp.Id, exp.ExpenseNo, exp.Date, exp.Status,
+                    exp.Vendor?.Name ?? "—", null, null, l.Description ?? "(no description)",
+                    1, l.Split(exp.AmountsIncludeVat).Gross, false, null, null,
+                    expensePaidTo.GetValueOrDefault(l.Id), IsDirectExpense: true));
+
+        return rows.OrderByDescending(r => r.InvoiceDate).ThenByDescending(r => r.InvoiceId).ToList();
     }
 
     /// <summary>Marks one line complete/incomplete. Scoped through PurchaseInvoices so a lineId
@@ -69,4 +98,4 @@ public record ExpenseTransactionRow(
     int LineId, string TranRef, int InvoiceId, string InvoiceNo, DateOnly InvoiceDate, VoucherStatus InvoiceStatus,
     string VendorName, string? VendorRef, string? LpoNo, string Description,
     decimal Quantity, decimal Amount, bool IsCompleted, DateTime? CompletedAtUtc, string? CompletedBy,
-    string? PaidToAccountName);
+    string? PaidToAccountName, bool IsDirectExpense);

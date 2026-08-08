@@ -60,6 +60,8 @@ public class AegisDbContext : IdentityDbContext<AppUser>
     public DbSet<DebitNoteLine> DebitNoteLines => Set<DebitNoteLine>();
     public DbSet<DirectExpense> DirectExpenses => Set<DirectExpense>();
     public DbSet<DirectExpenseLine> DirectExpenseLines => Set<DirectExpenseLine>();
+    public DbSet<DirectExpensePayment> DirectExpensePayments => Set<DirectExpensePayment>();
+    public DbSet<DirectExpensePaymentAllocation> DirectExpensePaymentAllocations => Set<DirectExpensePaymentAllocation>();
     public DbSet<CompanySetup> CompanySetups => Set<CompanySetup>();
     public DbSet<CompanyBankAccount> CompanyBankAccounts => Set<CompanyBankAccount>();
     public DbSet<Salesperson> Salespersons => Set<Salesperson>();
@@ -837,9 +839,31 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.HasOne(x => x.Vendor).WithMany().HasForeignKey(x => x.VendorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.FiscalPeriod).WithMany().HasForeignKey(x => x.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.BankAccount).WithMany().HasForeignKey(x => x.BankAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.BankAccount).WithMany().HasForeignKey(x => x.BankAccountId).IsRequired(false).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.JournalVoucher).WithMany().HasForeignKey(x => x.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(x => x.Lines).WithOne(l => l.DirectExpense).HasForeignKey(l => l.DirectExpenseId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<DirectExpensePayment>(e =>
+        {
+            e.HasIndex(p => new { p.CompanyId, p.PaymentNo }).IsUnique();
+            e.Property(p => p.PaymentNo).HasMaxLength(30).IsRequired();
+            e.Property(p => p.PaymentMode).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.Narration).HasMaxLength(400);
+            e.Property(p => p.CreatedBy).HasMaxLength(80);
+            e.Property(p => p.ReferenceNo).HasMaxLength(60);
+            e.HasOne(p => p.DirectExpense).WithMany().HasForeignKey(p => p.DirectExpenseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.FiscalPeriod).WithMany().HasForeignKey(p => p.FiscalPeriodId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.BankAccount).WithMany().HasForeignKey(p => p.BankAccountId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.JournalVoucher).WithMany().HasForeignKey(p => p.JournalVoucherId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(p => p.Allocations).WithOne(a => a.DirectExpensePayment).HasForeignKey(a => a.DirectExpensePaymentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<DirectExpensePaymentAllocation>(e =>
+        {
+            e.Property(a => a.Amount).HasPrecision(18, 2);
+            e.HasOne(a => a.DirectExpenseLine).WithMany().HasForeignKey(a => a.DirectExpenseLineId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<DirectExpenseLine>(e =>
@@ -991,6 +1015,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         ConfigureCompanyScope<VendorPayment>(b);
         ConfigureCompanyScope<DebitNote>(b);
         ConfigureCompanyScope<DirectExpense>(b);
+        ConfigureCompanyScope<DirectExpensePayment>(b);
         ConfigureCompanyScope<Currency>(b);
         ConfigureCompanyScope<TaxCode>(b);
         ConfigureCompanyScope<Item>(b);

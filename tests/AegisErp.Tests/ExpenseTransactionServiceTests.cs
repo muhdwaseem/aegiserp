@@ -11,6 +11,8 @@ public class ExpenseTransactionServiceTests : IDisposable
     private readonly TestDb _db = new();
     private readonly PurchaseInvoiceService _invoices;
     private readonly VendorPaymentService _payments;
+    private readonly DirectExpenseService _expenses;
+    private readonly DirectExpensePaymentService _expensePayments;
     private readonly ExpenseTransactionService _transactions;
     private static readonly DateTime Now = new(2026, 7, 9, 12, 0, 0, DateTimeKind.Utc);
 
@@ -18,6 +20,8 @@ public class ExpenseTransactionServiceTests : IDisposable
     {
         _invoices = new PurchaseInvoiceService(_db);
         _payments = new VendorPaymentService(_db);
+        _expenses = new DirectExpenseService(_db);
+        _expensePayments = new DirectExpensePaymentService(_db);
         _transactions = new ExpenseTransactionService(_db);
     }
 
@@ -76,6 +80,52 @@ public class ExpenseTransactionServiceTests : IDisposable
         Assert.False(reopened.IsCompleted);
         Assert.Null(reopened.CompletedBy);
         Assert.Null(reopened.CompletedAtUtc);
+    }
+
+    [Fact]
+    public async Task Pay_later_direct_expenses_are_included_and_pay_now_ones_are_not()
+    {
+        using (var seedDb = _db.CreateUnscopedDbContext())
+        {
+            seedDb.Accounts.Add(new Account { CompanyId = _db.Company.Id, Code = WellKnownAccounts.ExpensesPayable, Name = "Expenses Payable", Type = AccountType.Liability });
+            seedDb.SaveChanges();
+        }
+
+        await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 10), _db.May.Id, _db.Bank.Id,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, "Pay now expense", 500) });
+
+        var payLater = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 11), _db.May.Id, null,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, "Pay later expense", 300) },
+            payLater: true);
+
+        var rows = await _transactions.GetAllAsync();
+
+        var row = Assert.Single(rows);
+        Assert.True(row.IsDirectExpense);
+        Assert.Equal($"{payLater.ExpenseNo}-L1", row.TranRef);
+        Assert.Equal("Pay later expense", row.Description);
+        Assert.Null(row.PaidToAccountName);
+    }
+
+    [Fact]
+    public async Task Pay_later_direct_expense_resolves_paid_to_account_via_payment_allocation()
+    {
+        using (var seedDb = _db.CreateUnscopedDbContext())
+        {
+            seedDb.Accounts.Add(new Account { CompanyId = _db.Company.Id, Code = WellKnownAccounts.ExpensesPayable, Name = "Expenses Payable", Type = AccountType.Liability });
+            seedDb.SaveChanges();
+        }
+
+        var e = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 11), _db.May.Id, null,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, "Pay later expense", 300) },
+            payLater: true);
+        await _expensePayments.CreateAndPostAsync(e.Id, new(2026, 6, 1), _db.Jun.Id, _db.Bank.Id, 300, null, "tester", Now);
+
+        var row = Assert.Single(await _transactions.GetAllAsync());
+        Assert.Equal(_db.Bank.Name, row.PaidToAccountName);
     }
 
     [Fact]
