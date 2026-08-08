@@ -1,6 +1,7 @@
 using AegisErp.Domain;
 using AegisErp.Domain.Entities;
 using AegisErp.Infrastructure.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace AegisErp.Tests;
 
@@ -123,5 +124,117 @@ public class GratuityServicePreviewTests : IDisposable
         Assert.False(optedOutPreview.Eligible);
         Assert.Equal(0m, optedOutPreview.CalculatedAmount);
         Assert.False(tooNewPreview.Eligible);
+    }
+}
+
+public class GratuityServicePostingTests : IDisposable
+{
+    private readonly TestDb _db = new();
+    private readonly EmployeeService _employees;
+    private readonly GratuityService _gratuity;
+    private readonly Account _gratuityPayable;
+    private static readonly DateTime Now = new(2026, 5, 20, 12, 0, 0, DateTimeKind.Utc);
+
+    public GratuityServicePostingTests()
+    {
+        _employees = new EmployeeService(_db);
+        _gratuity = new GratuityService(_db);
+
+        using var db = _db.CreateUnscopedDbContext();
+        _gratuityPayable = new Account { CompanyId = _db.Company.Id, Code = WellKnownAccounts.GratuityPayable, Name = "Gratuity Payable", Type = AccountType.Liability };
+        db.Accounts.Add(_gratuityPayable);
+        db.SaveChanges();
+    }
+
+    public void Dispose() => _db.Dispose();
+
+    private Task<Employee> Hire(DateOnly joiningDate, bool gratuityEligible = true) =>
+        _employees.CreateAsync(
+            new EmployeeInput("Ahmed", null, null, joiningDate, 10000, 0, 0, 0, null, null, null, null, _db.Expense.Id, null)
+                with { GratuityEligible = gratuityEligible },
+            "tester", Now);
+
+    [Fact]
+    public async Task PostGratuityAsync_posts_a_balanced_voucher_and_terminates_the_employee()
+    {
+        var employee = await Hire(new DateOnly(2020, 1, 1)); // 6+ years by termination date
+
+        var payment = await _gratuity.PostGratuityAsync(employee.Id, new(2026, 5, 20), _db.Expense.Id, "tester", Now);
+
+        Assert.Equal(VoucherStatus.Posted, payment.Status);
+        Assert.True(payment.CalculatedAmount > 0);
+        Assert.NotNull(payment.JournalVoucherId);
+
+        var reloaded = await _employees.GetByIdAsync(employee.Id);
+        Assert.Equal(EmployeeStatus.Terminated, reloaded!.Status);
+        Assert.Equal(new DateOnly(2026, 5, 20), reloaded.TerminationDate);
+
+        using var db = _db.CreateUnscopedDbContext();
+        var voucher = db.JournalVouchers.Include(v => v.Lines).Single(v => v.Id == payment.JournalVoucherId);
+        Assert.Equal(voucher.Lines.Sum(l => l.Debit), voucher.Lines.Sum(l => l.Credit));
+        Assert.Equal(payment.CalculatedAmount, voucher.Lines.Sum(l => l.Debit));
+    }
+
+    [Fact]
+    public async Task PostGratuityAsync_ignoring_eligibility_still_records_a_zero_amount_audit_row_with_no_voucher()
+    {
+        var optedOut = await Hire(new DateOnly(2018, 1, 1), gratuityEligible: false);
+
+        var payment = await _gratuity.PostGratuityAsync(optedOut.Id, new(2026, 5, 20), _db.Expense.Id, "tester", Now);
+
+        Assert.Equal(0m, payment.CalculatedAmount);
+        Assert.Equal(VoucherStatus.Posted, payment.Status);
+        Assert.Null(payment.JournalVoucherId);
+
+        var reloaded = await _employees.GetByIdAsync(optedOut.Id);
+        Assert.Equal(EmployeeStatus.Terminated, reloaded!.Status); // termination itself still happens
+    }
+
+    [Fact]
+    public async Task PostGratuityAsync_cannot_be_posted_twice_for_the_same_employee()
+    {
+        var employee = await Hire(new DateOnly(2020, 1, 1));
+        await _gratuity.PostGratuityAsync(employee.Id, new(2026, 5, 20), _db.Expense.Id, "tester", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _gratuity.PostGratuityAsync(employee.Id, new(2026, 5, 21), _db.Expense.Id, "tester", Now));
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_posts_Dr_gratuity_payable_Cr_bank_and_flags_paid()
+    {
+        var employee = await Hire(new DateOnly(2020, 1, 1));
+        var payment = await _gratuity.PostGratuityAsync(employee.Id, new(2026, 5, 20), _db.Expense.Id, "tester", Now);
+
+        var voucher = await _gratuity.MarkPaidAsync(payment.Id, _db.Bank.Id, new(2026, 5, 25), "tester", Now);
+
+        Assert.Equal(payment.CalculatedAmount, voucher.Lines.Sum(l => l.Debit));
+        Assert.Equal(payment.CalculatedAmount, voucher.Lines.Sum(l => l.Credit));
+
+        using var db = _db.CreateUnscopedDbContext();
+        var reloaded = db.GratuityPayments.Single(g => g.Id == payment.Id);
+        Assert.True(reloaded.IsPaid);
+        Assert.Equal(new DateOnly(2026, 5, 25), reloaded.PaidDate);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_rejects_a_zero_amount_payment_that_has_nothing_owed()
+    {
+        var optedOut = await Hire(new DateOnly(2018, 1, 1), gratuityEligible: false);
+        var payment = await _gratuity.PostGratuityAsync(optedOut.Id, new(2026, 5, 20), _db.Expense.Id, "tester", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _gratuity.MarkPaidAsync(payment.Id, _db.Bank.Id, new(2026, 5, 25), "tester", Now));
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_cannot_be_called_twice()
+    {
+        var employee = await Hire(new DateOnly(2020, 1, 1));
+        var payment = await _gratuity.PostGratuityAsync(employee.Id, new(2026, 5, 20), _db.Expense.Id, "tester", Now);
+        await _gratuity.MarkPaidAsync(payment.Id, _db.Bank.Id, new(2026, 5, 25), "tester", Now);
+
+        await Assert.ThrowsAsync<PostingException>(() =>
+            _gratuity.MarkPaidAsync(payment.Id, _db.Bank.Id, new(2026, 5, 26), "tester", Now));
     }
 }

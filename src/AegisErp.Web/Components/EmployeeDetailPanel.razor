@@ -1,5 +1,7 @@
 @using AegisErp.Web.Components.Dialogs
 @inject EmployeeService EmployeeSvc
+@inject GratuityService GratuitySvc
+@inject LeaveService LeaveSvc
 @inject CompanySession Session
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -151,14 +153,80 @@ else if (_employee is not null)
             }
         </MudItem>
     </MudGrid>
+
+    @if (_gratuity is not null)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Gratuity (EOSB)</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Spacing="2">
+            <MudChip T="string" Size="Size.Small" Color="@(_gratuity.Status == VoucherStatus.Posted ? Color.Success : Color.Default)" Variant="Variant.Text">@_gratuity.Status</MudChip>
+            @if (_gratuity.IsPaid)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">Paid</MudChip>
+            }
+            <MudText>@_gratuity.YearsOfService.ToString("0.00") yrs · basic AED @_gratuity.BasicSalaryUsed.ToString("N2") · <b>AED @_gratuity.CalculatedAmount.ToString("N2")</b></MudText>
+            <MudSpacer />
+            @if (Session.CanAccessPayroll && _gratuity.CalculatedAmount > 0 && !_gratuity.IsPaid)
+            {
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="OpenMarkGratuityPaid">Mark as Paid</MudButton>
+            }
+        </MudStack>
+    }
+
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4 mb-2">
+        <MudText Typo="Typo.subtitle1">Leave</MudText>
+        <MudSpacer />
+        @if (Session.CanPost)
+        {
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="OpenRequestLeave">Request Leave</MudButton>
+        }
+    </MudStack>
+    @if (_leaveBalance is not null)
+    {
+        <MudText Class="mb-2">Annual balance: <b>@_leaveBalance.RemainingDays</b> of @_leaveBalance.AccruedDays days remaining (@_leaveBalance.UsedDays used)</MudText>
+    }
+    @if (_leaveRequests is { Count: > 0 })
+    {
+        <MudTable Items="_leaveRequests" Dense="true" Bordered="true" Elevation="0">
+            <HeaderContent>
+                <MudTh>Type</MudTh>
+                <MudTh>Dates</MudTh>
+                <MudTh Style="text-align:right">Days</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Type</MudTd>
+                <MudTd>@context.StartDate.ToString("dd MMM yyyy") — @context.EndDate.ToString("dd MMM yyyy")</MudTd>
+                <MudTd Style="text-align:right">@context.Days</MudTd>
+                <MudTd>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="@(context.Status switch { LeaveRequestStatus.Approved => Color.Success, LeaveRequestStatus.Rejected => Color.Error, _ => Color.Default })">@context.Status</MudChip>
+                </MudTd>
+                <MudTd>
+                    @if (context.Status == LeaveRequestStatus.Pending && Session.CanAccessPayroll)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small" Color="Color.Success" OnClick="@(() => Decide(context, true))" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" Color="Color.Error" OnClick="@(() => Decide(context, false))" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+    else
+    {
+        <MudText Class="mud-text-secondary">No leave requests yet.</MudText>
+    }
 }
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Parameter, EditorRequired] public int EmployeeId { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
 
     private bool _loaded;
     private Employee? _employee;
+    private GratuityPayment? _gratuity;
+    private LeaveBalance? _leaveBalance;
+    private List<LeaveRequest>? _leaveRequests;
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -166,6 +234,51 @@ else if (_employee is not null)
     {
         _employee = await EmployeeSvc.GetByIdAsync(EmployeeId);
         _loaded = true;
+        if (_employee is null) return;
+
+        _gratuity = await GratuitySvc.GetLatestForEmployeeAsync(EmployeeId);
+        _leaveBalance = await LeaveSvc.GetBalanceAsync(EmployeeId, DateOnly.FromDateTime(DateTime.Today));
+        _leaveRequests = await LeaveSvc.GetAllAsync(EmployeeId);
+    }
+
+    private async Task OpenMarkGratuityPaid()
+    {
+        var parameters = new DialogParameters<MarkGratuityPaidDialog> { { x => x.Payment, _gratuity! } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<MarkGratuityPaidDialog>("Mark Gratuity as Paid", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task OpenRequestLeave()
+    {
+        var parameters = new DialogParameters<RequestLeaveDialog> { { x => x.Employee, _employee! } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<RequestLeaveDialog>("Request Leave", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+        }
+    }
+
+    private async Task Decide(LeaveRequest request, bool approved)
+    {
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            await LeaveSvc.DecideAsync(request.Id, approved, userName, DateTime.UtcNow);
+            Snackbar.Add(approved ? "Leave approved." : "Leave rejected.", Severity.Info);
+            await Load();
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     /// <summary>Red &lt; 30 days, amber &lt; 90 days, green otherwise — matches
@@ -191,12 +304,15 @@ else if (_employee is not null)
 
     private async Task Terminate()
     {
-        var ok = await DialogService.ShowMessageBox("Terminate Employee", $"Mark {_employee!.FullName} as terminated?", yesText: "Terminate", cancelText: "Cancel");
-        if (ok != true) return;
-        await EmployeeSvc.SetStatusAsync(_employee.Id, EmployeeStatus.Terminated, DateOnly.FromDateTime(DateTime.Today));
-        Snackbar.Add("Employee terminated.", Severity.Info);
-        await Load();
-        await OnChanged.InvokeAsync();
+        var parameters = new DialogParameters<TerminateEmployeeDialog> { { x => x.Employee, _employee! } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true };
+        var dialog = await DialogService.ShowAsync<TerminateEmployeeDialog>("Process Termination", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            await Load();
+            await OnChanged.InvokeAsync();
+        }
     }
 
     private async Task Reactivate()

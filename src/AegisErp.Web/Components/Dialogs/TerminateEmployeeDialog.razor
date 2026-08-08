@@ -1,0 +1,101 @@
+@inject GratuityService GratuitySvc
+@inject ChartOfAccountsService Coa
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Process Termination — @Employee.FullName</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudDatePicker Date="_terminationDate" DateChanged="OnDateChanged" Label="Termination Date" />
+
+        @if (_preview is not null)
+        {
+            @if (_preview.Eligible)
+            {
+                <MudAlert Severity="Severity.Info" Class="mt-3" Dense="true">
+                    @_preview.YearsOfService.ToString("0.00") years of service · basic salary AED @_preview.BasicSalaryUsed.ToString("N2")
+                    @(_preview.CapApplied ? " · capped at 24 months' basic salary" : "")
+                </MudAlert>
+                <MudText Typo="Typo.h5" Class="mt-3">Gratuity due: AED @_preview.CalculatedAmount.ToString("N2")</MudText>
+
+                <MudSelect T="int" @bind-Value="_expenseAccountId" Label="Gratuity Expense Account" Class="mt-3">
+                    @if (_expenseAccounts is not null)
+                    {
+                        @foreach (var a in _expenseAccounts)
+                        {
+                            <MudSelectItem Value="a.Id">@a.Code — @a.Name</MudSelectItem>
+                        }
+                    }
+                </MudSelect>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">
+                    Not eligible for gratuity @(_preview.YearsOfService < 1m ? "— under 1 year of continuous service." : "— marked as gratuity-ineligible on this employee's record.")
+                    No amount will be posted; the employee will still be marked Terminated.
+                </MudAlert>
+            }
+        }
+
+        <MudAlert Severity="Severity.Warning" Class="mt-3" Dense="true">
+            Gratuity is calculated per UAE Federal Decree-Law No. 33 of 2021, Article 51 (mainland UAE only —
+            DIFC/ADGM use a different scheme). Verify against a UAE labour consultant before relying on this
+            for a real termination.
+        </MudAlert>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" OnClick="Save"
+                   Disabled="_preview is null || (_preview.Eligible && _expenseAccountId == 0)">Terminate</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Parameter, EditorRequired] public Employee Employee { get; set; } = null!;
+
+    private DateTime? _terminationDate = DateTime.Today;
+    private GratuityPreview? _preview;
+    private List<Account>? _expenseAccounts;
+    private int _expenseAccountId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var accounts = await Coa.GetAllAsync(postableOnly: true);
+        _expenseAccounts = accounts.Where(a => a.Type == AccountType.Expense).ToList();
+        await RefreshPreview();
+    }
+
+    private async Task OnDateChanged(DateTime? date)
+    {
+        _terminationDate = date;
+        await RefreshPreview();
+    }
+
+    private async Task RefreshPreview()
+    {
+        var date = DateOnly.FromDateTime(_terminationDate ?? DateTime.Today);
+        _preview = await GratuitySvc.PreviewAsync(Employee.Id, date);
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
+            var date = DateOnly.FromDateTime(_terminationDate ?? DateTime.Today);
+            var accountId = _expenseAccountId != 0 ? _expenseAccountId : Employee.EmployeeExpenseAccountId;
+            await GratuitySvc.PostGratuityAsync(Employee.Id, date, accountId, userName, DateTime.UtcNow);
+            Snackbar.Add("Employee terminated.", Severity.Info);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
