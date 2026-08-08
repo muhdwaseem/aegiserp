@@ -826,8 +826,13 @@ public class AegisDbContext : IdentityDbContext<AppUser>
             e.Property(x => x.ExpenseNo).HasMaxLength(30).IsRequired();
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Reference).HasMaxLength(60);
+            e.Property(x => x.VendorInvoiceNo).HasMaxLength(60);
             e.Property(x => x.Narration).HasMaxLength(500);
+            e.Property(x => x.AttachmentFileName).HasMaxLength(260);
+            e.Property(x => x.AttachmentContentType).HasMaxLength(100);
             e.Property(x => x.CreatedBy).HasMaxLength(80);
+            e.Ignore(x => x.TotalNet);
+            e.Ignore(x => x.TotalVat);
             e.Ignore(x => x.TotalAmount);
             e.HasOne(x => x.Vendor).WithMany().HasForeignKey(x => x.VendorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Customer).WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
@@ -841,6 +846,7 @@ public class AegisDbContext : IdentityDbContext<AppUser>
         {
             e.Property(l => l.Description).HasMaxLength(300);
             e.Property(l => l.Amount).HasPrecision(18, 2);
+            e.Property(l => l.VatRate).HasPrecision(5, 4);
             e.HasOne(l => l.ExpenseAccount).WithMany().HasForeignKey(l => l.ExpenseAccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.CostCenter).WithMany().HasForeignKey(l => l.CostCenterId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(l => l.Item).WithMany().HasForeignKey(l => l.ItemId).OnDelete(DeleteBehavior.Restrict);

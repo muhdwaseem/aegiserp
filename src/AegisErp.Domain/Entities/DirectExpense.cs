@@ -34,7 +34,23 @@ public class DirectExpense : ICompanyScoped
     public Account BankAccount { get; set; } = null!;
 
     public string? Reference { get; set; }
+
+    /// <summary>The vendor's own invoice/receipt number, if the expense has a paper or emailed
+    /// receipt to trace back to — distinct from <see cref="Reference"/>, which flows into the
+    /// generated GL voucher's own reference field.</summary>
+    public string? VendorInvoiceNo { get; set; }
+
     public string? Narration { get; set; }
+
+    /// <summary>Whether every line's <see cref="DirectExpenseLine.Amount"/> already includes VAT
+    /// (the total on a receipt) or excludes it (VAT added on top) — set once for the whole
+    /// expense, since a single receipt is entered the same way throughout.</summary>
+    public bool AmountsIncludeVat { get; set; }
+
+    /// <summary>One supporting document attached to the expense (e.g. a receipt photo or PDF).</summary>
+    public string? AttachmentFileName { get; set; }
+    public string? AttachmentContentType { get; set; }
+    public byte[]? AttachmentData { get; set; }
 
     public VoucherStatus Status { get; set; } = VoucherStatus.Draft;
 
@@ -47,7 +63,11 @@ public class DirectExpense : ICompanyScoped
 
     public List<DirectExpenseLine> Lines { get; set; } = new();
 
-    public decimal TotalAmount => Lines.Sum(l => l.Amount);
+    public decimal TotalNet => Lines.Sum(l => l.Split(AmountsIncludeVat).Net);
+    public decimal TotalVat => Lines.Sum(l => l.Split(AmountsIncludeVat).Vat);
+
+    /// <summary>Total actually paid out (Net + VAT) — what's credited to the "Paid Through" account.</summary>
+    public decimal TotalAmount => Lines.Sum(l => l.Split(AmountsIncludeVat).Gross);
 
     /// <summary>Validates the expense and transitions it to Posted. The caller generates the GL voucher.</summary>
     public void Post(DateTime nowUtc)
@@ -65,6 +85,8 @@ public class DirectExpense : ICompanyScoped
                 throw new PostingException($"Line {line.LineNo} has no expense account.");
             if (line.Amount <= 0)
                 throw new PostingException($"Line {line.LineNo} amount must be positive.");
+            if (line.VatRate is < 0 or > 1)
+                throw new PostingException($"Line {line.LineNo} VAT rate is invalid.");
         }
 
         Status = VoucherStatus.Posted;
@@ -93,5 +115,35 @@ public class DirectExpenseLine
     public CostCenter? CostCenter { get; set; }
 
     public string? Description { get; set; }
+
+    /// <summary>Entered amount — interpreted as Gross or Net depending on the parent
+    /// <see cref="DirectExpense.AmountsIncludeVat"/> flag (see <see cref="Split"/>).</summary>
     public decimal Amount { get; set; }
+
+    /// <summary>Fractional VAT rate for this line, e.g. 0.05 for UAE 5% — zero means no VAT
+    /// (e.g. a bank charge or government fee). Each line can carry a different rate, same as
+    /// <see cref="PurchaseInvoiceLine.VatRate"/>.</summary>
+    public decimal VatRate { get; set; }
+
+    /// <summary>
+    /// Splits <see cref="Amount"/> into Net/VAT/Gross for a given inclusive/exclusive treatment.
+    /// A pure function independent of the <see cref="DirectExpense"/> navigation property (which
+    /// may not be fixed up yet before the parent is attached to a tracked context) — the caller
+    /// always has the parent's <see cref="DirectExpense.AmountsIncludeVat"/> flag in hand anyway.
+    /// </summary>
+    public (decimal Net, decimal Vat, decimal Gross) Split(bool amountsIncludeVat)
+    {
+        if (amountsIncludeVat)
+        {
+            var gross = Amount;
+            var net = Math.Round(gross / (1 + VatRate), 2, MidpointRounding.AwayFromZero);
+            return (net, gross - net, gross);
+        }
+        else
+        {
+            var net = Amount;
+            var vat = Math.Round(net * VatRate, 2, MidpointRounding.AwayFromZero);
+            return (net, vat, net + vat);
+        }
+    }
 }

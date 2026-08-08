@@ -1,5 +1,6 @@
 @inject DirectExpenseService ExpenseSvc
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @if (_loaded && _expense is null)
 {
@@ -28,6 +29,11 @@ else if (_expense is not null)
                             <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Reference#</MudText>
                             <MudText Class="mb-2">@_expense.Reference</MudText>
                         }
+                        @if (!string.IsNullOrWhiteSpace(_expense.VendorInvoiceNo))
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Invoice/Receipt No.</MudText>
+                            <MudText Class="mb-2">@_expense.VendorInvoiceNo</MudText>
+                        }
                     </MudItem>
                     <MudItem xs="12" sm="6">
                         <MudText Typo="Typo.caption" Class="mud-text-secondary d-block">Vendor</MudText>
@@ -44,20 +50,44 @@ else if (_expense is not null)
                     <MudText>@_expense.Narration</MudText>
                 }
 
+                @if (!string.IsNullOrWhiteSpace(_expense.AttachmentFileName))
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mt-3">
+                        <MudIcon Icon="@Icons.Material.Filled.AttachFile" Size="Size.Small" />
+                        <MudText Typo="Typo.body2">@_expense.AttachmentFileName</MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="DownloadAttachment">Download</MudButton>
+                    </MudStack>
+                }
+
                 <MudDivider Class="my-4" />
                 <MudTable Items="_expense.Lines.OrderBy(l => l.LineNo)" Dense="true" Bordered="true" Elevation="0">
                     <HeaderContent>
                         <MudTh>Expense Account</MudTh>
                         <MudTh>Description</MudTh>
+                        <MudTh Style="text-align:right">Net</MudTh>
+                        @if (_expense.TotalVat > 0)
+                        {
+                            <MudTh Style="text-align:right">VAT</MudTh>
+                        }
                         <MudTh Style="text-align:right">Amount</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd>@context.ExpenseAccount.Code — @context.ExpenseAccount.Name</MudTd>
                         <MudTd>@context.Description</MudTd>
-                        <MudTd Style="text-align:right">@context.Amount.ToString("N2")</MudTd>
+                        <MudTd Style="text-align:right">@context.Split(_expense.AmountsIncludeVat).Net.ToString("N2")</MudTd>
+                        @if (_expense.TotalVat > 0)
+                        {
+                            <MudTd Style="text-align:right">@context.Split(_expense.AmountsIncludeVat).Vat.ToString("N2")</MudTd>
+                        }
+                        <MudTd Style="text-align:right">@context.Split(_expense.AmountsIncludeVat).Gross.ToString("N2")</MudTd>
                     </RowTemplate>
                 </MudTable>
                 <MudStack Class="mt-3" AlignItems="AlignItems.End">
+                    @if (_expense.TotalVat > 0)
+                    {
+                        <MudText>Net: AED @_expense.TotalNet.ToString("N2")</MudText>
+                        <MudText>VAT: AED @_expense.TotalVat.ToString("N2")</MudText>
+                    }
                     <MudText Typo="Typo.h6">Total: AED @_expense.TotalAmount.ToString("N2")</MudText>
                 </MudStack>
             </MudTabPanel>
@@ -102,6 +132,14 @@ else if (_expense is not null)
     }
 
     private void ViewJournal() => Nav.NavigateTo($"/general-ledger?voucherNo={Uri.EscapeDataString(_expense!.JournalVoucher!.VoucherNo)}");
+
+    private async Task DownloadAttachment()
+    {
+        var full = await ExpenseSvc.GetAttachmentAsync(ExpenseId);
+        if (full is null) return;
+        var base64 = Convert.ToBase64String(full.Value.Data);
+        await JS.InvokeVoidAsync("downloadFileFromBytes", full.Value.FileName, full.Value.ContentType, base64);
+    }
 
     private static Color StatusColor(VoucherStatus status) => status switch
     {

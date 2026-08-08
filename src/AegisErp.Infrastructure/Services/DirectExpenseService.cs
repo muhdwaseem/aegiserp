@@ -5,10 +5,12 @@ using Microsoft.EntityFrameworkCore;
 namespace AegisErp.Infrastructure.Services;
 
 /// <summary>One expense line: an amount charged to a specific expense account, optionally picked from the Items catalog.</summary>
-public record DirectExpenseLineInput(int ExpenseAccountId, int? CostCenterId, string? Description, decimal Amount, int? ItemId = null);
+public record DirectExpenseLineInput(int ExpenseAccountId, int? CostCenterId, string? Description, decimal Amount, int? ItemId = null, decimal VatRate = 0m);
 
 public class DirectExpenseService
 {
+    public const int MaxAttachmentBytes = 5 * 1024 * 1024;
+
     private readonly IDbContextFactory<AegisDbContext> _dbf;
     public DirectExpenseService(IDbContextFactory<AegisDbContext> dbf) => _dbf = dbf;
 
@@ -42,7 +44,7 @@ public class DirectExpenseService
     public async Task<DirectExpense> CreateAndPostAsync(
         int? vendorId, int? customerId, DateOnly date, int fiscalPeriodId, int bankAccountId,
         string? reference, string? narration, string createdBy, DateTime nowUtc,
-        IEnumerable<DirectExpenseLineInput> lines)
+        IEnumerable<DirectExpenseLineInput> lines, string? vendorInvoiceNo = null, bool amountsIncludeVat = false)
     {
         await using var db = await _dbf.CreateDbContextAsync();
         await using var tx = await db.Database.BeginTransactionAsync();
@@ -63,7 +65,9 @@ public class DirectExpenseService
             FiscalPeriodId = fiscalPeriodId,
             BankAccountId = bankAccountId,
             Reference = string.IsNullOrWhiteSpace(reference) ? null : reference.Trim(),
+            VendorInvoiceNo = string.IsNullOrWhiteSpace(vendorInvoiceNo) ? null : vendorInvoiceNo.Trim(),
             Narration = narration,
+            AmountsIncludeVat = amountsIncludeVat,
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
         };
@@ -78,13 +82,28 @@ public class DirectExpenseService
                 CostCenterId = l.CostCenterId,
                 Description = l.Description,
                 Amount = l.Amount,
+                VatRate = l.VatRate,
             });
 
         expense.Post(nowUtc); // domain validation (lines exist, accounts/amounts valid)
 
+        // Credit totals are sums of each line's own Net/VAT split — never independently
+        // recomputed — so the voucher can never be a cent off balanced (same discipline as
+        // PurchaseInvoiceService).
         var voucherLines = expense.Lines
-            .Select(l => new VoucherLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, l.Amount, 0))
+            .Select(l =>
+            {
+                var (net, _, _) = l.Split(amountsIncludeVat);
+                return new VoucherLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, net, 0);
+            })
             .ToList();
+
+        if (expense.TotalVat > 0)
+        {
+            var vatInput = await JournalPoster.RequireAccountAsync(db, WellKnownAccounts.VatInput);
+            voucherLines.Add(new VoucherLineInput(vatInput.Id, null, $"Input VAT — {expenseNo}", expense.TotalVat, 0));
+        }
+
         voucherLines.Add(new VoucherLineInput(bankAccountId, null, expense.Narration, 0, expense.TotalAmount));
 
         expense.JournalVoucher = await JournalPoster.PostAsync(
@@ -94,5 +113,28 @@ public class DirectExpenseService
         db.DirectExpenses.Add(expense);
         await JournalPoster.SaveAndCommitAsync(db, tx);
         return expense;
+    }
+
+    public async Task SetAttachmentAsync(int expenseId, string fileName, string contentType, byte[] data)
+    {
+        if (data.Length > MaxAttachmentBytes)
+            throw new PostingException($"Attachment is too large — the limit is {MaxAttachmentBytes / (1024 * 1024)} MB.");
+
+        await using var db = await _dbf.CreateDbContextAsync();
+        var expense = await db.DirectExpenses.FirstOrDefaultAsync(x => x.Id == expenseId)
+            ?? throw new PostingException("Expense not found.");
+
+        expense.AttachmentFileName = fileName;
+        expense.AttachmentContentType = contentType;
+        expense.AttachmentData = data;
+        await db.SaveChangesAsync();
+    }
+
+    public async Task<(string FileName, string ContentType, byte[] Data)?> GetAttachmentAsync(int expenseId)
+    {
+        await using var db = await _dbf.CreateDbContextAsync();
+        var expense = await db.DirectExpenses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == expenseId);
+        if (expense?.AttachmentData is null || expense.AttachmentFileName is null) return null;
+        return (expense.AttachmentFileName, expense.AttachmentContentType ?? "application/octet-stream", expense.AttachmentData);
     }
 }

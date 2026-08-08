@@ -105,6 +105,86 @@ public class DirectExpensePostingTests : IDisposable
     }
 
     [Fact]
+    public async Task Vat_exclusive_amount_adds_vat_on_top_and_posts_to_vat_input()
+    {
+        var e = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 10), _db.May.Id, _db.Bank.Id,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, null, 100, VatRate: 0.05m) },
+            amountsIncludeVat: false);
+
+        Assert.Equal(100m, e.TotalNet);
+        Assert.Equal(5m, e.TotalVat);
+        Assert.Equal(105m, e.TotalAmount);
+
+        await using var db2 = _db.CreateDbContext();
+        var voucher = await db2.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == e.JournalVoucherId);
+        Assert.Equal(voucher.TotalDebit, voucher.TotalCredit);
+        Assert.Equal(100m, voucher.Lines.Single(l => l.AccountId == _db.Expense.Id).Debit);
+        Assert.Equal(5m, voucher.Lines.Single(l => l.AccountId == _db.VatInput.Id).Debit);
+        Assert.Equal(105m, voucher.Lines.Single(l => l.AccountId == _db.Bank.Id).Credit);
+    }
+
+    [Fact]
+    public async Task Vat_inclusive_amount_backs_out_vat_from_the_entered_total()
+    {
+        var e = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 10), _db.May.Id, _db.Bank.Id,
+            null, null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, null, 105, VatRate: 0.05m) },
+            amountsIncludeVat: true);
+
+        Assert.Equal(100m, e.TotalNet);
+        Assert.Equal(5m, e.TotalVat);
+        Assert.Equal(105m, e.TotalAmount); // the entered total is what leaves the bank either way
+    }
+
+    [Fact]
+    public async Task Zero_vat_rate_lines_never_touch_the_vat_input_account()
+    {
+        var e = await PostSimpleExpense(500); // default VatRate = 0
+
+        Assert.Equal(0m, e.TotalVat);
+        await using var db = _db.CreateDbContext();
+        var voucher = await db.JournalVouchers.Include(v => v.Lines).SingleAsync(v => v.Id == e.JournalVoucherId);
+        Assert.Equal(2, voucher.Lines.Count); // expense + bank only, no VAT line
+    }
+
+    [Fact]
+    public async Task VendorInvoiceNo_is_persisted_and_distinct_from_reference()
+    {
+        var e = await _expenses.CreateAndPostAsync(null, null, new(2026, 5, 10), _db.May.Id, _db.Bank.Id,
+            "REF-001", null, "tester", Now,
+            new[] { new DirectExpenseLineInput(_db.Expense.Id, null, null, 100) },
+            vendorInvoiceNo: "RCPT-9981");
+
+        Assert.Equal("REF-001", e.Reference);
+        Assert.Equal("RCPT-9981", e.VendorInvoiceNo);
+    }
+
+    [Fact]
+    public async Task Attachment_round_trips_through_SetAttachmentAsync_and_GetAttachmentAsync()
+    {
+        var e = await PostSimpleExpense(500);
+        var bytes = new byte[] { 1, 2, 3, 4 };
+
+        await _expenses.SetAttachmentAsync(e.Id, "receipt.jpg", "image/jpeg", bytes);
+
+        var stored = await _expenses.GetAttachmentAsync(e.Id);
+        Assert.NotNull(stored);
+        Assert.Equal("receipt.jpg", stored!.Value.FileName);
+        Assert.Equal("image/jpeg", stored.Value.ContentType);
+        Assert.Equal(bytes, stored.Value.Data);
+    }
+
+    [Fact]
+    public async Task Attachment_over_the_size_limit_is_rejected()
+    {
+        var e = await PostSimpleExpense(500);
+        var tooBig = new byte[DirectExpenseService.MaxAttachmentBytes + 1];
+
+        await Assert.ThrowsAsync<PostingException>(() => _expenses.SetAttachmentAsync(e.Id, "big.pdf", "application/pdf", tooBig));
+    }
+
+    [Fact]
     public async Task An_itemized_line_picked_from_the_catalog_persists_its_ItemId()
     {
         var items = new ItemService(_db);

@@ -17,17 +17,6 @@
                 <MudDatePicker Date="_date" DateChanged="OnDateChanged" Label="Date" />
             </MudItem>
             <MudItem xs="12" sm="3">
-                <MudSelect T="int" @bind-Value="_periodId" Label="Period" Dense="true">
-                    @if (_periods is not null)
-                    {
-                        @foreach (var p in _periods)
-                        {
-                            <MudSelectItem Value="p.Id">@p.Name</MudSelectItem>
-                        }
-                    }
-                </MudSelect>
-            </MudItem>
-            <MudItem xs="12" sm="3">
                 <MudSelect T="int" @bind-Value="_bankAccountId" Label="Paid Through" Dense="true">
                     <MudSelectItem Value="0">— select account —</MudSelectItem>
                     @if (_bankAccounts is not null)
@@ -42,10 +31,20 @@
             <MudItem xs="12" sm="3">
                 <MudTextField @bind-Value="_reference" Label="Reference#" />
             </MudItem>
+            <MudItem xs="12" sm="3">
+                <MudTextField @bind-Value="_vendorInvoiceNo" Label="Invoice/Receipt No. (optional)" />
+            </MudItem>
+
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_amountsIncludeVat" Color="Color.Primary" Label="Amounts entered below already include VAT" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSwitch T="bool" @bind-Value="_showVatColumn" Color="Color.Primary" Label="Show VAT amount column" />
+            </MudItem>
 
             @if (!_itemized)
             {
-                <MudItem xs="12" sm="5">
+                <MudItem xs="12" sm="@(_showVatColumn ? 4 : 5)">
                     <MudSelect T="int" @bind-Value="_singleExpenseAccountId" Label="Expense Account" Dense="true">
                         <MudSelectItem Value="0">— select account —</MudSelectItem>
                         @if (_expenseAccounts is not null)
@@ -58,7 +57,7 @@
                     </MudSelect>
                     <MudLink Typo="Typo.caption" Class="mt-1 d-inline-block" OnClick="EnableItemize">Itemize</MudLink>
                 </MudItem>
-                <MudItem xs="12" sm="4">
+                <MudItem xs="12" sm="@(_showVatColumn ? 3 : 4)">
                     <MudSelect T="int?" @bind-Value="_singleCostCenterId" Label="Cost Center" Dense="true" Clearable="true">
                         @if (_costCenters is not null)
                         {
@@ -69,9 +68,26 @@
                         }
                     </MudSelect>
                 </MudItem>
+                @if (_showVatColumn)
+                {
+                    <MudItem xs="12" sm="2">
+                        <MudSelect T="decimal" @bind-Value="_singleVatRate" Label="VAT" Dense="true">
+                            <MudSelectItem Value="0m">Exempt (0%)</MudSelectItem>
+                            <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                        </MudSelect>
+                    </MudItem>
+                }
                 <MudItem xs="12" sm="3">
                     <MudNumericField T="decimal" @bind-Value="_singleAmount" Label="Amount (AED)" Min="0" HideSpinButtons="true" />
                 </MudItem>
+                @if (_showVatColumn)
+                {
+                    <MudItem xs="12">
+                        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+                            Net: @SingleSplit.Net.ToString("N2") · VAT: @SingleSplit.Vat.ToString("N2") · Total: @SingleSplit.Gross.ToString("N2")
+                        </MudText>
+                    </MudItem>
+                }
             }
             else
             {
@@ -89,6 +105,11 @@
                             <MudTh Style="min-width:160px">Cost Center</MudTh>
                             <MudTh Style="min-width:180px">Description</MudTh>
                             <MudTh Style="min-width:130px;text-align:right">Amount</MudTh>
+                            @if (_showVatColumn)
+                            {
+                                <MudTh Style="min-width:100px">VAT %</MudTh>
+                                <MudTh Style="min-width:110px;text-align:right">VAT Amt</MudTh>
+                            }
                             <MudTh Style="width:48px"></MudTh>
                         </HeaderContent>
                         <RowTemplate>
@@ -131,6 +152,16 @@
                             <MudTd Style="text-align:right">
                                 <MudNumericField T="decimal" @bind-Value="context.Amount" Min="0" HideSpinButtons="true" Margin="Margin.Dense" />
                             </MudTd>
+                            @if (_showVatColumn)
+                            {
+                                <MudTd>
+                                    <MudSelect T="decimal" @bind-Value="context.VatRate" Dense="true" Margin="Margin.Dense">
+                                        <MudSelectItem Value="0m">Exempt (0%)</MudSelectItem>
+                                        <MudSelectItem Value="0.05m">5%</MudSelectItem>
+                                    </MudSelect>
+                                </MudTd>
+                                <MudTd Style="text-align:right">@context.Split(_amountsIncludeVat).Vat.ToString("N2")</MudTd>
+                            }
                             <MudTd>
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                                OnClick="@(() => RemoveLine(context))" Disabled="_lines.Count <= 1" />
@@ -141,6 +172,11 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
                         <MudButton StartIcon="@Icons.Material.Filled.Add" Variant="Variant.Outlined" OnClick="AddLine">Add line</MudButton>
                         <MudSpacer />
+                        @if (_showVatColumn)
+                        {
+                            <MudText Class="mr-4">Net: @TotalNet.ToString("N2")</MudText>
+                            <MudText Class="mr-4">VAT: @TotalVat.ToString("N2")</MudText>
+                        }
                         <MudText>Total: <b>AED @TotalAmount.ToString("N2")</b></MudText>
                     </MudStack>
                 </MudItem>
@@ -173,6 +209,21 @@
             <MudItem xs="12">
                 <MudTextField @bind-Value="_narration" Label="Notes" Lines="2" Placeholder="Max. 500 characters" MaxLength="500" />
             </MudItem>
+            <MudItem xs="12">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudFileUpload T="IBrowserFile" FilesChanged="OnFileSelected" Accept=".pdf,.jpg,.jpeg,.png">
+                        <ActivatorContent>
+                            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.AttachFile" Size="Size.Small">
+                                Attach Receipt
+                            </MudButton>
+                        </ActivatorContent>
+                    </MudFileUpload>
+                    @if (_attachmentFileName is not null)
+                    {
+                        <MudChip T="string" Size="Size.Small" OnClose="RemoveAttachment" CloseIcon="@Icons.Material.Filled.Close">@_attachmentFileName</MudChip>
+                    }
+                </MudStack>
+            </MudItem>
         </MudGrid>
     </DialogContent>
     <DialogActions>
@@ -200,16 +251,29 @@
     private DateTime? _date = DateTime.Today;
     private int _periodId;
     private string? _reference;
+    private string? _vendorInvoiceNo;
     private string? _narration;
     private bool _posting;
+    private bool _amountsIncludeVat;
+    private bool _showVatColumn;
+
+    private string? _attachmentFileName;
+    private string? _attachmentContentType;
+    private byte[]? _attachmentBytes;
 
     private bool _itemized;
     private int _singleExpenseAccountId;
     private int? _singleCostCenterId;
     private decimal _singleAmount;
+    private decimal _singleVatRate;
     private readonly List<LineVm> _lines = new() { new() };
 
-    private decimal TotalAmount => _itemized ? _lines.Sum(l => l.Amount) : _singleAmount;
+    private (decimal Net, decimal Vat, decimal Gross) SingleSplit =>
+        new LineVm { Amount = _singleAmount, VatRate = _singleVatRate }.Split(_amountsIncludeVat);
+
+    private decimal TotalNet => _itemized ? _lines.Sum(l => l.Split(_amountsIncludeVat).Net) : SingleSplit.Net;
+    private decimal TotalVat => _itemized ? _lines.Sum(l => l.Split(_amountsIncludeVat).Vat) : SingleSplit.Vat;
+    private decimal TotalAmount => _itemized ? _lines.Sum(l => l.Split(_amountsIncludeVat).Gross) : SingleSplit.Gross;
 
     private bool CanPost => _bankAccountId > 0 && _periodId > 0 && TotalAmount > 0
         && (_itemized
@@ -233,7 +297,7 @@
     {
         _itemized = true;
         if (_singleExpenseAccountId > 0 || _singleAmount > 0)
-            _lines[0] = new LineVm { ExpenseAccountId = _singleExpenseAccountId, CostCenterId = _singleCostCenterId, Amount = _singleAmount };
+            _lines[0] = new LineVm { ExpenseAccountId = _singleExpenseAccountId, CostCenterId = _singleCostCenterId, Amount = _singleAmount, VatRate = _singleVatRate };
     }
 
     private void DisableItemize()
@@ -245,6 +309,7 @@
             _singleExpenseAccountId = first.ExpenseAccountId;
             _singleCostCenterId = first.CostCenterId;
             _singleAmount = _lines.Sum(l => l.Amount);
+            _singleVatRate = first.VatRate;
         }
         _lines.Clear();
         _lines.Add(new());
@@ -281,15 +346,23 @@
         _posting = true;
         try
         {
+            if (_periodId == 0)
+                throw new PostingException("No fiscal period covers this date.");
+
             var userName = AuthState is not null ? (await AuthState).User.Identity?.Name ?? "System Admin" : "System Admin";
             var inputs = _itemized
-                ? _lines.Select(l => new DirectExpenseLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, l.Amount, l.ItemId))
-                : new[] { new DirectExpenseLineInput(_singleExpenseAccountId, _singleCostCenterId, null, _singleAmount) };
+                ? _lines.Select(l => new DirectExpenseLineInput(l.ExpenseAccountId, l.CostCenterId, l.Description, l.Amount, l.ItemId, l.VatRate))
+                : new[] { new DirectExpenseLineInput(_singleExpenseAccountId, _singleCostCenterId, null, _singleAmount, VatRate: _singleVatRate) };
 
             var e = await ExpenseSvc.CreateAndPostAsync(
                 _vendorId > 0 ? _vendorId : null, _customerId > 0 ? _customerId : null,
                 DateOnly.FromDateTime(_date ?? DateTime.Today), _periodId, _bankAccountId,
-                _reference, _narration, userName, DateTime.UtcNow, inputs);
+                _reference, _narration, userName, DateTime.UtcNow, inputs,
+                _vendorInvoiceNo, _amountsIncludeVat);
+
+            if (_attachmentBytes is not null)
+                await ExpenseSvc.SetAttachmentAsync(e.Id, _attachmentFileName!,
+                    _attachmentContentType ?? "application/octet-stream", _attachmentBytes);
 
             Snackbar.Add($"Posted {e.ExpenseNo} — GL voucher generated.", Severity.Success);
             MudDialog.Close(DialogResult.Ok(e.Id));
@@ -301,6 +374,29 @@
         finally { _posting = false; }
     }
 
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file.Size > DirectExpenseService.MaxAttachmentBytes)
+        {
+            Snackbar.Add($"That file is too large — the limit is {DirectExpenseService.MaxAttachmentBytes / (1024 * 1024)} MB.", Severity.Error);
+            return;
+        }
+
+        using var stream = file.OpenReadStream(DirectExpenseService.MaxAttachmentBytes);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _attachmentBytes = ms.ToArray();
+        _attachmentFileName = file.Name;
+        _attachmentContentType = file.ContentType;
+    }
+
+    private void RemoveAttachment()
+    {
+        _attachmentFileName = null;
+        _attachmentContentType = null;
+        _attachmentBytes = null;
+    }
+
     private void Cancel() => MudDialog.Cancel();
 
     private class LineVm
@@ -310,5 +406,24 @@
         public int? CostCenterId { get; set; }
         public string? Description { get; set; }
         public decimal Amount { get; set; }
+        public decimal VatRate { get; set; }
+
+        /// <summary>Mirrors <see cref="DirectExpenseLine.Split"/> exactly, so the dialog's live
+        /// preview always matches what the service will actually post.</summary>
+        public (decimal Net, decimal Vat, decimal Gross) Split(bool amountsIncludeVat)
+        {
+            if (amountsIncludeVat)
+            {
+                var gross = Amount;
+                var net = Math.Round(gross / (1 + VatRate), 2, MidpointRounding.AwayFromZero);
+                return (net, gross - net, gross);
+            }
+            else
+            {
+                var net = Amount;
+                var vat = Math.Round(net * VatRate, 2, MidpointRounding.AwayFromZero);
+                return (net, vat, net + vat);
+            }
+        }
     }
 }
