@@ -244,6 +244,15 @@ else
                 </MudGrid>
                 <MudAlert Severity="Severity.Info" Dense="true" Class="mt-4">Document number series and posting groups are configured per the Chart of Accounts and voucher prefixes.</MudAlert>
 
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">WPS (Wage Protection System)</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mb-2">
+                    Required to export a WPS salary file (.sif) from a posted payroll run.
+                </MudText>
+                <MudGrid>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.MohreEstablishmentId" Label="MOHRE Establishment ID" HelperText="13 digits" /></MudItem>
+                    <MudItem xs="12" sm="4"><MudTextField @bind-Value="_c.WpsBankAgentId" Label="WPS Bank Agent ID" HelperText="9-digit routing code of the bank/exchange house submitting the file" /></MudItem>
+                </MudGrid>
+
                 @if (_c.SalespersonEnabled)
                 {
                     <MudText Typo="Typo.subtitle2" Class="mt-4 mb-1">Salespersons</MudText>

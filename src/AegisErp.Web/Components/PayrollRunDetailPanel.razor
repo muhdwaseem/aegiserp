@@ -1,8 +1,10 @@
 @using AegisErp.Web.Components.Dialogs
 @inject PayrollService PayrollSvc
+@inject WpsFileService WpsSvc
 @inject CompanySession Session
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 @if (_loaded && _run is null)
 {
@@ -36,9 +38,21 @@ else if (_run is not null)
             {
                 <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="OpenMarkPaid">Mark as Paid</MudButton>
             }
+            @if (_run.Status == VoucherStatus.Posted)
+            {
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportWps">Export WPS File</MudButton>
+            }
         }
         <MudIconButton Icon="@Icons.Material.Filled.Refresh" OnClick="Load" />
     </MudStack>
+
+    @if (_run.Status == VoucherStatus.Posted && Session.CanAccessPayroll)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+            The exported .sif file follows the published UAE WPS SIF structure but has not been validated against
+            your bank's own WPS portal — run it through your bank's validator before your first live submission.
+        </MudAlert>
+    }
 
     <MudGrid Class="mb-3">
         <MudItem xs="12" sm="4">
@@ -139,6 +153,19 @@ else if (_run is not null)
         {
             await Load();
             await OnChanged.InvokeAsync();
+        }
+    }
+
+    private async Task ExportWps()
+    {
+        try
+        {
+            var file = await WpsSvc.GenerateSifAsync(_run!.Id, DateTime.UtcNow);
+            await JS.InvokeVoidAsync("aegisDownload", file.FileName, file.Content, "text/plain");
+        }
+        catch (PostingException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
         }
     }
 }

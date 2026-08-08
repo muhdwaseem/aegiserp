@@ -125,6 +125,12 @@ public class CompanySetup
     /// configure payroll before actually registering for WPS.</summary>
     public string? MohreEstablishmentId { get; set; }
 
+    /// <summary>9-digit routing code of the bank/exchange house submitting the WPS file on the
+    /// company's behalf — goes on the SCR (Salary Control Record) header line. Distinct from each
+    /// <see cref="Employee.WpsAgentId"/>, which identifies the bank receiving that employee's own
+    /// salary and can differ employee to employee.</summary>
+    public string? WpsBankAgentId { get; set; }
+
     /// <summary>The company's maintained list of salesperson names — admin-curated here, offered
     /// as a dropdown on the New Customer form instead of free text, so names stay consistent.</summary>
     public List<Salesperson> Salespersons { get; set; } = new();

@@ -60,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<LeadService>();
         services.AddScoped<GratuityService>();
         services.AddScoped<LeaveService>();
+        services.AddScoped<WpsFileService>();
         services.AddScoped<FiscalPeriodService>();
         services.Configure<SmtpOptions>(config.GetSection("Smtp"));
         services.AddScoped<EmailService>();
